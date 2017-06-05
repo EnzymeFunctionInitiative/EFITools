@@ -23,22 +23,24 @@ use Biocluster::Database;
 #$configfile=read_file($ENV{'EFICFG'}) or die "could not open $ENV{'EFICFG'}\n";
 #eval $configfile;
 
-my ($result, $dataDir, $configFile);
+my ($result, $nodeDir, $fastaDir, $configFile);
 $result = GetOptions(
-    "data-dir=s"        => \$dataDir,
+    "node-dir=s"        => \$nodeDir,
+    "out-dir=s"         => \$fastaDir,
     "config=s"          => \$configFile,
 );
 
 my $usage=<<USAGE
 usage: getfasta.pl -data-dir <path_to_data_dir> -config <config_file>
-    -data-dir       path to directory to output lists of IDs (one file/list per cluster number)
+    -node-dir       path to directory containing lists of IDs (one file/list per cluster number)
+    -out-dir        path to directory to output fasta files to
     -config         path to configuration file
 USAGE
 ;
 
 
-if (not -d $dataDir) {
-    die "The input data directory must be specified.\n$usage";
+if (not -d $nodeDir) {
+    die "The input data directory must be specified and exist.\n$usage";
 }
 
 
@@ -48,10 +50,10 @@ my $dbh = $db->getHandle();
 my $blastDbPath = $ENV{EFIDBPATH};
 
 
-foreach my $file (glob("$dataDir/cluster_nodes_*.txt")) {
+foreach my $file (glob("$nodeDir/cluster_nodes_*.txt")) {
     (my $clusterNum = $file) =~ s%^.*/cluster_nodes_(\d+)\.txt$%$1%;
     
-    open FASTA, ">$dataDir/cluster_fasta_$clusterNum.txt";
+    open FASTA, ">$fastaDir/cluster_$clusterNum.fasta";
     open NODES, $file;
 
     my $hasLines = 1;

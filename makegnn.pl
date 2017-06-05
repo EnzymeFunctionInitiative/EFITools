@@ -42,12 +42,12 @@ use Biocluster::Database;
 
 $result = GetOptions(
     "ssnin=s"           => \$ssnin,
-    "n=s"               => \$n,
+    "nb-size|n=s"       => \$nbSize,                # Neighborhood size
     "nomatch=s"         => \$noMatchFile,
     "noneigh=s"         => \$noNeighborFile,
     "gnn=s"             => \$gnn,
     "ssnout=s"          => \$ssnout,
-    "incfrac=i"         => \$incfrac,
+    "cooc|incfrac=i"    => \$cooc,                  # Co-occurrence
     "stats=s"           => \$stats,
     "config=s"          => \$configFile,
     "data-dir=s"        => \$dataDir,
@@ -80,8 +80,8 @@ unless(-s $ssnin){
     die "-ssnin $ssnin does not exist or has a zero size\n$usage";
 }
 
-unless($n>0){
-    die "-n $n must be an integer greater than zero\n$usage";
+unless($nbSize>0){
+    die "-n $nbSize must be an integer greater than zero\n$usage";
 }
 
 #unless($gnn=~/./){
@@ -99,13 +99,13 @@ unless($ssnout=~/./){
 #    die "you must specify and output file for noneigh\n$usage";
 #}
 
-if($incfrac=~/^\d+$/){
-    $incfrac=$incfrac/100;
+if($cooc=~/^\d+$/){
+    $cooc=$cooc/100;
 }else{
-    if(defined $incfrac){
+    if(defined $cooc){
         die "incfrac must be an integer\n";
     }
-    $incfrac=0.20;  
+    $cooc=0.20;  
 }
 
 if($stats=~/\w+/){
@@ -282,7 +282,7 @@ foreach $key (sort {$a <=> $b} keys %supernodes){
     foreach $accession (uniq @{$supernodes{$key}}){
 #    print "$accession\n";
 #    print "\tsearch\n";
-        $pfamsearch = findneighbors($accession, $n, $dbh, $noMatchFh, $noNeighborFh);
+        $pfamsearch = findneighbors($accession, $nbSize, $dbh, $noMatchFh, $noNeighborFh);
 #    print "\tafter search\n";
 #push @{$pfam{'orig'}{$tmp}},$ac;
         foreach $result (keys %{${$pfamsearch}{'neigh'}}){
@@ -502,8 +502,8 @@ sub writeGnn {
             print "$key supercluster $sc\n";
     
     #do not dray node if incfrac<ClustrFraction
-            #if($incfrac<=( scalar(@{$pfams{$key}{$sc}{'dist'}})/scalar(@{$supernodes{$sc}}))){
-            if($incfrac<=int(scalar(uniq @{$pfams{$key}{$sc}{'orig'}})/scalar(@{$withneighbors{$sc}})*1000)/1000){
+            #if($cooc<=( scalar(@{$pfams{$key}{$sc}{'dist'}})/scalar(@{$supernodes{$sc}}))){
+            if($cooc<=int(scalar(uniq @{$pfams{$key}{$sc}{'orig'}})/scalar(@{$withneighbors{$sc}})*1000)/1000){
                 $concount++;
     #problem is here maybe fixed check the run
                 $sumTotNeigh+=$pfams{$key}{$sc}{'size'};
@@ -665,7 +665,7 @@ sub writeGnn {
 
 sub findneighbors {
     my $ac=shift @_;
-    my $n=shift @_;
+    my $nbSize=shift @_;
     my $dbh=shift @_;
     my $fh=shift @_;
     my $neighfile=shift @_;
@@ -685,8 +685,8 @@ sub findneighbors {
                 die "Direction of ".$row->{AC}." does not appear to be normal (0) or complement(1)\n";
             }
             $origtmp=join('-', sort {$a <=> $b} uniq split(",",$row->{pfam}));
-            $low=$row->{NUM}-$n;
-            $high=$row->{NUM}+$n;
+            $low=$row->{NUM}-$nbSize;
+            $high=$row->{NUM}+$nbSize;
             $query="select * from ena where ID='".$row->{ID}."' and num>=$low and num<=$high";
             my $neighbors=$dbh->prepare($query);
             $neighbors->execute;
