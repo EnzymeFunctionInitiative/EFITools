@@ -38,64 +38,65 @@ eval $configfile;
 $functions=read_file("$FindBin::Bin/gnnfunctions.pl");
 eval $functions;
 
-$result=GetOptions ("ssnin=s"		=> \$ssnin,
-		    "n=s"		=> \$n,
-		    "nomatch=s"		=> \$nomatch,
-		    "noneigh=s"		=> \$noneighfile,
-		    "gnn=s"		=> \$gnn,
-		    "ssnout=s"		=> \$ssnout,
-		    "incfrac=i"		=> \$incfrac,
-		    "stats=s"		=> \$stats,
-		    "pfam=s"		=> \$pfamhubfile
-		    );
+$result = GetOptions(
+    "ssnin=s"       => \$ssnin,
+    "n=s"           => \$n,
+    "nomatch=s"     => \$nomatch,
+    "noneigh=s"     => \$noneighfile,
+    "gnn=s"         => \$gnn,
+    "ssnout=s"      => \$ssnout,
+    "incfrac=i"     => \$incfrac,
+    "stats=s"       => \$stats,
+    "pfam=s"        => \$pfamhubfile
+);
 
-$usage="usage makegnn.pl -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <filename> -ssnout <filename>\n-ssnin\t name of original ssn network to process\n-n\t distance (+/-) to search for neighbors\n-nomatch output file that contains sequences without neighbors\n-gnn\t filename of genome neighborhood network output file\n-ssnout\t output filename for colorized sequence similarity network\n";
+$usage="usage $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <filename> -ssnout <filename>\n-ssnin\t name of original ssn network to process\n-n\t distance (+/-) to search for neighbors\n-nomatch output file that contains sequences without neighbors\n-gnn\t filename of genome neighborhood network output file\n-ssnout\t output filename for colorized sequence similarity network\n";
 
 
 #error checking on input values
 
 unless(-s $ssnin){
-  die "-ssnin $ssnin does not exist or has a zero size\n$usage";
+    die "-ssnin $ssnin does not exist or has a zero size\n$usage";
 }
 
 unless($n>0){
-  die "-n $n must be an integer greater than zero\n$usage";
+    die "-n $n must be an integer greater than zero\n$usage";
 }
 
 unless($gnn=~/./){
-  die "you must specify a gnn output file\n$usage";
+    die "you must specify a gnn output file\n$usage";
 }
 
 unless($ssnout=~/./){
-  die "you must specify a ssn output file\n$usage";
+    die "you must specify a ssn output file\n$usage";
 }
 
 unless($nomatch=~/./){
-  die "you must specify and output file for nomatches\n$usage";
+    die "you must specify and output file for nomatches\n$usage";
 }
 
 unless($noneighfile=~/./){
-  die "you must specify and output file for noneigh\n$usage";
+    die "you must specify and output file for noneigh\n$usage";
 }
 
 unless($pfamhubfile=~/./){
-  die "you must specify and output file for the pfam hub gnn\n$usage";
+    die "you must specify and output file for the pfam hub gnn\n$usage";
 }
 
 if($incfrac=~/^\d+$/){
-  $incfrac=$incfrac/100;
+    $incfrac=$incfrac/100;
 }else{
-  if(defined $incfrac){
-    die "incfrac must be an integer\n";
-  }
-  $incfrac=0.20;  
+    if(defined $incfrac){
+        die "incfrac must be an integer\n";
+    }
+    $incfrac=0.20;  
 }
 
 if($stats=~/\w+/){
-  open STATS, ">$stats" or die "could not write to $stats\n";
-  print STATS "Cluster_Number\tPFAM\tPFAM_Description\tCluster_Fraction\tAvg_Distance\tSSN_Cluster_Size\n";
+    open STATS, ">$stats" or die "could not write to $stats\n";
+    print STATS "Cluster_Number\tPFAM\tPFAM_Description\tCluster_Fraction\tAvg_Distance\tSSN_Cluster_Size\n";
 }else{
-  open STATS, ">/dev/null" or die "could nto dump stats info to dev null\n";
+    open STATS, ">/dev/null" or die "could nto dump stats info to dev null\n";
 }
 
 %nodehash=();
@@ -161,4 +162,5 @@ writePfamHubGnn($pfamwriter, $clusterNodes, $withneighbors, $incfrac, $numbermat
 
 print "write out colored ssn network ".scalar @{$nodes}." nodes and ".scalar @{$edges}." edges\n";
 writeColorSsn($nodes, $edges, $title, $writer, \%colors, $numbermatch, $constellations,$nodenames);
-print "makegnn.pl finished\n";
+print "$0 finished\n";
+
