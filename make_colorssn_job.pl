@@ -85,6 +85,11 @@ if (not $ssnOut) {
 (my $ssnName = $ssnOut) =~ s/\.xgmml$//i;
 my $ssnOutZip = "$ssnName.zip";
 
+my $ssnInZip = $ssnIn;
+if ($ssnInZip =~ /\.zip$/i) {
+    $ssnIn =~ s/\.zip$/.xgmml/i;
+}
+
 
 my $outputPath = $ENV{PWD} . "/$outputDir";
 mkdir $outputPath or die "Unable to create output directory $outputPath: $!" if not -d $outputPath ;
@@ -107,7 +112,7 @@ $B->addAction("$str");
 $B->addAction("module load $dbModule");
 $B->addAction("module load $gntModule");
 $B->addAction("cd $outputPath");
-$B->addAction("unzip $ssnIn") if $ssnIn =~ /\.zip/i;
+$B->addAction("unzip -p $ssnInZip > $ssnIn") if $ssnInZip =~ /\.zip/i;
 $B->addAction("makegnn.pl -nb-size 10 -cooc 20 -ssnin $ssnIn -ssnout $outputPath/$ssnOut -data-dir $nodeDataPath -id-out ${ssnName}_$mapFileName -config $configFile");
 $B->addAction("getfasta.pl -node-dir $nodeDataPath -out-dir $fastaDataPath -config $configFile");
 $B->addAction("zip -j -r $outputPath/${ssnName}_nodes.zip $nodeDataPath");
