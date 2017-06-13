@@ -1,5 +1,9 @@
 #!/usr/bin/env perl
 
+BEGIN {
+    die "Please load efiest2 before runing this script" if not $ENV{EFIEST};
+}
+
 
 #version 0.2.4 hub and spoke node attribute update
 #version 0.2.3 paired pfams now in combined hub nodes
@@ -21,37 +25,61 @@
 
 use FindBin;
 use Getopt::Long;
-use List::MoreUtils qw{apply uniq any} ;
 use XML::LibXML;
-use DBD::SQLite;
 use DBD::mysql;
 use IO;
 use XML::Writer;
-use File::Slurp;
 use XML::LibXML::Reader;
-use List::Util qw(sum);
-use Array::Utils qw(:all);
-use Data::Dumper;
 
-$configfile=read_file($ENV{'EFICFG'}) or die "could not open $ENV{'EFICFG'}\n";
-eval $configfile;
-$functions=read_file("$FindBin::Bin/gnnfunctions.pl");
-eval $functions;
+use lib $FindBin::Bin . "/lib";
+use lib $ENV{EFIEST} . "/lib";
+use Biocluster::Database;
+use Biocluster::GNN;
+
+
+#$configfile=read_file($ENV{'EFICFG'}) or die "could not open $ENV{'EFICFG'}\n";
+#eval $configfile;
+#$functions=read_file("$FindBin::Bin/gnnfunctions.pl");
+#eval $functions;
 
 $result = GetOptions(
-    "ssnin=s"       => \$ssnin,
-    "n=s"           => \$n,
-    "nomatch=s"     => \$nomatch,
-    "noneigh=s"     => \$noneighfile,
-    "gnn=s"         => \$gnn,
-    "ssnout=s"      => \$ssnout,
-    "incfrac=i"     => \$incfrac,
-    "stats=s"       => \$stats,
-    "pfam=s"        => \$pfamhubfile
+    "ssnin=s"           => \$ssnin,
+    "n|nb-size=s"       => \$n,
+    "nomatch=s"         => \$nomatch,
+    "noneigh=s"         => \$noneighfile,
+    "gnn=s"             => \$gnn,
+    "ssnout=s"          => \$ssnout,
+    "incfrac|cooc=i"    => \$incfrac,
+    "stats=s"           => \$stats,
+    "pfam=s"            => \$pfamhubfile,
+    "config=s"          => \$configFile,
+    "data-dir=s"        => \$dataDir,
+    "id-out=s"          => \$idOutputFile,
 );
 
-$usage="usage $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <filename> -ssnout <filename>\n-ssnin\t name of original ssn network to process\n-n\t distance (+/-) to search for neighbors\n-nomatch output file that contains sequences without neighbors\n-gnn\t filename of genome neighborhood network output file\n-ssnout\t output filename for colorized sequence similarity network\n";
+$usage = <<USAGE
+usage: $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <filename> -ssnout <filename>
+    -ssnin          name of original ssn network to process
+    -nb-size        distance (+/-) to search for neighbors
+    -nomatch        output file that contains sequences without neighbors
+    -noneigh        output file that contains sequences without neighbors
+    -gnn            filename of genome neighborhood network output file
+    -ssnout         output filename for colorized sequence similarity network
+    -cooc           co-occurrence
+    -stats          file to output tabular statistics to
+    -pfam           file to output PFAM hub GNN to
+    -data-dir       path to directory to output lists of IDs (one file/list per cluster number)
+    -id-out         path to a file to save the ID, cluster #, cluster color
+    -config         configuration file for database info, etc.
+USAGE
+;
 
+
+if (not -f $configFile and not exists $ENV{EFICONFIG}) {
+    die "Either the configuration file or the EFICONFIG environment variable must be set\n$usage";
+} elsif (not -f $configFile) {
+    $configFile = $ENV{EFICONFIG};
+}
 
 #error checking on input values
 
@@ -60,28 +88,28 @@ unless(-s $ssnin){
 }
 
 unless($n>0){
-    die "-n $n must be an integer greater than zero\n$usage";
+    die "-nb-size $n must be an integer greater than zero\n$usage";
 }
 
-unless($gnn=~/./){
-    die "you must specify a gnn output file\n$usage";
-}
+#unless($gnn=~/./){
+#    die "you must specify a gnn output file\n$usage";
+#}
 
-unless($ssnout=~/./){
-    die "you must specify a ssn output file\n$usage";
-}
+#unless($ssnout=~/./){
+#    die "you must specify a ssn output file\n$usage";
+#}
 
-unless($nomatch=~/./){
-    die "you must specify and output file for nomatches\n$usage";
-}
+#unless($nomatch=~/./){
+#    die "you must specify and output file for nomatches\n$usage";
+#}
 
-unless($noneighfile=~/./){
-    die "you must specify and output file for noneigh\n$usage";
-}
+#unless($noneighfile=~/./){
+#    die "you must specify and output file for noneigh\n$usage";
+#}
 
-unless($pfamhubfile=~/./){
-    die "you must specify and output file for the pfam hub gnn\n$usage";
-}
+#unless($pfamhubfile=~/./){
+#    die "you must specify and output file for the pfam hub gnn\n$usage";
+#}
 
 if($incfrac=~/^\d+$/){
     $incfrac=$incfrac/100;
@@ -91,6 +119,14 @@ if($incfrac=~/^\d+$/){
     }
     $incfrac=0.20;  
 }
+
+my $db = new Biocluster::Database(config_file_path => $configFile);
+my $dbh = $db->getHandle();
+
+my %gnnArgs = (dbh => $dbh, incfrac => $incfrac);
+$gnnArgs{data_dir} = $dataDir if $dataDir and -d $dataDir;
+my $util = new Biocluster::GNN(%gnnArgs);
+
 
 if($stats=~/\w+/){
     open STATS, ">$stats" or die "could not write to $stats\n";
@@ -102,9 +138,6 @@ if($stats=~/\w+/){
 %nodehash=();
 %constellations=();
 %supernodes=();
-%pfams=();
-%colors=%{getcolors($dbh)};
-%accessioncolors=();
 %nodenames=();
 %numbermatch=();
 %withneighbors=();
@@ -116,51 +149,61 @@ if($stats=~/\w+/){
 #constellations key is an accession
 #supernodes is a hash of arrays that contain all of the accessions within a constellation
 #key for supernodes are the intergers from %constellations
-#pfams contains all of the information for the gnn networks related to sequence (non meta data) including distance
 #key for pams is a pfam number.
-#colors is a hash where the keys are integers and the values are hexidecimal numbers for colors
-#accessioncolors holds the colors assigned by the constellation number for an accession node
 #nodenames maps the id from nodes to accession number, this allows you to run this script on cytoscape xgmml exports
-
-#open(GNN,">$gnn") or die "could not write to gnn output file\n";
 
 print "read xgmml file, get list of nodes and edges\n";
 
 $reader=XML::LibXML::Reader->new(location => $ssnin);
-(my $title, my $nodes, my $edges)=getNodesAndEdges($reader);
+(my $title, my $nodes, my $edges) = $util->getNodesAndEdges($reader);
 
-$output=new IO::File(">$ssnout");
-$writer=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $output);
-
-$gnnoutput=new IO::File(">$gnn");
-$gnnwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $gnnoutput);
-
-$pfamoutput=new IO::File(">$pfamhubfile");
-$pfamwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $pfamoutput);
 
 print "found ".scalar @{$nodes}." nodes\n";
 print "found ".scalar @{$edges}." edges\n";
 print "graph name is $title\n";
 
-($nodehash,$nodenames)=getNodes($nodes);
+($nodehash,$nodenames) = $util->getNodes($nodes);
 
-($supernodes, $constellations)=getClusters($nodehash, $nodenames, $edges);
+($supernodes, $constellations) = $util->getClusters($nodehash, $nodenames, $edges);
 
 print "find neighbors\n\n";
 
-#gather neighbors of each supernode and store in the $pfams data structure
-open( $nomatch_fh, ">$nomatch" ) or die "cannot write file of non-matching accessions\n";
-open( $noneighfile_fh, ">$noneighfile") or die "cannot write file of accessions without neighbors\n";
+if ($gnn and $nomatch and $noneighfile) {
+    open( $nomatch_fh, ">$nomatch" ) or die "cannot write file of non-matching accessions\n";
+    open( $noneighfile_fh, ">$noneighfile") or die "cannot write file of accessions without neighbors\n";
+} else {
+    open( $nomatch_fh, ">/dev/null" ) or die "cannot write non-matching accessions to /dev/null\n";
+    open( $noneighfile_fh, ">/dev/null") or die "cannot write accessions without neighbors to /dev/null\n";
+}
 
-($numbermatch, $clusterNodes, $withneighbors)=getClusterHubData($supernodes, $dbh, $n, $nomatch_fh, $noneighfile_fh);
+($numbermatch, $clusterNodes, $withneighbors) = $util->getClusterHubData($supernodes, $n, $nomatch_fh, $noneighfile_fh);
 
-print "Writing Cluster Hub GNN\n";
-writeClusterHubGnn($gnnwriter, $clusterNodes, $withneighbors, $incfrac, $numbermatch, $supernodes);
+if ($gnn) {
+    print "Writing Cluster Hub GNN\n";
+    $gnnoutput=new IO::File(">$gnn");
+    $gnnwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $gnnoutput);
+    $util->writeClusterHubGnn($gnnwriter, $clusterNodes, $withneighbors, $numbermatch, $supernodes);
+}
 
-print "Writing Pfam Hub GNN\n";
-writePfamHubGnn($pfamwriter, $clusterNodes, $withneighbors, $incfrac, $numbermatch, $supernodes, $dbh, \%colors);
+if ($pfamhubfile) {
+    print "Writing Pfam Hub GNN\n";
+    $pfamoutput=new IO::File(">$pfamhubfile");
+    $pfamwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $pfamoutput);
+    $util->writePfamHubGnn($pfamwriter, $clusterNodes, $withneighbors, $numbermatch, $supernodes);
+}
 
-print "write out colored ssn network ".scalar @{$nodes}." nodes and ".scalar @{$edges}." edges\n";
-writeColorSsn($nodes, $edges, $title, $writer, \%colors, $numbermatch, $constellations,$nodenames);
+if ($ssnout) {
+    print "write out colored ssn network ".scalar @{$nodes}." nodes and ".scalar @{$edges}." edges\n";
+    $output=new IO::File(">$ssnout");
+    $writer=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $output);
+    $util->writeColorSsn($nodes, $edges, $title, $writer, $numbermatch, $constellations, $nodenames, $supernodes);
+}
+
+close($nomatch_fh);
+close($noneighfile_fh);
+
+$util->writeIdMapping($idOutputFile, $numbermatch, $constellations) if $idOutputFile;
+$util->closeClusterMapFiles() if $dataDir;
+
 print "$0 finished\n";
 
