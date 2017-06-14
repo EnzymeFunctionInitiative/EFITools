@@ -68,17 +68,18 @@ sub findNeighbors {
 
                 $max = $maxSth->fetchrow_hashref()->{NUM};
 
-                my @maxClause;
-                if ($low < 1) {
-                    $circHigh = $max + $low + 1;
-                    push(@maxClause, "num >= $circHigh");
+                if ($n < $max) {
+                    my @maxClause;
+                    if ($low < 1) {
+                        $circHigh = $max + $low + 1;
+                        push(@maxClause, "num >= $circHigh");
+                    }
+                    if ($high > $max) {
+                        $circLow = $high - $max + 1;
+                        push(@maxClause, "num <= $circLow");
+                    }
+                    $clause = "and ((num >= $low and num <= $high) or " . join(" or ", @maxClause) . ")";
                 }
-                if ($high > $max) {
-                    $circLow = $high - $max + 1;
-                    push(@maxClause, "num <= $circLow");
-                }
-                $clause = "and ((num >= $low and num <= $high) or " . join(" or ", @maxClause) . ")";
-
             }
 
             $query .= $clause;
@@ -431,54 +432,53 @@ sub getClusters{
     my $newnode=1;
 
     foreach $edge (@{$edges}){
+        my $edgeSource = $edge->getAttribute('source');
+        my $edgeTarget = $edge->getAttribute('target');
+        my $nodeSource = $nodenames->{$edgeSource};
+        my $nodeTarget = $nodenames->{$edgeTarget};
+
         #if source exists, add target to source sc
-        if(exists $constellations{$nodenames->{$edge->getAttribute('source')}}){
+        if(exists $constellations{$nodeSource}){
             #if target also already existed, add target data to source 
-            if(exists $constellations{$nodenames->{$edge->getAttribute('target')}}){
-                #check if source and target are in the same constellation, if they are, do nothing, if not, add change target sc to source and add target accessions to source accessions
-                unless($constellations{$nodenames->{$edge->getAttribute('target')}} eq $constellations{$nodenames->{$edge->getAttribute('source')}}){
+            if(exists $constellations{$nodeTarget}){
+                #check if source and target are in the same constellation, if they are, do nothing, if not,
+                # add change target sc to source and add target accessions to source accessions
+                unless($constellations{$nodeTarget} eq $constellations{$nodeSource}){
                     #add accessions from target supernode to source supernode
-                    push @{$supernodes{$constellations{$nodenames->{$edge->getAttribute('source')}}}}, @{$supernodes{$constellations{$nodenames->{$edge->getAttribute('target')}}}};
+                    push @{$supernodes{$constellations{$nodeSource}}}, @{$supernodes{$constellations{$nodeTarget}}};
                     #delete target supernode
-                    delete $supernodes{$constellations{$nodenames->{$edge->getAttribute('target')}}};
+                    delete $supernodes{$constellations{$nodeTarget}};
                     #change the constellation number for all 
-                    $oldtarget=$constellations{$nodenames->{$edge->getAttribute('target')}};
+                    $oldtarget=$constellations{$nodeTarget};
                     foreach my $tmpkey (keys %constellations){
                         if($oldtarget==$constellations{$tmpkey}){
-                            $constellations{$tmpkey}=$constellations{$nodenames->{$edge->getAttribute('source')}};
+                            $constellations{$tmpkey}=$constellations{$nodeSource};
                         }
                     }
                 }
             }else{
                 #target does not exist, add it to source
                 #change cluster number
-                $constellations{$nodenames->{$edge->getAttribute('target')}}=$constellations{$nodenames->{$edge->getAttribute('source')}};
+                $constellations{$nodeTarget}=$constellations{$nodeSource};
                 #add accessions
-                push @{$supernodes{$constellations{$nodenames->{$edge->getAttribute('source')}}}}, @{$nodehash->{$nodenames->{$edge->getAttribute('target')}}}      
+                push @{$supernodes{$constellations{$nodeSource}}}, @{$nodehash->{$nodeTarget}};
             }
-        }elsif(exists $constellations{$nodenames->{$edge->getAttribute('target')}}){
+        }elsif(exists $constellations{$nodeTarget}){
             #target exists, add source to target sc
             #change cluster number
-            $constellations{$nodenames->{$edge->getAttribute('source')}}=$constellations{$nodenames->{$edge->getAttribute('target')}};
+            $constellations{$nodeSource}=$constellations{$nodeTarget};
             #add accessions
-            push @{$supernodes{$constellations{$nodenames->{$edge->getAttribute('target')}}}}, @{$nodehash->{$nodenames->{$edge->getAttribute('source')}}}
+            push @{$supernodes{$constellations{$nodeTarget}}}, @{$nodehash->{$nodeSource}};
         }else{
             #neither exists, add both to same sc, and add accessions to supernode
-            $constellations{$nodenames->{$edge->getAttribute('source')}}=$newnode;
-            $constellations{$nodenames->{$edge->getAttribute('target')}}=$newnode;
-            push @{$supernodes{$newnode}}, @{$nodehash->{$nodenames->{$edge->getAttribute('source')}}};
-            push @{$supernodes{$newnode}}, @{$nodehash->{$nodenames->{$edge->getAttribute('target')}}};
+            $constellations{$nodeSource}=$newnode;
+            $constellations{$nodeTarget}=$newnode;
+            push @{$supernodes{$newnode}}, @{$nodehash->{$nodeSource}};
+            push @{$supernodes{$newnode}}, @{$nodehash->{$nodeTarget}};
             #increment for next sc node
             $newnode++;
         }
     }
-
-    my %ordSupernodes;
-    my %ordConstellations;
-
-    # Sort keys of supernodes by size of supernode
-    my @nodes = sort { $#${$supernodes{$a}} cmp $#${$supernodes{$b}} } keys %supernodes;
-
 
     return \%supernodes, \%constellations;
 }
@@ -495,7 +495,9 @@ sub getClusterHubData {
     my %numbermatch=();
     my $simplenumber=1;
 
-    foreach my $clusterNode (sort {$a <=> $b} keys %$supernodes){
+    foreach my $clusterNode (sort { my $c = $#{$supernodes->{$b}} <=> $#{$supernodes->{$a}};
+                                    $c = $a <=> $b if not $c; # handle equals case
+                                    $c } keys %$supernodes){
         print "Supernode $clusterNode, ".scalar @{$supernodes->{$clusterNode}}." original accessions, simplenumber $simplenumber\n";
         $numbermatch{$clusterNode}=$simplenumber;
         foreach my $accession (uniq @{$supernodes->{$clusterNode}}){       
@@ -576,7 +578,6 @@ sub writeColorSsnNodes {
         my $nodeId = $node->getAttribute('label');
         my $clusterNum = $numbermatch->{$constellations->{$nodeId}};
         unless($clusterNum eq ""){
-            my $clusterNum = $clusterNum;
             $nodeCount{$clusterNum} = scalar @{ $supernodes->{$constellations->{$nodeId}} } if not exists $nodeCount{$clusterNum};
             $self->saveNodeToClusterMap($nodeId, $numbermatch, $constellations);
             $writer->startTag('node', 'id' => $nodeId, 'label' => $nodeId);
