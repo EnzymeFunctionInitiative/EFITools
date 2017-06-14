@@ -29,6 +29,7 @@ sub findNeighbors {
     my $n=shift @_;
     my $fh=shift @_;
     my $neighfile=shift @_;
+    my $testForCirc = shift @_;
 
     my %pfam=();
     my $numqable=0;
@@ -36,35 +37,77 @@ sub findNeighbors {
 
     my $selSql = "select * from ena where AC='$ac' limit 1;";
     $sth=$self->{dbh}->prepare($selSql);
-    #print "SQL: $selSql\n"; 
     $sth->execute;
     if($sth->rows>0){
         while(my $row=$sth->fetchrow_hashref){
             if($row->{DIRECTION}==1){
-                $origdirection='compliment';
+                $origdirection='complement';
             }elsif($row->{DIRECTION}==0){
                 $origdirection='normal';
             }else{
                 die "Direction of ".$row->{AC}." does not appear to be normal (0) or complement(1)\n";
             }
             $origtmp=join('-', sort {$a <=> $b} uniq split(",",$row->{pfam}));
-            $low=$row->{NUM}-$n;
-            $high=$row->{NUM}+$n;
-            $query="select * from ena where ID='".$row->{ID}."' and num>=$low and num<=$high";
+
+            my $num = $row->{NUM};
+            my $id = $row->{ID};
+            
+            $low=$num-$n;
+            $high=$num+$n;
+            $type = $row->{TYPE};
+
+            $query="select * from ena where ID='$id' ";
+            my $clause = "and num>=$low and num<=$high";
+
+            # Handle circular case
+            my ($max, $circHigh, $circLow);
+            if (defined $testForCirc and $testForCirc and $type == 0) {
+                my $maxQuery = "select NUM from ena where ID = '$id' order by NUM desc limit 1";
+                my $maxSth = $self->{dbh}->prepare($maxQuery);
+                $maxSth->execute;
+
+                $max = $maxSth->fetchrow_hashref()->{NUM};
+
+                my @maxClause;
+                if ($low < 1) {
+                    $circHigh = $max + $low + 1;
+                    push(@maxClause, "num >= $circHigh");
+                }
+                if ($high > $max) {
+                    $circLow = $high - $max + 1;
+                    push(@maxClause, "num <= $circLow");
+                }
+                $clause = "and ((num >= $low and num <= $high) or " . join(" or ", @maxClause) . ")";
+
+            }
+
+            $query .= $clause;
+
             my $neighbors=$self->{dbh}->prepare($query);
             $neighbors->execute;
+
             if($neighbors->rows >1){
                 push @{$pfam{'withneighbors'}{$origtmp}}, $ac;
             }else{
                 print $neighfile "$ac\n";
             }
+
             while(my $neighbor=$neighbors->fetchrow_hashref){
                 my $tmp=join('-', sort {$a <=> $b} uniq split(",",$neighbor->{pfam}));
                 if($tmp eq ''){
                     $tmp='none';
                 }
                 push @{$pfam{'orig'}{$tmp}}, $ac;
-                $distance=$neighbor->{NUM}-$row->{NUM};
+                
+                my $neighNum = $neighbor->{NUM};
+                if ($neighNum > $high and defined $circHigh and defined $max) {
+                    $distance = $n;
+                } elsif ($neighNum < $low and defined $circLow and defined $max) {
+                    $distance = $n;
+                } else {
+                    $distance = $neighNum - $num;
+                }
+
                 unless($distance==0){
                     push @{$pfam{'neigh'}{$tmp}}, "$ac:".$neighbor->{AC};
                     push @{$pfam{'neighlist'}{$tmp}}, $neighbor->{AC};
@@ -76,7 +119,7 @@ sub findNeighbors {
                         die "Type of ".$neighbor->{AC}." does not appear to be circular (0) or linear(1)\n";
                     }
                     if($neighbor->{DIRECTION}==1){
-                        $direction='compliment';
+                        $direction='complement';
                     }elsif($neighbr->{DIRECTION}==0){
                         $direction='normal';
                     }else{
@@ -429,6 +472,14 @@ sub getClusters{
             $newnode++;
         }
     }
+
+    my %ordSupernodes;
+    my %ordConstellations;
+
+    # Sort keys of supernodes by size of supernode
+    my @nodes = sort { $#${$supernodes{$a}} cmp $#${$supernodes{$b}} } keys %supernodes;
+
+
     return \%supernodes, \%constellations;
 }
 
@@ -524,7 +575,6 @@ sub writeColorSsnNodes {
     foreach my $node (@{$nodes}){
         my $nodeId = $node->getAttribute('label');
         my $clusterNum = $numbermatch->{$constellations->{$nodeId}};
-        print "$clusterNum    " . $constellations->{$nodeId}, "\n";
         unless($clusterNum eq ""){
             my $clusterNum = $clusterNum;
             $nodeCount{$clusterNum} = scalar @{ $supernodes->{$constellations->{$nodeId}} } if not exists $nodeCount{$clusterNum};
