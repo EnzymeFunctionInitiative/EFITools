@@ -18,6 +18,7 @@ sub new {
     $self->{colors} = $self->getColors();
     $self->{data_dir} = ($args{data_dir} and -d $args{data_dir}) ? $args{data_dir} : "";
     $self->{cluster_fh} = {};
+    $self->{use_new_neighbor_method} = $args{use_nnm};
 
     return $self;
 }
@@ -31,111 +32,181 @@ sub findNeighbors {
     my $neighfile=shift @_;
     my $testForCirc = shift @_;
 
+    my $debug = 0;
+
     my %pfam=();
     my $numqable=0;
     my $numneighbors=0;
 
-    my $selSql = "select * from ena where AC='$ac' limit 1;";
-    $sth=$self->{dbh}->prepare($selSql);
+    my $isCircSql = "select * from ena where AC='$ac' order by TYPE limit 1";
+    $sth = $self->{dbh}->prepare($isCircSql);
     $sth->execute;
-    if($sth->rows>0){
-        while(my $row=$sth->fetchrow_hashref){
-            if($row->{DIRECTION}==1){
-                $origdirection='complement';
-            }elsif($row->{DIRECTION}==0){
-                $origdirection='normal';
-            }else{
-                die "Direction of ".$row->{AC}." does not appear to be normal (0) or complement(1)\n";
-            }
-            $origtmp=join('-', sort {$a <=> $b} uniq split(",",$row->{pfam}));
 
-            my $num = $row->{NUM};
-            my $id = $row->{ID};
-            
-            $low=$num-$n;
-            $high=$num+$n;
-            $type = $row->{TYPE};
+    if (not $sth->rows) {
+        return \%pfam;
+    }
 
-            $query="select * from ena where ID='$id' ";
-            my $clause = "and num>=$low and num<=$high";
+    my $row = $sth->fetchrow_hashref;
+    my $genomeId = $row->{ID};
 
-            # Handle circular case
-            my ($max, $circHigh, $circLow);
-            if (defined $testForCirc and $testForCirc and $type == 0) {
-                my $maxQuery = "select NUM from ena where ID = '$id' order by NUM desc limit 1";
-                my $maxSth = $self->{dbh}->prepare($maxQuery);
-                $maxSth->execute;
-
-                $max = $maxSth->fetchrow_hashref()->{NUM};
-
-                if ($n < $max) {
-                    my @maxClause;
-                    if ($low < 1) {
-                        $circHigh = $max + $low;
-                        push(@maxClause, "num >= $circHigh");
-                    }
-                    if ($high > $max) {
-                        $circLow = $high - $max;
-                        push(@maxClause, "num <= $circLow");
-                    }
-                    $clause = "and ((num >= $low and num <= $high) or " . join(" or ", @maxClause) . ")";
-                }
-            }
-
-            $query .= $clause;
-
-            my $neighbors=$self->{dbh}->prepare($query);
-            $neighbors->execute;
-
-            if($neighbors->rows >1){
-                push @{$pfam{'withneighbors'}{$origtmp}}, $ac;
-            }else{
-                print $neighfile "$ac\n";
-            }
-
-            while(my $neighbor=$neighbors->fetchrow_hashref){
-                my $tmp=join('-', sort {$a <=> $b} uniq split(",",$neighbor->{pfam}));
-                if($tmp eq ''){
-                    $tmp='none';
-                }
-                push @{$pfam{'orig'}{$tmp}}, $ac;
-                
-                my $neighNum = $neighbor->{NUM};
-                if ($neighNum > $high and defined $circHigh and defined $max) {
-                    $distance = $neighNum - $num - $max;
-                } elsif ($neighNum < $low and defined $circLow and defined $max) {
-                    $distance = $neighNum - $num + $max;
-                } else {
-                    $distance = $neighNum - $num;
-                }
-
-                print join("\t", $neighbor->{AC}, $neighbor->{NUM}, $neighbor->{pfam}, $neighNum, $num, $distance), "\n";
-
-                unless($distance==0){
-                    push @{$pfam{'neigh'}{$tmp}}, "$ac:".$neighbor->{AC};
-                    push @{$pfam{'neighlist'}{$tmp}}, $neighbor->{AC};
-                    if($neighbor->{TYPE}==1){
-                        $type='linear';
-                    }elsif($neighbor->{TYPE}==0){
-                        $type='circular';
-                    }else{
-                        die "Type of ".$neighbor->{AC}." does not appear to be circular (0) or linear(1)\n";
-                    }
-                    if($neighbor->{DIRECTION}==1){
-                        $direction='complement';
-                    }elsif($neighbr->{DIRECTION}==0){
-                        $direction='normal';
-                    }else{
-                        die "Direction of ".$neighbor->{AC}." does not appear to be normal (0) or complement(1)\n";
-                    }
-                    push @{$pfam{'dist'}{$tmp}}, "$ac:$origdirection:".$neighbor->{AC}.":$direction:$distance";
-                    push @{$pfam{'stats'}{$tmp}}, abs $distance;
-                }	
+    if ($self->{use_new_neighbor_method}) {
+        # If the sequence is a part of any circular genome(s), then we check which genome, if their are multiple
+        # genomes, has the most genes and use that one.
+        if ($row->{TYPE} == 0) {
+            my $sql = "select *, max(NUM) as MAX_NUM from ena where ID in (select ID from ena where AC='$ac' and TYPE=0 order by ID) group by ID order by TYPE, MAX_NUM desc limit 1";
+            print "CIRCULAR $sql\n"                                                         if $debug;
+            my $sth = $self->{dbh}->prepare($sql);
+            $sth->execute;
+            $genomeId = $sth->fetchrow_hashref->{ID};
+        } else {
+            my $sql = <<SQL;
+select
+        ena.ID,
+        ena.AC,
+        ena.NUM,
+        ABS(ena.NUM / max_table.MAX_NUM - 0.5) as PCT,
+        (ena.NUM < max_table.MAX_NUM - 10) as RRR,
+        (ena.NUM > 10) as LLL
+    from ena
+    inner join
+        (
+            select *, max(NUM) as MAX_NUM from ena where ID in
+            (
+                select ID from ena where AC='$ac' and TYPE=1 order by ID
+            )
+        ) as max_table
+    where
+        ena.AC = '$ac'
+    order by
+        LLL desc,
+        RRR desc,
+        PCT
+    limit 1
+SQL
+            ;
+            print "LINEAR $sql\n"                                                           if $debug;
+            my $sth = $self->{dbh}->prepare($sql);
+            $sth->execute;
+            my $row = $sth->fetchrow_hashref;
+            $genomeId = $row->{ID};
+            if ($debug) {
+                do {
+                    print join("\t", $row->{ID}, $row->{AC}, $row->{NUM}, $row->{LLL}, $row->{RRR}, $row->{PCT}), "\n";
+                } while ($row = $sth->fetchrow_hashref);
             }
         }
-    }else{
-        print $fh "$ac\n";
     }
+
+    print "Using $genomeId as genome ID\n"                                              if $debug;
+
+    my $selSql = "select * from ena where ID = '$genomeId' and AC = '$ac' limit 1;";
+    print "$selSql\n"                                                                   if $debug;
+    $sth=$self->{dbh}->prepare($selSql);
+    $sth->execute;
+
+    my $row = $sth->fetchrow_hashref;
+#    if($sth->rows>0){
+#        while(my $row=$sth->fetchrow_hashref){
+    if($row->{DIRECTION}==1){
+        $origdirection='complement';
+    }elsif($row->{DIRECTION}==0){
+        $origdirection='normal';
+    }else{
+        die "Direction of ".$row->{AC}." does not appear to be normal (0) or complement(1)\n";
+    }
+    $origtmp=join('-', sort {$a <=> $b} uniq split(",",$row->{pfam}));
+
+    my $num = $row->{NUM};
+    my $id = $row->{ID};
+    
+    $low=$num-$n;
+    $high=$num+$n;
+    $type = $row->{TYPE};
+
+    $query="select * from ena where ID='$id' ";
+    my $clause = "and num>=$low and num<=$high";
+
+    # Handle circular case
+    my ($max, $circHigh, $circLow);
+    if (defined $testForCirc and $testForCirc and $type == 0) {
+        my $maxQuery = "select NUM from ena where ID = '$id' order by NUM desc limit 1";
+        my $maxSth = $self->{dbh}->prepare($maxQuery);
+        $maxSth->execute;
+
+        $max = $maxSth->fetchrow_hashref()->{NUM};
+
+        if ($n < $max) {
+            my @maxClause;
+            if ($low < 1) {
+                $circHigh = $max + $low;
+                push(@maxClause, "num >= $circHigh");
+            }
+            if ($high > $max) {
+                $circLow = $high - $max;
+                push(@maxClause, "num <= $circLow");
+            }
+            my $subClause = join(" or ", @maxClause);
+            $subClause = "or " . $subClause if $subClause;
+            $clause = "and ((num >= $low and num <= $high) $subClause)";
+        }
+    }
+
+    $query .= $clause;
+
+    my $neighbors=$self->{dbh}->prepare($query);
+    $neighbors->execute;
+
+    if($neighbors->rows >1){
+        push @{$pfam{'withneighbors'}{$origtmp}}, $ac;
+    }else{
+        print $neighfile "$ac\n";
+    }
+
+    $pfam{'genome'}{$ac} = $id;
+
+    while(my $neighbor=$neighbors->fetchrow_hashref){
+        my $tmp=join('-', sort {$a <=> $b} uniq split(",",$neighbor->{pfam}));
+        if($tmp eq ''){
+            $tmp='none';
+        }
+        push @{$pfam{'orig'}{$tmp}}, $ac;
+        
+        my $neighNum = $neighbor->{NUM};
+        if ($neighNum > $high and defined $circHigh and defined $max) {
+            $distance = $neighNum - $num - $max;
+        } elsif ($neighNum < $low and defined $circLow and defined $max) {
+            $distance = $neighNum - $num + $max;
+        } else {
+            $distance = $neighNum - $num;
+        }
+
+        print join("\t", $neighbor->{AC}, $neighbor->{NUM}, $neighbor->{pfam}, $neighNum, $num, $distance), "\n"               if $debug;
+
+        unless($distance==0){
+            push @{$pfam{'neigh'}{$tmp}}, "$ac:".$neighbor->{AC};
+            push @{$pfam{'neighlist'}{$tmp}}, $neighbor->{AC};
+            if($neighbor->{TYPE}==1){
+                $type='linear';
+            }elsif($neighbor->{TYPE}==0){
+                $type='circular';
+            }else{
+                die "Type of ".$neighbor->{AC}." does not appear to be circular (0) or linear(1)\n";
+            }
+            if($neighbor->{DIRECTION}==1){
+                $direction='complement';
+            }elsif($neighbr->{DIRECTION}==0){
+                $direction='normal';
+            }else{
+                die "Direction of ".$neighbor->{AC}." does not appear to be normal (0) or complement(1)\n";
+            }
+            push @{$pfam{'dist'}{$tmp}}, "$ac:$origdirection:".$neighbor->{AC}.":$direction:$distance";
+            push @{$pfam{'stats'}{$tmp}}, abs $distance;
+        }	
+    }
+#        }
+#    }else{
+#        print $fh "$ac\n";
+#    }
 
     foreach my $key (keys %{$pfam{'orig'}}){
         @{$pfam{'orig'}{$key}}=uniq @{$pfam{'orig'}{$key}};

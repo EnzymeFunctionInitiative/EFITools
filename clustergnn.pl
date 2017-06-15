@@ -55,6 +55,7 @@ $result = GetOptions(
     "config=s"          => \$configFile,
     "data-dir=s"        => \$dataDir,
     "id-out=s"          => \$idOutputFile,
+    "use-nnm"           => \$useNewNeighborMethod,
 );
 
 $usage = <<USAGE
@@ -120,10 +121,16 @@ if($incfrac=~/^\d+$/){
     $incfrac=0.20;  
 }
 
+if (not defined $useNewNeighborMethod) {
+    $useNewNeighborMethod = 0;
+} else {
+    $useNewNeighborMethod = 1;
+}
+
 my $db = new Biocluster::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
 
-my %gnnArgs = (dbh => $dbh, incfrac => $incfrac);
+my %gnnArgs = (dbh => $dbh, incfrac => $incfrac, use_nnm => $useNewNeighborMethod);
 $gnnArgs{data_dir} = $dataDir if $dataDir and -d $dataDir;
 my $util = new Biocluster::GNN(%gnnArgs);
 
