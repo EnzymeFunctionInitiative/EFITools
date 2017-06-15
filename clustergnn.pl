@@ -176,7 +176,8 @@ if ($gnn and $nomatch and $noneighfile) {
     open( $noneighfile_fh, ">/dev/null") or die "cannot write accessions without neighbors to /dev/null\n";
 }
 
-($numbermatch, $clusterNodes, $withneighbors) = $util->getClusterHubData($supernodes, $n, $nomatch_fh, $noneighfile_fh);
+my $useCircTest = 1;
+($numbermatch, $clusterNodes, $withneighbors) = $util->getClusterHubData($supernodes, $n, $nomatch_fh, $noneighfile_fh, $useCircTest);
 
 if ($gnn) {
     print "Writing Cluster Hub GNN\n";

@@ -71,11 +71,11 @@ sub findNeighbors {
                 if ($n < $max) {
                     my @maxClause;
                     if ($low < 1) {
-                        $circHigh = $max + $low + 1;
+                        $circHigh = $max + $low;
                         push(@maxClause, "num >= $circHigh");
                     }
                     if ($high > $max) {
-                        $circLow = $high - $max + 1;
+                        $circLow = $high - $max;
                         push(@maxClause, "num <= $circLow");
                     }
                     $clause = "and ((num >= $low and num <= $high) or " . join(" or ", @maxClause) . ")";
@@ -102,12 +102,14 @@ sub findNeighbors {
                 
                 my $neighNum = $neighbor->{NUM};
                 if ($neighNum > $high and defined $circHigh and defined $max) {
-                    $distance = $n;
+                    $distance = $neighNum - $num - $max;
                 } elsif ($neighNum < $low and defined $circLow and defined $max) {
-                    $distance = $n;
+                    $distance = $neighNum - $num + $max;
                 } else {
                     $distance = $neighNum - $num;
                 }
+
+                print join("\t", $neighbor->{AC}, $neighbor->{NUM}, $neighbor->{pfam}, $neighNum, $num, $distance), "\n";
 
                 unless($distance==0){
                     push @{$pfam{'neigh'}{$tmp}}, "$ac:".$neighbor->{AC};
@@ -489,6 +491,7 @@ sub getClusterHubData {
     my $n=shift @_;
     my $nomatch_fh=shift @_;
     my $noneighfile_fh=shift @_;
+    my $useCircTest = shift @_; # Test for circular genomes
 
     my %withneighbors=();
     my %clusternodes=();
@@ -501,7 +504,7 @@ sub getClusterHubData {
         print "Supernode $clusterNode, ".scalar @{$supernodes->{$clusterNode}}." original accessions, simplenumber $simplenumber\n";
         $numbermatch{$clusterNode}=$simplenumber;
         foreach my $accession (uniq @{$supernodes->{$clusterNode}}){       
-            my $pfamsearch= $self->findNeighbors($accession, $n, $nomatch_fh, $noneighfile_fh);
+            my $pfamsearch= $self->findNeighbors($accession, $n, $nomatch_fh, $noneighfile_fh, $useCircTest);
             foreach my $pfamNumber (sort {$a <=> $b} keys %{${$pfamsearch}{'neigh'}}){;
                 push @{$clusterNodes{$clusterNode}{$pfamNumber}{'orig'}}, @{${$pfamsearch}{'orig'}{$pfamNumber}};
                 push @{$clusterNodes{$clusterNode}{$pfamNumber}{'dist'}}, @{${$pfamsearch}{'dist'}{$pfamNumber}};
