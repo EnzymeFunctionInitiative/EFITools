@@ -55,7 +55,7 @@ $result = GetOptions(
     "config=s"          => \$configFile,
     "data-dir=s"        => \$dataDir,
     "id-out=s"          => \$idOutputFile,
-    "use-nnm"           => \$useNewNeighborMethod,
+    "disable-nnm"       => \$dontUseNewNeighborMethod,
 );
 
 $usage = <<USAGE
@@ -121,10 +121,10 @@ if($incfrac=~/^\d+$/){
     $incfrac=0.20;  
 }
 
-if (not defined $useNewNeighborMethod) {
-    $useNewNeighborMethod = 0;
-} else {
+if (not defined $dontUseNewNeighborMethod) {
     $useNewNeighborMethod = 1;
+} else {
+    $useNewNeighborMethod = 0;
 }
 
 my $db = new Biocluster::Database(config_file_path => $configFile);
@@ -184,7 +184,7 @@ if ($gnn and $nomatch and $noneighfile) {
 }
 
 my $useCircTest = 1;
-($numbermatch, $clusterNodes, $withneighbors) = $util->getClusterHubData($supernodes, $n, $nomatch_fh, $noneighfile_fh, $useCircTest);
+($numbermatch, $clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds) = $util->getClusterHubData($supernodes, $n, $nomatch_fh, $noneighfile_fh, $useCircTest);
 
 if ($gnn) {
     print "Writing Cluster Hub GNN\n";
@@ -204,7 +204,7 @@ if ($ssnout) {
     print "write out colored ssn network ".scalar @{$nodes}." nodes and ".scalar @{$edges}." edges\n";
     $output=new IO::File(">$ssnout");
     $writer=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $output);
-    $util->writeColorSsn($nodes, $edges, $title, $writer, $numbermatch, $constellations, $nodenames, $supernodes);
+    $util->writeColorSsn($nodes, $edges, $title, $writer, $numbermatch, $constellations, $nodenames, $supernodes, $noMatchMap, $noNeighborMap, $genomeIds);
 }
 
 close($nomatch_fh);
