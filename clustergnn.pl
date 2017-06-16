@@ -162,16 +162,19 @@ if($stats=~/\w+/){
 print "read xgmml file, get list of nodes and edges\n";
 
 $reader=XML::LibXML::Reader->new(location => $ssnin);
-(my $title, my $nodes, my $edges) = $util->getNodesAndEdges($reader);
+my ($title, $nodes, $edges) = $util->getNodesAndEdges($reader);
 
 
 print "found ".scalar @{$nodes}." nodes\n";
 print "found ".scalar @{$edges}." edges\n";
 print "graph name is $title\n";
 
-($nodehash,$nodenames) = $util->getNodes($nodes);
+my ($nodehash,$nodenames) = $util->getNodes($nodes);
 
-($supernodes, $constellations) = $util->getClusters($nodehash, $nodenames, $edges);
+#my $includeSingletonsInSsn = (not defined $gnn or not length $gnn) and (not defined $pfamhubfile or not length $pfamhubfile);
+# We include singletons by default, although if they don't have any represented nodes they won't be colored in the SSN.
+my $includeSingletons = 1;
+my ($supernodes, $constellations, $singletons) = $util->getClusters($nodehash, $nodenames, $edges, $includeSingletons);
 
 print "find neighbors\n\n";
 
@@ -184,7 +187,8 @@ if ($gnn and $nomatch and $noneighfile) {
 }
 
 my $useCircTest = 1;
-($numbermatch, $clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds) = $util->getClusterHubData($supernodes, $n, $nomatch_fh, $noneighfile_fh, $useCircTest);
+($numbermatch, $clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds) =
+        $util->getClusterHubData($supernodes, $n, $nomatch_fh, $noneighfile_fh, $useCircTest);
 
 if ($gnn) {
     print "Writing Cluster Hub GNN\n";
@@ -204,7 +208,8 @@ if ($ssnout) {
     print "write out colored ssn network ".scalar @{$nodes}." nodes and ".scalar @{$edges}." edges\n";
     $output=new IO::File(">$ssnout");
     $writer=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $output);
-    $util->writeColorSsn($nodes, $edges, $title, $writer, $numbermatch, $constellations, $nodenames, $supernodes, $noMatchMap, $noNeighborMap, $genomeIds);
+    $util->writeColorSsn($nodes, $edges, $title, $writer, $numbermatch, $constellations, $nodenames,
+                         $supernodes, $noMatchMap, $noNeighborMap, $genomeIds, $singletons);
 }
 
 close($nomatch_fh);

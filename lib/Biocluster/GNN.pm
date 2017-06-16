@@ -488,7 +488,8 @@ sub getNodes{
                 my @accessionlists=$annotation->findnodes('./*');
                 foreach $accessionlist (@accessionlists){
                     #make sure all accessions within the node are included in the gnn network
-                    push @{$nodehash{$nodehead}}, $accessionlist->getAttribute('value');
+                    my $attrAcc = $accessionlist->getAttribute('value');
+                    push @{$nodehash{$nodehead}}, $attrAcc if $nodehead ne $attrAcc;
                 }
             }
         }
@@ -501,9 +502,11 @@ sub getClusters{
     my $nodehash=shift @_;
     my $nodenames=shift @_;
     my $edges=shift @_;
+    my $includeSingletons = shift @_;
 
     my %constellations=();
     my %supernodes=();
+    my %singletons;
     my $newnode=1;
 
     foreach $edge (@{$edges}){
@@ -517,7 +520,9 @@ sub getClusters{
             #if target also already existed, add target data to source 
             if(exists $constellations{$nodeTarget}){
                 #check if source and target are in the same constellation, if they are, do nothing, if not,
-                # add change target sc to source and add target accessions to source accessions
+                # add change target sc to source and add target accessions to source accessions.
+                # this is to handle the case that we've built two sub-constellations that are actually part
+                # of a bigger constellation.
                 unless($constellations{$nodeTarget} eq $constellations{$nodeSource}){
                     #add accessions from target supernode to source supernode
                     push @{$supernodes{$constellations{$nodeSource}}}, @{$supernodes{$constellations{$nodeTarget}}};
@@ -555,7 +560,20 @@ sub getClusters{
         }
     }
 
-    return \%supernodes, \%constellations;
+    if ($includeSingletons) {
+        # Look at each node in the network.  If we haven't processed it above (i.e. it doesn't have any edges attached)
+        # then we add a new supernode and add any represented nodes (if it is a repnode).
+        foreach my $nodeName (keys %$nodenames) {
+            if (not exists $constellations{$nodeName}) {
+                $supernodes{$newnode} = $nodehash->{$nodeName}; # nodehash contains an array of nodes, since it may be a repnode
+                $singletons{$nodeName} = $newnode;
+                $constellations{$nodeName} = $newnode;
+                $newnode++;
+            }
+        }
+    }
+
+    return \%supernodes, \%constellations, \%singletons;
 }
 
 sub getClusterHubData {
@@ -565,6 +583,7 @@ sub getClusterHubData {
     my $nomatch_fh=shift @_;
     my $noneighfile_fh=shift @_;
     my $useCircTest = shift @_; # Test for circular genomes
+    my $singletons = shift @_;
 
     my %withneighbors=();
     my %clusternodes=();
@@ -631,21 +650,23 @@ sub writeClusterHubGnn{
 
 sub writeColorSsn {
     my $self = shift @_;
-    my $nodes=shift @_;
-    my $edges=shift @_;
-    my $title=shift @_;
-    my $writer=shift @_;
-    my $numbermatch=shift @_;
-    my $constellations=shift @_;
-    my $nodenames=shift @_;
+    my $nodes = shift @_;
+    my $edges = shift @_;
+    my $title = shift @_;
+    my $writer = shift @_;
+    my $numbermatch = shift @_;
+    my $constellations = shift @_;
+    my $nodenames = shift @_;
     my $supernodes = shift @_;
     my $noMatchMap = shift @_;
     my $noNeighborMap = shift @_;
     my $genomeIds = shift @_;
+    my $singletons = shift @_;
 
     $writer->startTag('graph', 'label' => "$title colorized", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
-    $self->writeColorSsnNodes($nodes,$writer,$numbermatch,$constellations,$supernodes,$noMatchMap,$noNeighborMap,$genomeIds);
-    $self->writeColorSsnEdges($edges,$writer,$nodenames);
+    $self->writeColorSsnNodes($nodes, $writer, $numbermatch, $constellations, $supernodes, $noMatchMap, $noNeighborMap,
+                              $genomeIds, $singletons);
+    $self->writeColorSsnEdges($edges, $writer, $nodenames);
     $writer->endTag(); 
 }
 
@@ -659,6 +680,7 @@ sub writeColorSsnNodes {
     my $noMatches = shift @_;
     my $noNeighbors = shift @_;
     my $genomeIds = shift @_;
+    my $singletons = shift @_;
 
     my %nodeCount;
 
@@ -668,12 +690,18 @@ sub writeColorSsnNodes {
         my $hasNeighbors = $noNeighbors->{$nodeId} == 1 ? "false" : $noNeighbors->{$nodeId} == -1 ? "n/a" : "true";
         my $genomeId = $genomeIds->{$nodeId};
         my $hasMatch = $noMatches->{$nodeId} ? "false" : "true";
+
+        # In a previous step, we included singletons (historically they were excluded).
         unless($clusterNum eq ""){
             $nodeCount{$clusterNum} = scalar @{ $supernodes->{$constellations->{$nodeId}} } if not exists $nodeCount{$clusterNum};
             $self->saveNodeToClusterMap($nodeId, $numbermatch, $constellations);
             $writer->startTag('node', 'id' => $nodeId, 'label' => $nodeId);
-            #find color and add attribute
-            writeGnnField($writer,'node.fillColor', 'string', $self->{colors}->{$clusterNum});
+            
+            # find color and add attribute
+            my $color = "";
+            $color = $self->{colors}->{$clusterNum} if $nodeCount{$clusterNum} > 1;
+
+            writeGnnField($writer, 'node.fillColor', 'string', $color);
             writeGnnField($writer, 'Cluster Number', 'integer', $clusterNum);
             writeGnnField($writer, 'Cluster Sequence Count', 'integer', $nodeCount{$clusterNum});
             writeGnnField($writer, 'Has Neighbors', 'string', $hasNeighbors);
@@ -690,7 +718,9 @@ sub writeColorSsnNodes {
                     if($attrType eq 'list'){
                         $writer->startTag('att', 'type' => $attrType, 'name' => $attrName);
                         foreach $listelement ($attribute->getElementsByTagName('att')){
-                            $writer->emptyTag('att', 'type' => $listelement->getAttribute('type'), 'name' => $listelement->getAttribute('name'), 'value' => $listelement->getAttribute('value'));
+                            $writer->emptyTag('att', 'type' => $listelement->getAttribute('type'),
+                                              'name' => $listelement->getAttribute('name'),
+                                              'value' => $listelement->getAttribute('value'));
                         }
                         $writer->endTag;
                     }elsif($attrName eq 'interaction'){
@@ -698,7 +728,8 @@ sub writeColorSsnNodes {
                         #this tag causes problems and it is not needed, so we do not include it
                     }else{
                         if(defined $attribute->getAttribute('value')){
-                            $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName, 'value' => $attribute->getAttribute('value'));
+                            $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName,
+                                              'value' => $attribute->getAttribute('value'));
                         }else{
                             $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName);
                         }
@@ -706,6 +737,8 @@ sub writeColorSsnNodes {
                 }
             }
             $writer->endTag(  );
+        } else {
+            print "Node $nodeId was found in any of the clusters we built today\n";
         }
     }
 }
