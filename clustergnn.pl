@@ -129,13 +129,14 @@ if (not defined $dontUseNewNeighborMethod) {
     $useNewNeighborMethod = 0;
 }
 
+my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile) ? 1 : 0;
+
 my $db = new Biocluster::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
 
-my %gnnArgs = (dbh => $dbh, incfrac => $incfrac, use_nnm => $useNewNeighborMethod);
+my %gnnArgs = (dbh => $dbh, incfrac => $incfrac, use_nnm => $useNewNeighborMethod, color_only => $colorOnly);
 $gnnArgs{data_dir} = $dataDir if $dataDir and -d $dataDir;
 my $util = new Biocluster::GNN(%gnnArgs);
-
 
 if($stats=~/\w+/){
     open STATS, ">$stats" or die "could not write to $stats\n";
@@ -164,19 +165,19 @@ if($stats=~/\w+/){
 print "read xgmml file, get list of nodes and edges\n";
 
 $reader=XML::LibXML::Reader->new(location => $ssnin);
-my ($title, $nodes, $edges) = $util->getNodesAndEdges($reader);
+my ($title, $nodes, $edges, $nodeMap) = $util->getNodesAndEdges($reader);
 
 
 print "found ".scalar @{$nodes}." nodes\n";
 print "found ".scalar @{$edges}." edges\n";
 print "graph name is $title\n";
 
-my ($nodehash,$nodenames) = $util->getNodes($nodes);
+my ($nodehash, $nodenames) = $util->getNodes($nodes);
 
 #my $includeSingletonsInSsn = (not defined $gnn or not length $gnn) and (not defined $pfamhubfile or not length $pfamhubfile);
 # We include singletons by default, although if they don't have any represented nodes they won't be colored in the SSN.
 my $includeSingletons = 1;
-my ($supernodes, $constellations, $singletons) = $util->getClusters($nodehash, $nodenames, $edges, $includeSingletons);
+my ($supernodes, $constellations, $singletons) = $util->getClusters($nodehash, $nodenames, $edges, $nodeMap, $includeSingletons);
 
 print "find neighbors\n\n";
 
@@ -193,8 +194,9 @@ print $warning_fh "UniProt ID:No Match/No Neighbor\n";
 
 
 my $useCircTest = 1;
+my $useExistingNumber = $util->hasExistingNumber($nodes);
 ($numbermatch, $clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds) =
-        $util->getClusterHubData($supernodes, $n, $warning_fh, $useCircTest);
+        $util->getClusterHubData($supernodes, $n, $warning_fh, $useCircTest, $useExistingNumber);
 
 if ($gnn) {
     print "Writing Cluster Hub GNN\n";
@@ -224,6 +226,13 @@ close($warning_fh);
 
 $util->writeIdMapping($idOutputFile, $numbermatch, $constellations) if $idOutputFile;
 $util->closeClusterMapFiles() if $dataDir;
+
+if (not $dataDir) {
+    `zip -j $ssnout.zip $ssnout`;
+    `zip -j $gnn.zip $gnn`;
+    `zip -j $pfamhubfile.zip $pfamhubfile`;
+}
+# Otherwise, the parent script that calls this one, for coloring only, will take care of zipping the .xgmml file.
 
 print "$0 finished\n";
 

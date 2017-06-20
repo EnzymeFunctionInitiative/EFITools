@@ -20,6 +20,7 @@ sub new {
     $self->{cluster_fh} = {};
     $self->{no_pfam_fh} = {};
     $self->{use_new_neighbor_method} = $args{use_nnm};
+    $self->{color_only} = exists $args{color_only} and $args{color_only};
 
     return $self;
 }
@@ -481,10 +482,12 @@ sub getNodesAndEdges{
 
 sub getNodes{
     my $self = shift @_;
-    my $nodes=shift @_;
+    my $nodes = shift @_;
 
-    my %nodehash=();
-    my %nodenames=();
+    my %nodehash;
+    my %nodenames;
+    my %nodeMap;
+
     print "parse nodes for accessions\n";
     foreach $node (@{$nodes}){
         $nodehead=$node->getAttribute('label');
@@ -494,6 +497,7 @@ sub getNodes{
         $nodenames{$node->getAttribute('id')}=$nodehead;
         my @annotations=$node->findnodes('./*');
         push @{$nodehash{$nodehead}}, $nodehead;
+        $nodeMap{$nodehead} = $node;
         foreach $annotation (@annotations){
             if($annotation->getAttribute('name') eq "ACC"){
                 my @accessionlists=$annotation->findnodes('./*');
@@ -501,18 +505,21 @@ sub getNodes{
                     #make sure all accessions within the node are included in the gnn network
                     my $attrAcc = $accessionlist->getAttribute('value');
                     push @{$nodehash{$nodehead}}, $attrAcc if $nodehead ne $attrAcc;
+                    $nodeMap{$nodehead} = $node;
                 }
             }
         }
     }
-    return \%nodehash, \%nodenames;
+
+    return \%nodehash, \%nodenames, \%nodeMap;
 }
 
 sub getClusters{
     my $self = shift @_;
-    my $nodehash=shift @_;
-    my $nodenames=shift @_;
-    my $edges=shift @_;
+    my $nodehash = shift @_;
+    my $nodenames = shift @_;
+    my $edges = shift @_;
+    my $nodeMap = shift @_;
     my $includeSingletons = shift @_;
 
     my %constellations=();
@@ -525,6 +532,10 @@ sub getClusters{
         my $edgeTarget = $edge->getAttribute('target');
         my $nodeSource = $nodenames->{$edgeSource};
         my $nodeTarget = $nodenames->{$edgeTarget};
+
+        if (exists $nodeMap->{$nodeSource}) {
+
+        }
 
         #if source exists, add target to source sc
         if(exists $constellations{$nodeSource}){
@@ -593,6 +604,7 @@ sub getClusterHubData {
     my $n = shift @_;
     my $warning_fh = shift @_;
     my $useCircTest = shift @_; # true/false: test for circular genomes
+    my $useExistingNumber = shift @_;
 
     my %withneighbors=();
     my %clusternodes=();
@@ -606,11 +618,17 @@ sub getClusterHubData {
     foreach my $clusterNode (sort { my $c = $#{$supernodes->{$b}} <=> $#{$supernodes->{$a}};
                                     $c = $a <=> $b if not $c; # handle equals case
                                     $c } keys %$supernodes){
+        $simplenumber = $clusterNode if $useExistingNumber;
         print "Supernode $clusterNode, ".scalar @{$supernodes->{$clusterNode}}." original accessions, simplenumber $simplenumber\n";
         $numbermatch{$clusterNode}=$simplenumber;
+        $simplenumber++;
+        
+        next if not $self->{color_only};
+
         $noneFamily{$clusterNode} = {};
         foreach my $accession (uniq @{$supernodes->{$clusterNode}}){
-            my ($pfamsearch, $localNoMatch, $localNoNeighbors, $genomeId) = $self->findNeighbors($accession, $n, $warning_fh, $useCircTest, $noneFamily{$clusterNode});
+            my ($pfamsearch, $localNoMatch, $localNoNeighbors, $genomeId) =
+                $self->findNeighbors($accession, $n, $warning_fh, $useCircTest, $noneFamily{$clusterNode});
             $noNeighbors{$accession} = $localNoNeighbors;
             $genomeIds{$accession} = $genomeId;
             $noMatches{$accession} = $localNoMatch;
@@ -625,10 +643,18 @@ sub getClusterHubData {
                 push @{$withneighbors{$clusterNode}}, @{${$pfamsearch}{'withneighbors'}{$pfamNumber}};
             }
         }
-        $simplenumber++;
     }
 
     return \%numbermatch, \%clusterNodes, \%withneighbors, \%noMatches, \%noNeighbors, \%genomeIds, \%noneFamily;
+}
+
+sub hasExistingNumber {
+    my $self = shift @_;
+    my $nodes = shift @_;
+
+    my $node = $nodes->[0];
+
+    return 0;
 }
 
 sub writeClusterHubGnn{
@@ -714,34 +740,36 @@ sub writeColorSsnNodes {
             writeGnnField($writer, 'Cluster Number', 'integer', $clusterNum);
             writeGnnField($writer, 'Cluster Sequence Count', 'integer', $nodeCount{$clusterNum});
 
-            # If this is a repnode network, there will be a child node named "ACC". If so, we need to wrap
-            # all of the no matches, etc into a list rather than a simple attribute.
-            my @accIdNode = grep { $_ =~ /\S/ and $_->getAttribute('name') eq "ACC"} $node->getChildNodes;
-            if (scalar @accIdNode) {
-                my $accNode = $accIdNode[0];
-                my @accIdAttrs = $accNode->findnodes("./*");
-
-                my @hasNeighbors;
-                my @hasMatch;
-                my @genomeId;
-
-                foreach my $accIdAttr (@accIdAttrs) {
-                    my $accId = $accIdAttr->getAttribute('value');
-                    push @hasNeighbors, $noNeighbors->{$accId} == 1 ? "false" : $noNeighbors->{$accId} == -1 ? "n/a" : "true";
-                    push @hasMatch, $noMatches->{$accId} ? "false" : "true";
-                    push @genomeId, $genomeIds->{$accId};
+            if (not $self->{color_only}) {
+                # If this is a repnode network, there will be a child node named "ACC". If so, we need to wrap
+                # all of the no matches, etc into a list rather than a simple attribute.
+                my @accIdNode = grep { $_ =~ /\S/ and $_->getAttribute('name') eq "ACC"} $node->getChildNodes;
+                if (scalar @accIdNode) {
+                    my $accNode = $accIdNode[0];
+                    my @accIdAttrs = $accNode->findnodes("./*");
+    
+                    my @hasNeighbors;
+                    my @hasMatch;
+                    my @genomeId;
+    
+                    foreach my $accIdAttr (@accIdAttrs) {
+                        my $accId = $accIdAttr->getAttribute('value');
+                        push @hasNeighbors, $noNeighbors->{$accId} == 1 ? "false" : $noNeighbors->{$accId} == -1 ? "n/a" : "true";
+                        push @hasMatch, $noMatches->{$accId} ? "false" : "true";
+                        push @genomeId, $genomeIds->{$accId};
+                    }
+    
+                    writeGnnListField($writer, 'Has Neighbors', 'string', \@hasNeighbors, 0);
+                    writeGnnListField($writer, 'Has Match', 'string', \@hasMatch, 0);
+                    writeGnnListField($writer, 'Genome ID', 'string', \@genomeId, 0);
+                } else {
+                    my $hasNeighbors = $noNeighbors->{$nodeId} == 1 ? "false" : $noNeighbors->{$nodeId} == -1 ? "n/a" : "true";
+                    my $genomeId = $genomeIds->{$nodeId};
+                    my $hasMatch = $noMatches->{$nodeId} ? "false" : "true";
+                    writeGnnField($writer, 'Has Neighbors', 'string', $hasNeighbors);
+                    writeGnnField($writer, 'Has Match', 'string', $hasMatch);
+                    writeGnnField($writer, 'Genome ID', 'string', $genomeId);
                 }
-
-                writeGnnListField($writer, 'Has Neighbors', 'string', \@hasNeighbors, 0);
-                writeGnnListField($writer, 'Has Match', 'string', \@hasMatch, 0);
-                writeGnnListField($writer, 'Genome ID', 'string', \@genomeId, 0);
-            } else {
-                my $hasNeighbors = $noNeighbors->{$nodeId} == 1 ? "false" : $noNeighbors->{$nodeId} == -1 ? "n/a" : "true";
-                my $genomeId = $genomeIds->{$nodeId};
-                my $hasMatch = $noMatches->{$nodeId} ? "false" : "true";
-                writeGnnField($writer, 'Has Neighbors', 'string', $hasNeighbors);
-                writeGnnField($writer, 'Has Match', 'string', $hasMatch);
-                writeGnnField($writer, 'Genome ID', 'string', $genomeId);
             }
 
             foreach $attribute ($node->getChildnodes){
@@ -950,12 +978,12 @@ sub saveNodeToClusterMap {
         open($self->{cluster_fh}->{$clusterNum}, ">" . $self->{data_dir} . "/cluster_nodes_$clusterNum.txt");
     }
 
-    if (not exists $self->{no_pfam_fh}->{$clusterNum}) {
+    if (not $self->{color_only} and not exists $self->{no_pfam_fh}->{$clusterNum}) {
         open($self->{no_pfam_fh}->{$clusterNum}, ">" . $self->{data_dir} . "/cluster_no_pfam_$clusterNum.txt");
     }
 
     $self->{cluster_fh}->{$clusterNum}->print("$nodeId\n");
-    $self->{no_pfam_fh}->{$clusterNum}->print("$nodeId\n");
+    $self->{no_pfam_fh}->{$clusterNum}->print("$nodeId\n") if not $self->{color_only};
 }
 
 
