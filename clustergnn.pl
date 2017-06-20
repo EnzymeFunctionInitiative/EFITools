@@ -45,8 +45,9 @@ use Biocluster::GNN;
 $result = GetOptions(
     "ssnin=s"           => \$ssnin,
     "n|nb-size=s"       => \$n,
-    "nomatch=s"         => \$nomatch,
-    "noneigh=s"         => \$noneighfile,
+#    "nomatch=s"         => \$nomatch,
+#    "noneigh=s"         => \$noneighfile,
+    "warning-file=s"    => \$warningFile,
     "gnn=s"             => \$gnn,
     "ssnout=s"          => \$ssnout,
     "incfrac|cooc=i"    => \$incfrac,
@@ -62,10 +63,9 @@ $usage = <<USAGE
 usage: $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <filename> -ssnout <filename>
     -ssnin          name of original ssn network to process
     -nb-size        distance (+/-) to search for neighbors
-    -nomatch        output file that contains sequences without neighbors
-    -noneigh        output file that contains sequences without neighbors
     -gnn            filename of genome neighborhood network output file
     -ssnout         output filename for colorized sequence similarity network
+    -warning-file   output file that contains sequences without neighbors or matches
     -cooc           co-occurrence
     -stats          file to output tabular statistics to
     -pfam           file to output PFAM hub GNN to
@@ -74,6 +74,8 @@ usage: $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <file
     -config         configuration file for database info, etc.
 USAGE
 ;
+#    -nomatch        output file that contains sequences without neighbors
+#    -noneigh        output file that contains sequences without neighbors
 
 
 if (not -f $configFile and not exists $ENV{EFICONFIG}) {
@@ -178,17 +180,21 @@ my ($supernodes, $constellations, $singletons) = $util->getClusters($nodehash, $
 
 print "find neighbors\n\n";
 
-if ($gnn and $nomatch and $noneighfile) {
-    open( $nomatch_fh, ">$nomatch" ) or die "cannot write file of non-matching accessions\n";
-    open( $noneighfile_fh, ">$noneighfile") or die "cannot write file of accessions without neighbors\n";
+if ($gnn and $warningFile) { #$nomatch and $noneighfile) {
+    open($warning_fh, ">$warningFile") or die "cannot write file of no-match/no-neighbor warnings for accessions\n";
+#    open( $nomatch_fh, ">$nomatch" ) or die "cannot write file of non-matching accessions\n";
+#    open( $noneighfile_fh, ">$noneighfile") or die "cannot write file of accessions without neighbors\n";
 } else {
-    open( $nomatch_fh, ">/dev/null" ) or die "cannot write non-matching accessions to /dev/null\n";
-    open( $noneighfile_fh, ">/dev/null") or die "cannot write accessions without neighbors to /dev/null\n";
+    open($warning_fh, ">/dev/null") or die "cannot write file of no-match/no-neighbor warnings to /dev/null\n";
+#    open( $nomatch_fh, ">/dev/null" ) or die "cannot write non-matching accessions to /dev/null\n";
+#    open( $noneighfile_fh, ">/dev/null") or die "cannot write accessions without neighbors to /dev/null\n";
 }
+print $warning_fh "UniProt ID:No Match/No Neighbor\n";
+
 
 my $useCircTest = 1;
 ($numbermatch, $clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds) =
-        $util->getClusterHubData($supernodes, $n, $nomatch_fh, $noneighfile_fh, $useCircTest);
+        $util->getClusterHubData($supernodes, $n, $warning_fh, $useCircTest);
 
 if ($gnn) {
     print "Writing Cluster Hub GNN\n";
@@ -212,8 +218,9 @@ if ($ssnout) {
                          $supernodes, $noMatchMap, $noNeighborMap, $genomeIds, $singletons);
 }
 
-close($nomatch_fh);
-close($noneighfile_fh);
+#close($nomatch_fh);
+#close($noneighfile_fh);
+close($warning_fh);
 
 $util->writeIdMapping($idOutputFile, $numbermatch, $constellations) if $idOutputFile;
 $util->closeClusterMapFiles() if $dataDir;
