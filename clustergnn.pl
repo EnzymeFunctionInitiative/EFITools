@@ -224,7 +224,7 @@ if ($ssnout) {
 #close($noneighfile_fh);
 close($warning_fh);
 
-$util->writeIdMapping($idOutputFile, $numbermatch, $constellations) if $idOutputFile;
+$util->writeIdMapping($idOutputFile, $numbermatch, $constellations, $supernodes) if $idOutputFile;
 $util->closeClusterMapFiles() if $dataDir;
 
 if (not $dataDir) {

@@ -724,12 +724,13 @@ sub writeColorSsnNodes {
 
     foreach my $node (@{$nodes}){
         my $nodeId = $node->getAttribute('label');
-        my $clusterNum = $numbermatch->{$constellations->{$nodeId}};
+        my $clusterId = $constellations->{$nodeId};
+        my $clusterNum = $numbermatch->{$clusterId};
 
         # In a previous step, we included singletons (historically they were excluded).
         unless($clusterNum eq ""){
-            $nodeCount{$clusterNum} = scalar @{ $supernodes->{$constellations->{$nodeId}} } if not exists $nodeCount{$clusterNum};
-            $self->saveNodeToClusterMap($nodeId, $numbermatch, $constellations, $noneFamily);
+            $nodeCount{$clusterNum} = scalar @{ $supernodes->{$clusterId} } if not exists $nodeCount{$clusterNum};
+            $self->saveNodeToClusterMap($clusterId, $numbermatch, $supernodes, $noneFamily);
             $writer->startTag('node', 'id' => $nodeId, 'label' => $nodeId);
 
             # find color and add attribute
@@ -965,25 +966,31 @@ sub writePfamHub {
 
 sub saveNodeToClusterMap {
     my $self = shift @_;
-    my $nodeId = shift @_;
+    my $clusterId = shift @_;
     my $numbermatch = shift @_;
-    my $constellations = shift @_;
+    my $supernodes = shift @_;
+    my $noneFamily = shift @_;
 
-    my $clusterNum = $numbermatch->{$constellations->{$nodeId}};
+    return if not $self->{data_dir} or not -d $self->{data_dir} or exists $self->{cluster_map_processed}->{$clusterId};
+
+    $self->{cluster_map_processed}->{$clusterId} = 1;
+
+    my $clusterNum = $numbermatch->{$clusterId};
     $clusterNum = "none" if not $clusterNum;
-
-    return if not $self->{data_dir} or not -d $self->{data_dir};
 
     if (not exists $self->{cluster_fh}->{$clusterNum}) {
         open($self->{cluster_fh}->{$clusterNum}, ">" . $self->{data_dir} . "/cluster_nodes_$clusterNum.txt");
     }
 
-    if (not $self->{color_only} and not exists $self->{no_pfam_fh}->{$clusterNum}) {
+    my $printToPfam = not $self->{color_only} and not exists $self->{no_pfam_fh}->{$clusterNum};
+    if ($printToPfam) {
         open($self->{no_pfam_fh}->{$clusterNum}, ">" . $self->{data_dir} . "/cluster_no_pfam_$clusterNum.txt");
     }
 
-    $self->{cluster_fh}->{$clusterNum}->print("$nodeId\n");
-    $self->{no_pfam_fh}->{$clusterNum}->print("$nodeId\n") if not $self->{color_only};
+    foreach my $nodeId (@{ $supernodes->{$clusterId} }) {
+        $self->{cluster_fh}->{$clusterNum}->print("$nodeId\n");
+        $self->{no_pfam_fh}->{$clusterNum}->print("$nodeId\n") if $printToPfam and exists $noneFamily->{$clusterNum}->{$nodeId};
+    }
 }
 
 
@@ -992,17 +999,34 @@ sub writeIdMapping {
     my $idMapPath = shift @_;
     my $numbermatch = shift @_;
     my $constellations = shift @_;
+    my $supernodes = shift @_;
 
     open IDMAP, ">$idMapPath";
 
     print IDMAP "UniProt_ID\tCluster_Num\tCluster_Color\n";
+    my @data;
+    foreach my $clusterId (sort keys %$supernodes) {
+        my $clusterNum = $numbermatch->{$clusterId};
+        foreach my $nodeId (@{ $supernodes->{$clusterId} }) {
+            push @data, [$nodeId, $clusterNum, $self->{colors}->{$clusterNum}];
+        }
+    }
 
-    foreach my $nodeId (sort keys %$constellations) {
-        my $clusterId = $numbermatch->{$constellations->{$nodeId}};
-        print IDMAP "$nodeId\t$clusterId\t", $self->{colors}->{$clusterId}, "\n";
+    foreach my $row (sort idmapsort @data) {
+        print IDMAP join("\t", @$row), "\n";
     }
 
     close IDMAP;
+}
+
+
+sub idmapsort {
+    my $comp = $a->[1] <=> $b->[1];
+    if ($comp == 0) {
+        return $a->[0] cmp $b->[0];
+    } else {
+        return $comp;
+    }
 }
 
 
