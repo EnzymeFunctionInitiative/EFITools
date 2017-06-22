@@ -1,7 +1,8 @@
 #!/usr/bin/env perl
 
 BEGIN {
-    die "Please load efiest2 before runing this script" if not $ENV{EFIEST};
+    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
+    use lib $ENV{EFISHARED};
 }
 
 
@@ -32,9 +33,9 @@ use XML::Writer;
 use XML::LibXML::Reader;
 
 use lib $FindBin::Bin . "/lib";
-use lib $ENV{EFIEST} . "/lib";
-use Biocluster::Database;
-use Biocluster::GNN;
+#use lib $ENV{EFIEST} . "/lib";
+use EFI::Database;
+use EFI::GNN;
 
 
 #$configfile=read_file($ENV{'EFICFG'}) or die "could not open $ENV{'EFICFG'}\n";
@@ -131,12 +132,12 @@ if (not defined $dontUseNewNeighborMethod) {
 
 my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile) ? 1 : 0;
 
-my $db = new Biocluster::Database(config_file_path => $configFile);
+my $db = new EFI::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
 
 my %gnnArgs = (dbh => $dbh, incfrac => $incfrac, use_nnm => $useNewNeighborMethod, color_only => $colorOnly);
 $gnnArgs{data_dir} = $dataDir if $dataDir and -d $dataDir;
-my $util = new Biocluster::GNN(%gnnArgs);
+my $util = new EFI::GNN(%gnnArgs);
 
 if($stats=~/\w+/){
     open STATS, ">$stats" or die "could not write to $stats\n";
@@ -183,45 +184,50 @@ print "find neighbors\n\n";
 
 if ($gnn and $warningFile) { #$nomatch and $noneighfile) {
     open($warning_fh, ">$warningFile") or die "cannot write file of no-match/no-neighbor warnings for accessions\n";
-#    open( $nomatch_fh, ">$nomatch" ) or die "cannot write file of non-matching accessions\n";
-#    open( $noneighfile_fh, ">$noneighfile") or die "cannot write file of accessions without neighbors\n";
 } else {
     open($warning_fh, ">/dev/null") or die "cannot write file of no-match/no-neighbor warnings to /dev/null\n";
-#    open( $nomatch_fh, ">/dev/null" ) or die "cannot write non-matching accessions to /dev/null\n";
-#    open( $noneighfile_fh, ">/dev/null") or die "cannot write accessions without neighbors to /dev/null\n";
 }
 print $warning_fh "UniProt ID:No Match/No Neighbor\n";
 
 
-my $useCircTest = 1;
 my $useExistingNumber = $util->hasExistingNumber($nodes);
-($numbermatch, $clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds) =
-        $util->getClusterHubData($supernodes, $n, $warning_fh, $useCircTest, $useExistingNumber);
+($numbermatch) = $util->numberClusters($supernodes, $useExistingNumber);
 
-if ($gnn) {
-    print "Writing Cluster Hub GNN\n";
-    $gnnoutput=new IO::File(">$gnn");
-    $gnnwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $gnnoutput);
-    $util->writeClusterHubGnn($gnnwriter, $clusterNodes, $withneighbors, $numbermatch, $supernodes);
-}
+my $gnnData = {};
+if (not $colorOnly) {
+    my $useCircTest = 1;
+    ($clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds) =
+            $util->getClusterHubData($supernodes, $n, $warning_fh, $useCircTest);
 
-if ($pfamhubfile) {
-    print "Writing Pfam Hub GNN\n";
-    $pfamoutput=new IO::File(">$pfamhubfile");
-    $pfamwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $pfamoutput);
-    $util->writePfamHubGnn($pfamwriter, $clusterNodes, $withneighbors, $numbermatch, $supernodes);
+    if ($gnn) {
+        print "Writing Cluster Hub GNN\n";
+        $gnnoutput=new IO::File(">$gnn");
+        $gnnwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $gnnoutput);
+        $util->writeClusterHubGnn($gnnwriter, $clusterNodes, $withneighbors, $numbermatch, $supernodes);
+    }
+    
+    if ($pfamhubfile) {
+        print "Writing Pfam Hub GNN\n";
+        $pfamoutput=new IO::File(">$pfamhubfile");
+        $pfamwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $pfamoutput);
+        $util->writePfamHubGnn($pfamwriter, $clusterNodes, $withneighbors, $numbermatch, $supernodes);
+    }
+    
+    if (not $colorOnly) {
+        $gnnData->{noMatchMap} = $noMatchMap;
+        $gnnData->{noNeighborMap} = $noNeighborMap;
+        $gnnData->{genomeIds} = $genomeIds;
+    }
 }
 
 if ($ssnout) {
     print "write out colored ssn network ".scalar @{$nodes}." nodes and ".scalar @{$edges}." edges\n";
     $output=new IO::File(">$ssnout");
     $writer=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $output);
-    $util->writeColorSsn($nodes, $edges, $title, $writer, $numbermatch, $constellations, $nodenames,
-                         $supernodes, $noMatchMap, $noNeighborMap, $genomeIds, $singletons);
+
+    $util->writeColorSsn($nodes, $edges, $title, $writer, $numbermatch, $constellations, $nodenames, $supernodes, $gnnData);
 }
 
-#close($nomatch_fh);
-#close($noneighfile_fh);
 close($warning_fh);
 
 $util->writeIdMapping($idOutputFile, $numbermatch, $constellations, $supernodes) if $idOutputFile;
