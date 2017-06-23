@@ -134,6 +134,8 @@ my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile) ? 1 : 0;
 my $db = new Biocluster::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
 
+mkdir $dataDir if $dataDir and not -d $dataDir;
+
 my %gnnArgs = (dbh => $dbh, incfrac => $incfrac, use_nnm => $useNewNeighborMethod, color_only => $colorOnly);
 $gnnArgs{data_dir} = $dataDir if $dataDir and -d $dataDir;
 my $util = new Biocluster::GNN(%gnnArgs);
