@@ -391,6 +391,7 @@ sub getClusterHubData {
     my $n = shift @_;
     my $warning_fh = shift @_;
     my $useCircTest = shift @_;
+    my $supernodeOrder = shift;
 
     my %withneighbors=();
     my %clusternodes=();
@@ -399,7 +400,7 @@ sub getClusterHubData {
     my %genomeIds;
     my %noneFamily;
 
-    foreach my $clusterNode (keys %$supernodes) {
+    foreach my $clusterNode (@{ $supernodeOrder }) {
         $noneFamily{$clusterNode} = {};
         foreach my $accession (uniq @{$supernodes->{$clusterNode}}){
             my ($pfamsearch, $localNoMatch, $localNoNeighbors, $genomeId) =

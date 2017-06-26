@@ -191,13 +191,13 @@ print $warning_fh "UniProt ID:No Match/No Neighbor\n";
 
 
 my $useExistingNumber = $util->hasExistingNumber($nodes);
-($numbermatch) = $util->numberClusters($supernodes, $useExistingNumber);
+($numbermatch, $numberOrder) = $util->numberClusters($supernodes, $useExistingNumber);
 
 my $gnnData = {};
 if (not $colorOnly) {
     my $useCircTest = 1;
     ($clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds) =
-            $util->getClusterHubData($supernodes, $n, $warning_fh, $useCircTest);
+            $util->getClusterHubData($supernodes, $n, $warning_fh, $useCircTest, $numberOrder);
 
     if ($gnn) {
         print "Writing Cluster Hub GNN\n";
