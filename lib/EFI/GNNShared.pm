@@ -228,7 +228,9 @@ sub writeColorSsn {
 
 sub saveGnnAttributes {
     my $self = shift;
+    my $writer = shift;
     my $gnnData = shift;
+    my $node = shift;
 }
 
 sub writeColorSsnNodes {
@@ -262,7 +264,7 @@ sub writeColorSsnNodes {
             writeGnnField($writer, 'Cluster Sequence Count', 'integer', $nodeCount{$clusterNum});
 
             if (not $self->{color_only}) {
-                $self->saveGnnAttributes($gnnData);
+                $self->saveGnnAttributes($writer, $gnnData, $node);
             }
 
             foreach $attribute ($node->getChildnodes){
