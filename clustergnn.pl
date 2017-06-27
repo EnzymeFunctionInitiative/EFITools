@@ -55,9 +55,10 @@ $result = GetOptions(
     "stats=s"           => \$stats,
     "pfam=s"            => \$pfamhubfile,
     "config=s"          => \$configFile,
-    "data-dir=s"        => \$dataDir,
-    "id-zip=s"          => \$idZip, # only used for GNT calls, non batch
+    "pfam-dir=s"        => \$pfamDir,
     "pfam-zip=s"        => \$pfamZip, # only used for GNT calls, non batch
+    "id-dir=s"          => \$idDir,
+    "id-zip=s"          => \$idZip, # only used for GNT calls, non batch
     "id-out=s"          => \$idOutputFile,
     "disable-nnm"       => \$dontUseNewNeighborMethod,
 );
@@ -72,7 +73,10 @@ usage: $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <file
     -cooc           co-occurrence
     -stats          file to output tabular statistics to
     -pfam           file to output PFAM hub GNN to
-    -data-dir       path to directory to output lists of IDs (one file/list per cluster number)
+    -id-dir         path to directory to output lists of IDs (one file/list per cluster number)
+    -id-zip         path to a file to zip all of the output lists
+    -pfam-dir       path to directory to output PFAM cluster data (one file/list per cluster number)
+    -pfam-zip       path to a file to output zip file for PFAM cluster data
     -id-out         path to a file to save the ID, cluster #, cluster color
     -config         configuration file for database info, etc.
 USAGE
@@ -139,14 +143,8 @@ my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile) ? 1 : 0;
 my $db = new EFI::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
 
-mkdir $dataDir if $dataDir and not -d $dataDir;
-my ($pfamDir, $idDir);
-if ($dataDir and -d $dataDir) {
-    $pfamDir = "$dataDir/pfam";
-    mkdir $pfamDir if not -d $pfamDir;
-    $idDir = "$dataDir/ids";
-    mkdir $idDir if not -d $idDir;
-}
+mkdir $pfamDir if $pfamDir and not -d $pfamDir;
+mkdir $idDir if $idDir and not -d $idDir;
 
 my %gnnArgs = (dbh => $dbh, incfrac => $incfrac, use_nnm => $useNewNeighborMethod, color_only => $colorOnly);
 $gnnArgs{pfam_dir} = $pfamDir if $pfamDir and -d $pfamDir;
