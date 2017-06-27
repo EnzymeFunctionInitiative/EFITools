@@ -225,11 +225,9 @@ if (not $colorOnly) {
         $util->writePfamHubGnn($pfamwriter, $clusterNodes, $withneighbors, $numbermatch, $supernodes);
     }
     
-    if (not $colorOnly) {
-        $gnnData->{noMatchMap} = $noMatchMap;
-        $gnnData->{noNeighborMap} = $noNeighborMap;
-        $gnnData->{genomeIds} = $genomeIds;
-    }
+    $gnnData->{noMatchMap} = $noMatchMap;
+    $gnnData->{noNeighborMap} = $noNeighborMap;
+    $gnnData->{genomeIds} = $genomeIds;
 }
 
 if ($ssnout) {
@@ -245,6 +243,7 @@ close($warning_fh);
 #$util->writePfamQueryData($numbermatch, $supernodes, $clusterNodes) if $dataDir;
 $util->writeIdMapping($idOutputFile, $numbermatch, $constellations, $supernodes) if $idOutputFile;
 $util->closeClusterMapFiles() if $dataDir;
+$util->finish();
 
 `zip -j $ssnout.zip $ssnout` if $ssnout;
 `zip -j $gnn.zip $gnn` if not $colorOnly and $gnn;

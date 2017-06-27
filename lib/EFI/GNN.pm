@@ -460,13 +460,14 @@ sub writeClusterHubGnn{
 }
 
 sub saveGnnAttributes {
-    my $self = shift @_;
-    my $writer=shift @_;
-    my $gnnData = shift @_;
+    my $self = shift;
+    my $writer = shift;
+    my $gnnData = shift;
+    my $node = shift;
 
     # If this is a repnode network, there will be a child node named "ACC". If so, we need to wrap
     # all of the no matches, etc into a list rather than a simple attribute.
-    my @accIdNode = grep { $_ =~ /\S/ and $_->getAttribute('name') eq "ACC"} $node->getChildNodes;
+    my @accIdNode = grep { $_ =~ /\S/ and $_->getAttribute('name') eq "ACC" } $node->getChildNodes;
     if (scalar @accIdNode) {
         my $accNode = $accIdNode[0];
         my @accIdAttrs = $accNode->findnodes("./*");
@@ -642,7 +643,16 @@ sub writePfamQueryData {
 
     return if not $self->{pfam_dir} or not -d $self->{pfam_dir};
 
+    if (not exists $self->{all_pfam_fh}) {
+        open($self->{all_pfam_fh}, ">" . $self->{pfam_dir} . "/ALL_PFAM.txt");
+        $self->{all_pfam_fh}->print(join(":", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #",
+                                              "SSN Query Cluster Color", "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n");
+    }
+
     open(PFAMFH, ">" . $self->{pfam_dir} . "/pfam_nodes_$pfam.txt") or die "Help " . $self->{pfam_dir} . "/pfam_nodes_$pfam.txt: $!";
+
+    print PFAMFH join(":", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #", "SSN Query Cluster Color",
+                           "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n";
 
     foreach my $clusterId (@$clustersInPfam) {
         my $color = $self->{colors}->{$numbermatch->{$clusterId}};
@@ -650,18 +660,26 @@ sub writePfamQueryData {
         $clusterNum = "none" if not $clusterNum;
 
         foreach my $data (@{ $clusterNodes->{$clusterId}->{$pfam}->{data} }) {
-             print PFAMFH join(":", $data->{query_id},
-                                    $data->{neighbor_id},
-                                    $pfam,
-                                    $color,
-                                    $clusterNum,
-                                    $data->{distance},
-                                    $data->{direction},
-                                ), "\n";
+            my $line = join(":", $data->{query_id},
+                                 $data->{neighbor_id},
+                                 $pfam,
+                                 $color,
+                                 $clusterNum,
+                                 $data->{distance},
+                                 $data->{direction},
+                           ) . "\n";
+            print PFAMFH $line;
+            $self->{all_pfam_fh}->print($line);
         }
     }
 
     close(PFAMFH);
+}
+
+sub finish {
+    my $self = shift;
+
+    close($self->{all_pfam_fh}) if exists $self->{all_pfam_fh};
 }
 
 1;
