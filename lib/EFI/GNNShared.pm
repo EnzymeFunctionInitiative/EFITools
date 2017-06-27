@@ -20,7 +20,7 @@ sub new {
     $self->{colors} = $self->getColors();
     $self->{id_dir} = ($args{id_dir} and -d $args{id_dir}) ? $args{id_dir} : "";
     $self->{cluster_fh} = {};
-    $self->{color_only} = exists $args{color_only} and $args{color_only};
+    $self->{color_only} = exists $args{color_only} ? $args{color_only} : 0;
 
     return $self;
 }
