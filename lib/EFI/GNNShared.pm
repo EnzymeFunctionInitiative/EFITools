@@ -18,7 +18,7 @@ sub new {
     $self->{dbh} = $args{dbh};
     $self->{incfrac} = $args{incfrac};
     $self->{colors} = $self->getColors();
-    $self->{data_dir} = ($args{data_dir} and -d $args{data_dir}) ? $args{data_dir} : "";
+    $self->{id_dir} = ($args{id_dir} and -d $args{id_dir}) ? $args{id_dir} : "";
     $self->{cluster_fh} = {};
     $self->{color_only} = exists $args{color_only} and $args{color_only};
 
@@ -329,7 +329,7 @@ sub saveNodeToClusterMap {
     my $supernodes = shift @_;
     my $gnnData = shift @_;
 
-    return if not $self->{data_dir} or not -d $self->{data_dir} or exists $self->{cluster_map_processed}->{$clusterId};
+    return if not $self->{id_dir} or not -d $self->{id_dir} or exists $self->{cluster_map_processed}->{$clusterId};
 
     $self->{cluster_map_processed}->{$clusterId} = 1;
 
@@ -337,12 +337,12 @@ sub saveNodeToClusterMap {
     $clusterNum = "none" if not $clusterNum;
 
     if (not exists $self->{cluster_fh}->{$clusterNum}) {
-        open($self->{cluster_fh}->{$clusterNum}, ">" . $self->{data_dir} . "/cluster_nodes_$clusterNum.txt");
+        open($self->{cluster_fh}->{$clusterNum}, ">" . $self->{id_dir} . "/cluster_nodes_$clusterNum.txt");
     }
 
     my $printToPfam = not $self->{color_only} and not exists $self->{no_pfam_fh}->{$clusterNum};
     if ($printToPfam) {
-        open($self->{no_pfam_fh}->{$clusterNum}, ">" . $self->{data_dir} . "/cluster_no_pfam_$clusterNum.txt");
+        open($self->{no_pfam_fh}->{$clusterNum}, ">" . $self->{id_dir} . "/cluster_no_pfam_$clusterNum.txt");
     }
 
     foreach my $nodeId (@{ $supernodes->{$clusterId} }) {
@@ -391,7 +391,7 @@ sub idmapsort {
 sub closeClusterMapFiles {
     my $self = shift @_;
 
-    return if not $self->{data_dir} or not -d $self->{data_dir};
+    return if not $self->{id_dir} or not -d $self->{id_dir};
 
     foreach my $key (keys %{ $self->{cluster_fh} }) {
         close($self->{cluster_fh}->{$key});
