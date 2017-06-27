@@ -56,6 +56,8 @@ $result = GetOptions(
     "pfam=s"            => \$pfamhubfile,
     "config=s"          => \$configFile,
     "data-dir=s"        => \$dataDir,
+    "id-zip=s"          => \$idZip, # only used for GNT calls, non batch
+    "pfam-zip=s"        => \$pfamZip, # only used for GNT calls, non batch
     "id-out=s"          => \$idOutputFile,
     "disable-nnm"       => \$dontUseNewNeighborMethod,
 );
@@ -78,6 +80,8 @@ USAGE
 #    -nomatch        output file that contains sequences without neighbors
 #    -noneigh        output file that contains sequences without neighbors
 
+
+$batchMode = 0 if not defined $batchMode;
 
 if (not -f $configFile and not exists $ENV{EFICONFIG}) {
     die "Either the configuration file or the EFICONFIG environment variable must be set\n$usage";
@@ -136,9 +140,17 @@ my $db = new EFI::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
 
 mkdir $dataDir if $dataDir and not -d $dataDir;
+my ($pfamDir, $idDir);
+if ($dataDir and -d $dataDir) {
+    $pfamDir = "$dataDir/pfam";
+    mkdir $pfamDir if not -d $pfamDir;
+    $idDir = "$dataDir/ids";
+    mkdir $idDir if not -d $idDir;
+}
 
 my %gnnArgs = (dbh => $dbh, incfrac => $incfrac, use_nnm => $useNewNeighborMethod, color_only => $colorOnly);
-$gnnArgs{data_dir} = $dataDir if $dataDir and -d $dataDir;
+$gnnArgs{pfam_dir} = $pfamDir if $pfamDir and -d $pfamDir;
+$gnnArgs{id_dir} = $idDir if $idDir and -d $idDir;
 my $util = new EFI::GNN(%gnnArgs);
 
 if($stats=~/\w+/){
@@ -232,15 +244,16 @@ if ($ssnout) {
 
 close($warning_fh);
 
+#$util->writePfamQueryData($numbermatch, $supernodes, $clusterNodes) if $dataDir;
 $util->writeIdMapping($idOutputFile, $numbermatch, $constellations, $supernodes) if $idOutputFile;
 $util->closeClusterMapFiles() if $dataDir;
 
-if (not $dataDir) {
-    `zip -j $ssnout.zip $ssnout`;
-    `zip -j $gnn.zip $gnn`;
-    `zip -j $pfamhubfile.zip $pfamhubfile`;
-}
-# Otherwise, the parent script that calls this one, for coloring only, will take care of zipping the .xgmml file.
+`zip -j $ssnout.zip $ssnout` if $ssnout;
+`zip -j $gnn.zip $gnn` if not $colorOnly and $gnn;
+`zip -j $pfamhubfile.zip $pfamhubfile` if not $colorOnly and $pfamhubfile;
+`zip -j -r $pfamZip $pfamDir` if $pfamZip and $pfamDir;
+`zip -j -r $idZip $idDir` if $idZip and $idDir;
+
 
 print "$0 finished\n";
 

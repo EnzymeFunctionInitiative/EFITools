@@ -22,6 +22,7 @@ sub new {
 
     $self->{no_pfam_fh} = {};
     $self->{use_new_neighbor_method} = $args{use_nnm};
+    $self->{pfam_dir} = $args{pfam_dir} if exists $args{pfam_dir} and -d $args{pfam_dir};
     
     return bless($self, $class);
 }
@@ -111,8 +112,6 @@ SQL
     $sth->execute;
 
     my $row = $sth->fetchrow_hashref;
-#    if($sth->rows>0){
-#        while(my $row=$sth->fetchrow_hashref){
     if($row->{DIRECTION}==1){
         $origdirection='complement';
     }elsif($row->{DIRECTION}==0){
@@ -210,6 +209,11 @@ SQL
             }
             push @{$pfam{'dist'}{$tmp}}, "$ac:$origdirection:".$neighbor->{AC}.":$direction:$distance";
             push @{$pfam{'stats'}{$tmp}}, abs $distance;
+            push @{$pfam{'data'}{$tmp}}, { query_id => $ac,
+                                           neighbor_id => $neighbor->{AC},
+                                           distance => (abs $distance),
+                                           direction => "$origdirection-$direction"
+                                         };
         }	
     }
 
@@ -326,6 +330,7 @@ sub writePfamSpoke{
     @tmparray=map "$pfam:$_:".${$pdbinfo}{(split(":",$_))[1]}, @{$info{'neigh'}};
     writeGnnListField($gnnwriter, 'Query-Neighbor Accessions', 'string', \@tmparray);
     $gnnwriter->endTag;
+
     return \@tmparray;
 }
 
@@ -414,6 +419,7 @@ sub getClusterHubData {
                 push @{$clusterNodes{$clusterNode}{$pfamNumber}{'stats'}}, @{${$pfamsearch}{'stats'}{$pfamNumber}};
                 push @{$clusterNodes{$clusterNode}{$pfamNumber}{'neigh'}}, @{${$pfamsearch}{'neigh'}{$pfamNumber}};
                 push @{$clusterNodes{$clusterNode}{$pfamNumber}{'neighlist'}}, @{${$pfamsearch}{'neighlist'}{$pfamNumber}};
+                push @{$clusterNodes{$clusterNode}{$pfamNumber}{'data'}}, @{${$pfamsearch}{'data'}{$pfamNumber}};
             }
             foreach my $pfamNumber (sort {$a <=> $b} keys %{${$pfamsearch}{'withneighbors'}}){
                 push @{$withneighbors{$clusterNode}}, @{${$pfamsearch}{'withneighbors'}{$pfamNumber}};
@@ -520,6 +526,7 @@ sub writePfamHubGnn {
         if($spokecount>0){
             print "Building hub $pfam\n";
             $self->writePfamHub($writer,$pfam, $pfam_short, $pfam_long, \@hubPdb, \@clusters, $clusterNodes,$supernodes,$withneighbors, $numbermatch);
+            $self->writePfamQueryData($pfam, \@clusters, $clusterNodes, $supernodes, $numbermatch);
         }
     }
 
@@ -539,6 +546,8 @@ sub writeClusterSpoke{
     my $withneighbors = shift @_;
 
     (my $shape, my $pdbinfo)= $self->getPdbInfo(\@{${$clusterNodes}{$cluster}{$pfam}{'neighlist'}});
+    my $color = $self->{colors}->{$numbermatch->{$cluster}};
+    my $clusterNum = $numbermatch->{$cluster};
 
     my $avgDist=sprintf("%.2f", int(sum(@{${$clusterNodes}{$cluster}{$pfam}{'stats'}})/scalar(@{${$clusterNodes}{$cluster}{$pfam}{'stats'}})*100)/100);
     my $medDist=sprintf("%.2f",int(median(@{${$clusterNodes}{$cluster}{$pfam}{'stats'}})*100)/100);
@@ -547,10 +556,10 @@ sub writeClusterSpoke{
 
     $writer->startTag('node', 'id' => "$pfam:" . $numbermatch->{$cluster}, 'label' => $numbermatch->{$cluster});
 
-    writeGnnField($writer, 'node.fillColor','string', $self->{colors}->{$numbermatch->{$cluster}});
+    writeGnnField($writer, 'node.fillColor','string', $color);
     writeGnnField($writer, 'Co-occurrence','real',$coOcc);
     writeGnnField($writer, 'Co-occurrence Ratio','string',$coOccRat);
-    writeGnnField($writer, 'Cluster Number', 'integer', $numbermatch->{$cluster});
+    writeGnnField($writer, 'Cluster Number', 'integer', $clusterNum);
     writeGnnField($writer, 'Total SSN Sequences', 'integer', scalar(@{$supernodes->{$cluster}}));
     writeGnnField($writer, 'Queries with Pfam Neighbors', 'integer', scalar( uniq (@{${$clusterNodes}{$cluster}{$pfam}{'orig'}})));
     writeGnnField($writer, 'Queriable SSN Sequences', 'integer', scalar(@{$withneighbors->{$cluster}}));
@@ -623,6 +632,37 @@ sub writePfamHub {
     $writer->endTag;
 }
 
+sub writePfamQueryData {
+    my $self = shift;
+    my $pfam = shift;
+    my $clustersInPfam = shift;
+    my $clusterNodes = shift;
+    my $supernodes = shift;
+    my $numbermatch = shift;
+
+    return if not $self->{pfam_dir} or not -d $self->{pfam_dir};
+
+    open(PFAMFH, ">" . $self->{pfam_dir} . "/pfam_nodes_$pfam.txt") or die "Help " . $self->{pfam_dir} . "/pfam_nodes_$pfam.txt: $!";
+
+    foreach my $clusterId (@$clustersInPfam) {
+        my $color = $self->{colors}->{$numbermatch->{$clusterId}};
+        my $clusterNum = $numbermatch->{$clusterId};
+        $clusterNum = "none" if not $clusterNum;
+
+        foreach my $data (@{ $clusterNodes->{$clusterId}->{$pfam}->{data} }) {
+             print PFAMFH join(":", $data->{query_id},
+                                    $data->{neighbor_id},
+                                    $pfam,
+                                    $color,
+                                    $clusterNum,
+                                    $data->{distance},
+                                    $data->{direction},
+                                ), "\n";
+        }
+    }
+
+    close(PFAMFH);
+}
 
 1;
 

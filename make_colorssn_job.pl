@@ -117,7 +117,7 @@ $B->addAction("clustergnn.pl -nb-size 10 -cooc 20 -ssnin $ssnIn -ssnout $outputP
 $B->addAction("getfasta.pl -node-dir $nodeDataPath -out-dir $fastaDataPath -config $configFile");
 $B->addAction("zip -j -r $outputPath/${ssnName}_nodes.zip $nodeDataPath");
 $B->addAction("zip -j -r $outputPath/${ssnName}_fasta.zip $fastaDataPath");
-$B->addAction("zip -j $outputPath/$ssnOutZip $outputPath/$ssnOut");
+#this is done in clustergnn.pl $B->addAction("zip -j $outputPath/$ssnOutZip $outputPath/$ssnOut");
 $B->addAction("touch $outputPath/1.out.completed");
 
 my $jobScript = "$outputPath/colorgnn.sh";
