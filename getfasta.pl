@@ -86,7 +86,7 @@ foreach my $file (glob("$nodeDir/cluster_nodes_*.txt")) {
                     $pfam = $row->{PFAM};
                 }
 
-                print FASTA ">$clusterNum:$accession:$organism:$pfam$seq\n";
+                print FASTA ">$clusterNum|$accession|$organism|$pfam$seq\n";
             }
         }
     }
