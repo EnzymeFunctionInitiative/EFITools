@@ -90,8 +90,6 @@ if ($ssnInZip =~ /\.zip$/i) {
     $ssnIn =~ s/\.zip$/.xgmml/i;
 }
 
-my $nodeDataZip = "$outputPath/${ssnName}_nodes.zip";
-
 
 my $outputPath = $ENV{PWD} . "/$outputDir";
 mkdir $outputPath or die "Unable to create output directory $outputPath: $!" if not -d $outputPath ;
@@ -103,6 +101,7 @@ mkdir $nodeDataPath or die "Unable to create output node data path $nodeDataPath
 my $fastaDataPath = "$clusterDataPath/fasta";
 mkdir $fastaDataPath or die "Unable to create output fasta data path $fastaDataPath: $!" if not -d $fastaDataPath;
 
+my $nodeDataZip = "$outputPath/${ssnName}_nodes.zip";
 
 my $schedType = "torque";
 $schedType = "slurm" if (defined($scheduler) and $scheduler eq "slurm") or (not defined($scheduler) and usesSlurm());
