@@ -49,7 +49,7 @@ sub findNeighbors {
     $sth->execute;
 
     if (not $sth->rows) {
-        print $warning_fh "$ac:nomatch\n";
+        print $warning_fh "$ac\tnomatch\n";
         return \%pfam, 1, -1, $genomeId;
     }
 
@@ -686,7 +686,7 @@ sub writePfamNoneClusters {
     foreach my $clusterId (keys %$noneFamily) {
         my $clusterNum = $numbermatch->{$clusterId};
 
-        open NONEFH, ">$outDir/pfam_none_$clusterNum.txt";
+        open NONEFH, ">$outDir/no_pfam_neighbors_$clusterNum.txt";
 
         foreach my $nodeId (keys %{ $noneFamily->{$clusterId} }) {
             print NONEFH "$nodeId\n";
