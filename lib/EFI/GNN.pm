@@ -166,7 +166,7 @@ SQL
         push @{$pfam{'withneighbors'}{$origtmp}}, $ac;
     }else{
         $noNeighbors = 1;
-        print $warning_fh "$ac:noneighbor\n";
+        print $warning_fh "$ac|noneighbor\n";
     }
 
     $pfam{'genome'}{$ac} = $id;
