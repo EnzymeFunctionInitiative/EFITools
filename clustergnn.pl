@@ -203,7 +203,7 @@ if ($gnn and $warningFile) { #$nomatch and $noneighfile) {
 } else {
     open($warning_fh, ">/dev/null") or die "cannot write file of no-match/no-neighbor warnings to /dev/null\n";
 }
-print $warning_fh "UniProt ID|No Match/No Neighbor\n";
+print $warning_fh "UniProt ID\tNo Match/No Neighbor\n";
 
 
 my $useExistingNumber = $util->hasExistingNumber($nodes);

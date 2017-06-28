@@ -166,7 +166,7 @@ SQL
         push @{$pfam{'withneighbors'}{$origtmp}}, $ac;
     }else{
         $noNeighbors = 1;
-        print $warning_fh "$ac|noneighbor\n";
+        print $warning_fh "$ac\tnoneighbor\n";
     }
 
     $pfam{'genome'}{$ac} = $id;
@@ -646,14 +646,14 @@ sub writePfamQueryData {
 
     if (not exists $self->{all_pfam_fh}) {
         open($self->{all_pfam_fh}, ">" . $self->{pfam_dir} . "/ALL_PFAM.txt");
-        $self->{all_pfam_fh}->print(join("|", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #",
-                                              "SSN Query Cluster Color", "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n");
+        $self->{all_pfam_fh}->print(join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #",
+                                               "SSN Query Cluster Color", "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n");
     }
 
     open(PFAMFH, ">" . $self->{pfam_dir} . "/no_pfam_neighbors_$pfam.txt") or die "Help " . $self->{pfam_dir} . "/pfam_nodes_$pfam.txt: $!";
 
-    print PFAMFH join("|", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #", "SSN Query Cluster Color",
-                           "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n";
+    print PFAMFH join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #", "SSN Query Cluster Color",
+                            "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n";
 
     foreach my $clusterId (@$clustersInPfam) {
         my $color = $self->{colors}->{$numbermatch->{$clusterId}};
@@ -661,13 +661,13 @@ sub writePfamQueryData {
         $clusterNum = "none" if not $clusterNum;
 
         foreach my $data (@{ $clusterNodes->{$clusterId}->{$pfam}->{data} }) {
-            my $line = join("|", $data->{query_id},
-                                 $data->{neighbor_id},
-                                 $pfam,
-                                 $clusterNum,
-                                 $color,
-                                 sprintf("%02d", $data->{distance}),
-                                 $data->{direction},
+            my $line = join("\t", $data->{query_id},
+                                  $data->{neighbor_id},
+                                  $pfam,
+                                  $clusterNum,
+                                  $color,
+                                  sprintf("%02d", $data->{distance}),
+                                  $data->{direction},
                            ) . "\n";
             print PFAMFH $line;
             $self->{all_pfam_fh}->print($line);
