@@ -339,17 +339,11 @@ sub saveNodeToClusterMap {
     $clusterNum = "none" if not $clusterNum;
 
     if (not exists $self->{cluster_fh}->{$clusterNum}) {
-        open($self->{cluster_fh}->{$clusterNum}, ">" . $self->{id_dir} . "/cluster_nodes_$clusterNum.txt");
-    }
-
-    my $printToPfam = not $self->{color_only} and not exists $self->{no_pfam_fh}->{$clusterNum};
-    if ($printToPfam) {
-        open($self->{no_pfam_fh}->{$clusterNum}, ">" . $self->{id_dir} . "/cluster_no_pfam_$clusterNum.txt");
+        open($self->{cluster_fh}->{$clusterNum}, ">" . $self->{id_dir} . "/cluster_UniProt_IDs_$clusterNum.txt");
     }
 
     foreach my $nodeId (@{ $supernodes->{$clusterId} }) {
         $self->{cluster_fh}->{$clusterNum}->print("$nodeId\n");
-        $self->{no_pfam_fh}->{$clusterNum}->print("$nodeId\n") if $printToPfam and exists $gnnData->{noneFamily}->{$clusterNum}->{$nodeId};
     }
 }
 
