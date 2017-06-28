@@ -8,6 +8,7 @@ use Array::Utils qw(:all);
 use Exporter 'import';
 @EXPORT = qw(median writeGnnField writeGnnListField);
 
+our $ClusterUniProtIDFilePattern = "cluster_UniProt_IDs_";
 
 sub new {
     my ($class, %args) = @_;
