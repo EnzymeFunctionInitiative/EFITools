@@ -646,13 +646,13 @@ sub writePfamQueryData {
 
     if (not exists $self->{all_pfam_fh}) {
         open($self->{all_pfam_fh}, ">" . $self->{pfam_dir} . "/ALL_PFAM.txt");
-        $self->{all_pfam_fh}->print(join(":", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #",
+        $self->{all_pfam_fh}->print(join("|", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #",
                                               "SSN Query Cluster Color", "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n");
     }
 
-    open(PFAMFH, ">" . $self->{pfam_dir} . "/pfam_nodes_$pfam.txt") or die "Help " . $self->{pfam_dir} . "/pfam_nodes_$pfam.txt: $!";
+    open(PFAMFH, ">" . $self->{pfam_dir} . "/no_pfam_neighbors_$pfam.txt") or die "Help " . $self->{pfam_dir} . "/pfam_nodes_$pfam.txt: $!";
 
-    print PFAMFH join(":", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #", "SSN Query Cluster Color",
+    print PFAMFH join("|", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #", "SSN Query Cluster Color",
                            "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n";
 
     foreach my $clusterId (@$clustersInPfam) {
@@ -661,11 +661,11 @@ sub writePfamQueryData {
         $clusterNum = "none" if not $clusterNum;
 
         foreach my $data (@{ $clusterNodes->{$clusterId}->{$pfam}->{data} }) {
-            my $line = join(":", $data->{query_id},
+            my $line = join("|", $data->{query_id},
                                  $data->{neighbor_id},
                                  $pfam,
-                                 $color,
                                  $clusterNum,
+                                 $color,
                                  $data->{distance},
                                  $data->{direction},
                            ) . "\n";

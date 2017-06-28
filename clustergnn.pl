@@ -250,9 +250,22 @@ $util->writeIdMapping($idOutputFile, $numbermatch, $constellations, $supernodes)
 $util->closeClusterMapFiles() if $dataDir;
 $util->finish();
 
-`zip -j $ssnout.zip $ssnout` if $ssnout;
-`zip -j $gnn.zip $gnn` if not $colorOnly and $gnn;
-`zip -j $pfamhubfile.zip $pfamhubfile` if not $colorOnly and $pfamhubfile;
+if ($ssnout) {
+    (my $ssnName = $ssnout) =~ s/\.xgmml$//i;
+    my $ssnOutZip = "$ssnName.zip";
+    `zip -j $ssnOutZip $ssnout`;
+}
+
+if (not $colorOnly and $gnn) {
+    (my $gnnZip = $gnn) =~ s/\.xgmml$/.zip/i;
+    `zip -j $gnnZip $gnn`;
+}
+
+if (not $colorOnly and $pfamhubfile) {
+    (my $pfamhubfileZip = $pfamhubfile) =~ s/\.xgmml$/.zip/i;
+    `zip -j $pfamhubfileZip $pfamhubfile`;
+}
+
 `zip -j -r $pfamZip $pfamDir` if $pfamZip and $pfamDir;
 `zip -j -r $idZip $idDir` if $idZip and $idDir;
 `zip -j -r $noneZip $noneDir` if $noneZip and $noneDir;
