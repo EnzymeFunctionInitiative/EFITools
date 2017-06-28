@@ -666,7 +666,7 @@ sub writePfamQueryData {
                                  $pfam,
                                  $clusterNum,
                                  $color,
-                                 $data->{distance},
+                                 sprintf("%02d", $data->{distance}),
                                  $data->{direction},
                            ) . "\n";
             print PFAMFH $line;

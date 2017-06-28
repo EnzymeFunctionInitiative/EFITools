@@ -1,24 +1,16 @@
 #!/usr/bin/env perl
 
 BEGIN {
-    die "The efiest environment must be loaded before running this script" if not exists $ENV{EFIEST} or not exists $ENV{EFIDBPATH};
+    die "The efishared environment must be loaded before running this script" if not exists $ENV{EFISHARED} or not exists $ENV{EFIDBPATH};
+    use lib $ENV{EFISHARED};
 }
 
 use Getopt::Long;
-#use List::MoreUtils qw{apply uniq any} ;
-#use XML::LibXML;
-#use DBD::SQLite;
-#use DBD::mysql;
-#use IO;
-#use XML::Writer;
 use File::Slurp;
-#use XML::LibXML::Reader;
-#use List::Util qw(sum);
-#use Array::Utils qw(:all);
 use Capture::Tiny qw(:all);
 
-use lib $ENV{EFIEST} . "/lib";
-use Biocluster::Database;
+use EFI::Database;
+use EFI::GNNShared;
 
 #$configfile=read_file($ENV{'EFICFG'}) or die "could not open $ENV{'EFICFG'}\n";
 #eval $configfile;
@@ -44,14 +36,15 @@ if (not -d $nodeDir) {
 }
 
 
-my $db = new Biocluster::Database(config_file => $configFile);
+my $db = new EFI::Database(config_file => $configFile);
 my $dbh = $db->getHandle();
 
 my $blastDbPath = $ENV{EFIDBPATH};
 
+my $pattern = $EFI::GNNShared::ClusterUniProtIDFilePattern;
 
-foreach my $file (glob("$nodeDir/cluster_nodes_*.txt")) {
-    (my $clusterNum = $file) =~ s%^.*/cluster_nodes_(\d+)\.txt$%$1%;
+foreach my $file (glob("$nodeDir/$pattern*.txt")) {
+    (my $clusterNum = $file) =~ s%^.*/$pattern(\d+)\.txt$%$1%;
     
     open FASTA, ">$fastaDir/cluster_$clusterNum.fasta";
     open NODES, $file;

@@ -1,24 +1,16 @@
 #!/usr/bin/env perl
 
 BEGIN {
-    die "The efiest and efignn environments must be loaded before running this script" if not exists $ENV{EFIEST} or not exists $ENV{EFIGNN};
+    die "The efishared and efignn environments must be loaded before running this script" if not exists $ENV{EFISHARED} or not exists $ENV{EFIGNN};
+    use lib $ENV{EFISHARED};
 }
 
 use Getopt::Long;
-#use List::MoreUtils qw{apply uniq any} ;
-#use DBD::mysql;
-#use IO;
-#use XML::Writer;
-#use File::Slurp;
-#use XML::LibXML::Reader;
-#use List::Util qw(sum);
-#use Array::Utils qw(:all);
 
-use lib $ENV{EFIEST} . "/lib";
-use Biocluster::Database;
-use Biocluster::SchedulerApi;
-use Biocluster::Util qw(usesSlurm);
-use Biocluster::Config;
+use EFI::Database;
+use EFI::SchedulerApi;
+use EFI::Util qw(usesSlurm);
+use EFI::Config;
 
 
 my ($ssnIn, $nbSize, $ssnOut, $cooc, $outputDir, $scheduler, $dryRun, $queue, $mapDirName, $mapFileName);
@@ -50,7 +42,6 @@ USAGE
 #    -nb-size        distance (+/-) to search for neighbors
 #    -cooc           inc frac
 
-my $estPath = $ENV{EFIEST};
 my $dbModule = $ENV{EFIDBMOD};
 my $gntPath = $ENV{EFIGNN};
 my $gntModule = $ENV{EFIGNNMOD};
@@ -105,7 +96,7 @@ my $nodeDataZip = "$outputPath/${ssnName}_UniProt_IDs.zip";
 
 my $schedType = "torque";
 $schedType = "slurm" if (defined($scheduler) and $scheduler eq "slurm") or (not defined($scheduler) and usesSlurm());
-my $SS = new Biocluster::SchedulerApi(type => $schedType, queue => $queue, resource => [1, 1], dryrun => $dryrun);
+my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => [1, 1], dryrun => $dryrun);
 
 
 my $B = $SS->getBuilder();
