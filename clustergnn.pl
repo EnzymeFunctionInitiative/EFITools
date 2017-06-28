@@ -59,6 +59,8 @@ $result = GetOptions(
     "pfam-zip=s"        => \$pfamZip, # only used for GNT calls, non batch
     "id-dir=s"          => \$idDir,
     "id-zip=s"          => \$idZip, # only used for GNT calls, non batch
+    "none-dir=s"        => \$noneDir,
+    "none-zip=s"        => \$noneZip, # only used for GNT calls, non batch
     "id-out=s"          => \$idOutputFile,
     "disable-nnm"       => \$dontUseNewNeighborMethod,
 );
@@ -143,12 +145,14 @@ my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile) ? 1 : 0;
 my $db = new EFI::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
 
-mkdir $pfamDir if $pfamDir and not -d $pfamDir;
-mkdir $idDir if $idDir and not -d $idDir;
+mkdir $pfamDir  or die "Unable to create $pfamDir: $!"  if $pfamDir and not -d $pfamDir;
+mkdir $idDir    or die "Unable to create $idDir: $!"    if $idDir and not -d $idDir;
+mkdir $noneDir  or die "Unable to create $noneDir: $!"  if $noneDir and not -d $noneDir;
 
 my %gnnArgs = (dbh => $dbh, incfrac => $incfrac, use_nnm => $useNewNeighborMethod, color_only => $colorOnly);
 $gnnArgs{pfam_dir} = $pfamDir if $pfamDir and -d $pfamDir;
 $gnnArgs{id_dir} = $idDir if $idDir and -d $idDir;
+
 my $util = new EFI::GNN(%gnnArgs);
 
 if($stats=~/\w+/){
@@ -208,7 +212,7 @@ my $useExistingNumber = $util->hasExistingNumber($nodes);
 my $gnnData = {};
 if (not $colorOnly) {
     my $useCircTest = 1;
-    ($clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds) =
+    ($clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds, $noneFamily) =
             $util->getClusterHubData($supernodes, $n, $warning_fh, $useCircTest, $numberOrder);
 
     if ($gnn) {
@@ -223,6 +227,7 @@ if (not $colorOnly) {
         $pfamoutput=new IO::File(">$pfamhubfile");
         $pfamwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $pfamoutput);
         $util->writePfamHubGnn($pfamwriter, $clusterNodes, $withneighbors, $numbermatch, $supernodes);
+        $util->writePfamNoneClusters($noneDir, $noneFamily, $numbermatch);
     }
     
     $gnnData->{noMatchMap} = $noMatchMap;
@@ -250,6 +255,7 @@ $util->finish();
 `zip -j $pfamhubfile.zip $pfamhubfile` if not $colorOnly and $pfamhubfile;
 `zip -j -r $pfamZip $pfamDir` if $pfamZip and $pfamDir;
 `zip -j -r $idZip $idDir` if $idZip and $idDir;
+`zip -j -r $noneZip $noneDir` if $noneZip and $noneDir;
 
 
 print "$0 finished\n";

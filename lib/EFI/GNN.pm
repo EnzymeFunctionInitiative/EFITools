@@ -478,8 +478,8 @@ sub saveGnnAttributes {
 
         foreach my $accIdAttr (@accIdAttrs) {
             my $accId = $accIdAttr->getAttribute('value');
-            push @hasNeighbors, $gnnData->{noNeighbors}->{$accId} == 1 ? "false" : $gnnData->{noNeighbors}->{$accId} == -1 ? "n/a" : "true";
-            push @hasMatch, $gnnData->{noMatches}->{$accId} ? "false" : "true";
+            push @hasNeighbors, $gnnData->{noNeighborMap}->{$accId} == 1 ? "false" : $gnnData->{noNeighborMap}->{$accId} == -1 ? "n/a" : "true";
+            push @hasMatch, $gnnData->{noMatchMap}->{$accId} ? "false" : "true";
             push @genomeId, $gnnData->{genomeIds}->{$accId};
         }
 
@@ -487,9 +487,10 @@ sub saveGnnAttributes {
         writeGnnListField($writer, 'Has Match', 'string', \@hasMatch, 0);
         writeGnnListField($writer, 'Genome ID', 'string', \@genomeId, 0);
     } else {
-        my $hasNeighbors = $gnnData->{noNeighbors}->{$nodeId} == 1 ? "false" : $gnnData->{noNeighbors}->{$nodeId} == -1 ? "n/a" : "true";
+        my $nodeId = $node->getAttribute('label');
+        my $hasNeighbors = $gnnData->{noNeighborMap}->{$nodeId} == 1 ? "false" : $gnnData->{noNeighborMap}->{$nodeId} == -1 ? "n/a" : "true";
         my $genomeId = $gnnData->{genomeIds}->{$nodeId};
-        my $hasMatch = $gnnData->{noMatches}->{$nodeId} ? "false" : "true";
+        my $hasMatch = $gnnData->{noMatchMap}->{$nodeId} ? "false" : "true";
         writeGnnField($writer, 'Has Neighbors', 'string', $hasNeighbors);
         writeGnnField($writer, 'Has Match', 'string', $hasMatch);
         writeGnnField($writer, 'Genome ID', 'string', $genomeId);
@@ -674,6 +675,25 @@ sub writePfamQueryData {
     }
 
     close(PFAMFH);
+}
+
+sub writePfamNoneClusters {
+    my $self = shift;
+    my $outDir = shift;
+    my $noneFamily = shift;
+    my $numbermatch = shift;
+
+    foreach my $clusterId (keys %$noneFamily) {
+        my $clusterNum = $numbermatch->{$clusterId};
+
+        open NONEFH, ">$outDir/pfam_none_$clusterNum.txt";
+
+        foreach my $nodeId (keys %{ $noneFamily->{$clusterId} }) {
+            print NONEFH "$nodeId\n";
+        }
+
+        close NONEFH;
+    }
 }
 
 sub finish {
