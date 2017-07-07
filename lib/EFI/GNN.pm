@@ -650,7 +650,7 @@ sub writePfamQueryData {
                                                "SSN Query Cluster Color", "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n");
     }
 
-    open(PFAMFH, ">" . $self->{pfam_dir} . "/no_pfam_neighbors_$pfam.txt") or die "Help " . $self->{pfam_dir} . "/pfam_nodes_$pfam.txt: $!";
+    open(PFAMFH, ">" . $self->{pfam_dir} . "/pfam_neighbors_$pfam.txt") or die "Help " . $self->{pfam_dir} . "/pfam_nodes_$pfam.txt: $!";
 
     print PFAMFH join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #", "SSN Query Cluster Color",
                             "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n";
