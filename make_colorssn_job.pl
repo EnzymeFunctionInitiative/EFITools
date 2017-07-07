@@ -104,7 +104,7 @@ $B->addAction("$str");
 $B->addAction("module load $dbModule");
 $B->addAction("module load $gntModule");
 $B->addAction("cd $outputPath");
-$B->addAction("unzip -p $ssnInZip > $ssnIn") if $ssnInZip =~ /\.zip/i;
+$B->addAction("unzip_ssn.pl -in $ssnInZip -out $ssnIn") if $ssnInZip =~ /\.zip/i;
 $B->addAction("clustergnn.pl -nb-size 10 -cooc 20 -ssnin $ssnIn -ssnout $outputPath/$ssnOut -id-dir $nodeDataPath -id-zip $nodeDataZip -id-out ${ssnName}_$mapFileName -config $configFile");
 $B->addAction("getfasta.pl -node-dir $nodeDataPath -out-dir $fastaDataPath -config $configFile");
 #$B->addAction("zip -j -r $outputPath/${ssnName}_nodes.zip $nodeDataPath");
