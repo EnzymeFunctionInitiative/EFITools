@@ -43,6 +43,8 @@ my $blastDbPath = $ENV{EFIDBPATH};
 
 my $pattern = $EFI::GNNShared::ClusterUniProtIDFilePattern;
 
+open ALL, ">$fastaDir/all.fasta";
+
 foreach my $file (glob("$nodeDir/$pattern*.txt")) {
     (my $clusterNum = $file) =~ s%^.*/$pattern(\d+)\.txt$%$1%;
     
@@ -80,6 +82,7 @@ foreach my $file (glob("$nodeDir/$pattern*.txt")) {
                 }
 
                 print FASTA ">$clusterNum|$accession|$organism|$pfam$seq\n";
+                print ALL ">$clusterNum|$accession|$organism|$pfam$seq\n";
             }
         }
     }
@@ -89,6 +92,8 @@ foreach my $file (glob("$nodeDir/$pattern*.txt")) {
     close NODES;
     close FASTA;
 }
+
+close ALL;
 
 
 $dbh->disconnect();
