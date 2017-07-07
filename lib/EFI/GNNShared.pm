@@ -358,7 +358,7 @@ sub writeIdMapping {
 
     open IDMAP, ">$idMapPath";
 
-    print IDMAP "UniProt_ID\tCluster_Num\tCluster_Color\n";
+    print IDMAP "UniProt ID\tCluster Number\tCluster Color\n";
     my @data;
     foreach my $clusterId (sort keys %$supernodes) {
         my $clusterNum = $numbermatch->{$clusterId};
