@@ -338,7 +338,7 @@ sub writeClusterHub{
     my $self = shift @_;
     my $gnnwriter=shift @_;
     my $clusterNumber=shift @_;
-    my $info=%{shift @_};
+    my $info=shift @_;
     my @pdbarray=@{shift @_};
     my @cluster=@{shift @_};
     my $ssnNodes=scalar @{shift @_};
@@ -353,13 +353,13 @@ sub writeClusterHub{
     writeGnnField($gnnwriter,'Cluster Number', 'integer', $clusterNumber);
     writeGnnField($gnnwriter,'Queriable SSN Sequences', 'integer',scalar @cluster);
     writeGnnField($gnnwriter,'Total SSN Sequences', 'integer', $ssnNodes);
-    @tmparray=uniq grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100>$self->{incfrac}) {"$clusterNumber:$_:".scalar(uniq @{$info->{$_}{'orig'}}) }} sort keys %info;
+    @tmparray=uniq grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100>$self->{incfrac}) {"$clusterNumber:$_:".scalar(uniq @{$info->{$_}{'orig'}}) }} sort keys %$info;
     writeGnnListField($gnnwriter, 'Hub Queries with Pfam Neighbors', 'string', \@tmparray);
-    @tmparray= grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100>$self->{incfrac}) { "$clusterNumber:$_:".scalar @{$info->{$_}{'neigh'}}}} sort keys %info;
+    @tmparray= grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100>$self->{incfrac}) { "$clusterNumber:$_:".scalar @{$info->{$_}{'neigh'}}}} sort keys %$info;
     writeGnnListField($gnnwriter, 'Hub Pfam Neighbors', 'string', \@tmparray);
-    @tmparray= grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100>$self->{incfrac}) { "$clusterNumber:$_:".sprintf("%.2f", int(sum(@{$info->{$_}{'stats'}})/scalar(@{$info->{$_}{'stats'}})*100)/100).":".sprintf("%.2f",int(median(@{$info->{$_}{'stats'}})*100)/100)}} sort keys %info;
+    @tmparray= grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100>$self->{incfrac}) { "$clusterNumber:$_:".sprintf("%.2f", int(sum(@{$info->{$_}{'stats'}})/scalar(@{$info->{$_}{'stats'}})*100)/100).":".sprintf("%.2f",int(median(@{$info->{$_}{'stats'}})*100)/100)}} sort keys %$info;
     writeGnnListField($gnnwriter, 'Hub Average and Median Distance', 'string', \@tmparray);
-    @tmparray=grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100>$self->{incfrac}){"$clusterNumber:$_:".sprintf("%.2f",int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100).":".scalar(uniq @{$info->{$_}{'orig'}})."/".scalar(@cluster)}} sort keys %info;
+    @tmparray=grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100>$self->{incfrac}){"$clusterNumber:$_:".sprintf("%.2f",int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100).":".scalar(uniq @{$info->{$_}{'orig'}})."/".scalar(@cluster)}} sort keys %$info;
     writeGnnListField($gnnwriter, 'Hub Co-occurrence and Ratio', 'string', \@tmparray);
     $gnnwriter->endTag;
 }
