@@ -111,6 +111,8 @@ $noneDir = "$ENV{PWD}/$noneDir"             unless $noneDir =~ /^\//;
 $noneZip = "$ENV{PWD}/$noneZip"             unless $noneZip =~ /^\//;
 $queue="efi"                                unless $queue =~ /\w/;
 
+($outputDir = $ssnout) =~ s%^(.*)/[^/]+$%$1%;
+
 if($incfrac!~/^\d+$/){
     if(defined $incfrac){
         die "incfrac must be an integer\n";
@@ -121,6 +123,12 @@ if($incfrac!~/^\d+$/){
 
 unless(-s $ssnin){
     die "cannot open ssnin file $ssnin\n";
+}
+
+my $ssninZip = "";
+if ($ssnin =~ /\.zip$/i) {
+    $ssninZip = $ssnin;
+    $ssnin =~ s/\.zip$/\.xgmml/i;
 }
 
 my $cmdString = "$toolpath/clustergnn.pl " .
@@ -147,10 +155,11 @@ my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => 
 
 
 my $B = $SS->getBuilder();
+$B->addAction("unzip -p $ssninZip > $ssnin") if $ssninZip =~ /\.zip$/i;
 $B->addAction("module load $efiGnnMod");
 $B->addAction("module load $efiDbMod");
 $B->addAction($cmdString);
-$B->addAction("touch gnn.completed");
+$B->addAction("touch $outputDir/gnn.completed");
 
 $B->renderToFile("gnnqsub.sh");
 my $gnnjob = $SS->submit("gnnqsub.sh");
