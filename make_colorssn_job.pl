@@ -96,7 +96,7 @@ my $nodeDataZip = "$outputPath/${ssnName}_UniProt_IDs.zip";
 
 my $schedType = "torque";
 $schedType = "slurm" if (defined($scheduler) and $scheduler eq "slurm") or (not defined($scheduler) and usesSlurm());
-my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => [1, 1], dryrun => $dryrun);
+my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => [1, 1], dryrun => $dryRun);
 
 
 my $B = $SS->getBuilder();
