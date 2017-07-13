@@ -168,7 +168,7 @@ sub getClusters{
         foreach my $nodeName (keys %$nodenames) {
             if (not exists $constellations{$nodeName}) {
                 $supernodes{$newnode} = $nodehash->{$nodeName}; # nodehash contains an array of nodes, since it may be a repnode
-                $singletons{$nodeName} = $newnode;
+                $singletons{$newnode} = $nodeName;
                 $constellations{$nodeName} = $newnode;
                 $newnode++;
             }
@@ -462,6 +462,25 @@ sub writeGnnListField {
     }
     $writer->endTag;
 }
+
+sub addFileActions {
+    my $B = shift; # This is an EFI::SchedulerApi::Builder object
+    my $info = shift;
+
+    $B->addAction("$info->{tool_path}/getfasta.pl -node-dir $info->{node_data_path} -out-dir $info->{fasta_data_path} -config $info->{config_file}");
+    $B->addAction("cat $info->{node_data_path}/cluster_UniProt_IDs* > $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
+    $B->addAction("sort $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted > $info->{node_data_path}/cluster_All_UniProt_IDs.txt");
+    $B->addAction("rm $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
+
+    $B->addAction("zip -j $info->{ssn_out_zip} $info->{ssn_out}") if $info->{ssn_out} and $info->{ssn_out_zip};
+    $B->addAction("zip -j -r $info->{node_zip} $info->{node_data_path}") if $info->{node_zip} and $info->{node_data_path};
+    $B->addAction("zip -j -r $info->{fasta_zip} $info->{fasta_data_path}") if $info->{fasta_data_path} and $info->{fasta_zip};
+    $B->addAction("zip -j $info->{gnn_zip} $info->{gnn}") if $info->{gnn} and $info->{gnn_zip};
+    $B->addAction("zip -j $info->{pfamhubfile_zip} $info->{pfamhubfile}") if $info->{pfamhubfile_zip} and $info->{pfamhubfile};
+    $B->addAction("zip -j -r $info->{pfam_zip} $info->{pfam_dir}") if $info->{pfam_zip} and $info->{pfam_dir};
+    $B->addAction("zip -j -r $info->{none_zip} $info->{none_dir}") if $info->{none_zip} and $info->{none_dir};
+}
+
 
 1;
 
