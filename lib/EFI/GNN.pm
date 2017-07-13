@@ -340,8 +340,8 @@ sub writeClusterHub{
     my $clusterNumber=shift @_;
     my $info=shift @_;
     my @pdbarray=@{shift @_};
-    my @cluster=@{shift @_};
-    my $ssnNodes=scalar @{shift @_};
+    my $numQueryable=shift @_;
+    my $ssnNodes=shift @_;
     my $color=shift @_;
 
     my @tmparray=();
@@ -351,15 +351,15 @@ sub writeClusterHub{
     writeGnnField($gnnwriter,'node.size', 'string', '70.0');
     writeGnnField($gnnwriter,'node.fillColor','string', $color);
     writeGnnField($gnnwriter,'Cluster Number', 'integer', $clusterNumber);
-    writeGnnField($gnnwriter,'Queriable SSN Sequences', 'integer',scalar @cluster);
+    writeGnnField($gnnwriter,'Queriable SSN Sequences', 'integer',$numQueryable);
     writeGnnField($gnnwriter,'Total SSN Sequences', 'integer', $ssnNodes);
-    @tmparray=uniq grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100>$self->{incfrac}) {"$clusterNumber:$_:".scalar(uniq @{$info->{$_}{'orig'}}) }} sort keys %$info;
+    @tmparray=uniq grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/$numQueryable*100)/100>$self->{incfrac}) {"$clusterNumber:$_:".scalar(uniq @{$info->{$_}{'orig'}}) }} sort keys %$info;
     writeGnnListField($gnnwriter, 'Hub Queries with Pfam Neighbors', 'string', \@tmparray);
-    @tmparray= grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100>$self->{incfrac}) { "$clusterNumber:$_:".scalar @{$info->{$_}{'neigh'}}}} sort keys %$info;
+    @tmparray= grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/$numQueryable*100)/100>$self->{incfrac}) { "$clusterNumber:$_:".scalar @{$info->{$_}{'neigh'}}}} sort keys %$info;
     writeGnnListField($gnnwriter, 'Hub Pfam Neighbors', 'string', \@tmparray);
-    @tmparray= grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100>$self->{incfrac}) { "$clusterNumber:$_:".sprintf("%.2f", int(sum(@{$info->{$_}{'stats'}})/scalar(@{$info->{$_}{'stats'}})*100)/100).":".sprintf("%.2f",int(median(@{$info->{$_}{'stats'}})*100)/100)}} sort keys %$info;
+    @tmparray= grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/$numQueryable*100)/100>$self->{incfrac}) { "$clusterNumber:$_:".sprintf("%.2f", int(sum(@{$info->{$_}{'stats'}})/scalar(@{$info->{$_}{'stats'}})*100)/100).":".sprintf("%.2f",int(median(@{$info->{$_}{'stats'}})*100)/100)}} sort keys %$info;
     writeGnnListField($gnnwriter, 'Hub Average and Median Distance', 'string', \@tmparray);
-    @tmparray=grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100>$self->{incfrac}){"$clusterNumber:$_:".sprintf("%.2f",int(scalar(uniq @{$info->{$_}{'orig'}})/scalar(@cluster)*100)/100).":".scalar(uniq @{$info->{$_}{'orig'}})."/".scalar(@cluster)}} sort keys %$info;
+    @tmparray=grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/$numQueryable*100)/100>$self->{incfrac}){"$clusterNumber:$_:".sprintf("%.2f",int(scalar(uniq @{$info->{$_}{'orig'}})/$numQueryable*100)/100).":".scalar(uniq @{$info->{$_}{'orig'}})."/".$numQueryable}} sort keys %$info;
     writeGnnListField($gnnwriter, 'Hub Co-occurrence and Ratio', 'string', \@tmparray);
     $gnnwriter->endTag;
 }
@@ -399,7 +399,7 @@ sub getClusterHubData {
     my $supernodeOrder = shift;
 
     my %withneighbors=();
-    my %clusternodes=();
+    my %clusterNodes=();
     my %noNeighbors;
     my %noMatches;
     my %genomeIds;
@@ -438,22 +438,41 @@ sub writeClusterHubGnn{
     my $withneighbors=shift @_;
     my $numbermatch=shift @_;
     my $supernodes=shift @_;
+    my $singletons=shift @_;
 
     $gnnwriter->startTag('graph', 'label' => "$title gnn", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
 
     foreach my $cluster (sort {$a <=> $b} keys %$clusterNodes){
+        my $numQueryableSsns = scalar @{ $withneighbors->{$cluster} };
+        my $totalSsns = scalar @{ $supernodes->{$cluster} };
+        if (exists $singletons->{$cluster}) {
+            print "excluding hub node $cluster, simplenumber " . $numbermathc->{$cluster} . " because it's a singleton hub\n";
+            next;
+        }
+        if ($numQueryableSsns < 2) {
+            print "excluding hub node $cluster, simplenumber " . $numbermatch->{$cluster} . " because it only has 1 queryable ssn.\n";
+            next;
+        }
+
         print "building hub node $cluster, simplenumber ".$numbermatch->{$cluster}."\n";
         my @pdbinfo=();
         foreach my $pfam (keys %{$clusterNodes->{$cluster}}){
-            $cooccurrence= sprintf("%.2f",int(scalar(uniq @{$clusterNodes->{$cluster}{$pfam}{'orig'}})/scalar(@{$withneighbors->{$cluster}})*100)/100);
-            if($self->{incfrac}<=$cooccurrence){
-                my $tmparray= $self->writePfamSpoke($gnnwriter,$pfam, $numbermatch->{$cluster}, $withneighbors->{$cluster}, $clusterNodes->{$cluster}{$pfam});
+            my $numNeighbors = scalar(@{$withneighbors->{$cluster}});
+            my $numNodes = scalar(uniq @{$clusterNodes->{$cluster}{$pfam}{'orig'}});
+            #if ($numNeighbors == 1) {
+            #    print "Excluding $pfam spoke node because it has only one neighbor\n";
+            #    next;
+            #}
+
+            $cooccurrence = sprintf("%.2f", int($numNodes / $numNeighbors * 100) / 100);
+            if($self->{incfrac} <= $cooccurrence){
+                my $tmparray= $self->writePfamSpoke($gnnwriter, $pfam, $numbermatch->{$cluster}, $withneighbors->{$cluster}, $clusterNodes->{$cluster}{$pfam});
                 push @pdbinfo, @{$tmparray};
-                $self->writePfamEdge($gnnwriter,$pfam,$numbermatch->{$cluster});
+                $self->writePfamEdge($gnnwriter, $pfam, $numbermatch->{$cluster});
             }
         }
-        $self->writeClusterHub($gnnwriter, $numbermatch->{$cluster}, $clusterNodes->{$cluster}, \@pdbinfo, $withneighbors->{$cluster}, $supernodes->{$cluster}, $self->{colors}->{$numbermatch{$cluster}});
 
+        $self->writeClusterHub($gnnwriter, $numbermatch->{$cluster}, $clusterNodes->{$cluster}, \@pdbinfo, $numQueryableSsns, $totalSsns, $self->{colors}->{$numbermatch->{$cluster}});
     }
 
     $gnnwriter->endTag();
@@ -516,9 +535,11 @@ sub writePfamHubGnn {
         my @clusters=();
         foreach my $cluster (keys %{$clusterNodes}){
             if(exists ${$clusterNodes}{$cluster}{$pfam}){
-                if((int(scalar( uniq (@{${$clusterNodes}{$cluster}{$pfam}{'orig'}}))/scalar(@{$withneighbors->{$cluster}})*100)/100)>=$self->{incfrac}){
+                my $numQueryable = scalar(@{$withneighbors->{$cluster}});
+                my $numWithNeighbors = scalar(uniq(@{${$clusterNodes}{$cluster}{$pfam}{'orig'}}));
+                if ($numQueryable > 1 and int($numWithNeighbors / $numQueryable * 100) / 100 >= $self->{incfrac}) {
                     push @clusters, $cluster;
-                    my $spokePdb= $self->writeClusterSpoke($writer, $pfam, $cluster, $clusterNodes, $numbermatch, $pfam_short, $pfam_long, $supernodes,$withneighbors);
+                    my $spokePdb = $self->writeClusterSpoke($writer, $pfam, $cluster, $clusterNodes, $numbermatch, $pfam_short, $pfam_long, $supernodes, $withneighbors);
                     push @hubPdb, @{$spokePdb};
                     $self->writeClusterEdge($writer, $pfam, $cluster, $numbermatch);
                     $spokecount++;

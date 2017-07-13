@@ -35,6 +35,8 @@ if (not -d $nodeDir) {
     die "The input data directory must be specified and exist.\n$usage";
 }
 
+mkdir $fastaDir or die "Unable to create $fastaDir: $!" if not -d $fastaDir;
+
 
 my $db = new EFI::Database(config_file => $configFile);
 my $dbh = $db->getHandle();

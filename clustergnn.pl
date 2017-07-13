@@ -56,11 +56,11 @@ $result = GetOptions(
     "pfam=s"            => \$pfamhubfile,
     "config=s"          => \$configFile,
     "pfam-dir=s"        => \$pfamDir,
-    "pfam-zip=s"        => \$pfamZip, # only used for GNT calls, non batch
+#    "pfam-zip=s"        => \$pfamZip, # only used for GNT calls, non batch
     "id-dir=s"          => \$idDir,
-    "id-zip=s"          => \$idZip, # only used for GNT calls, non batch
+#    "id-zip=s"          => \$idZip, # only used for GNT calls, non batch
     "none-dir=s"        => \$noneDir,
-    "none-zip=s"        => \$noneZip, # only used for GNT calls, non batch
+#    "none-zip=s"        => \$noneZip, # only used for GNT calls, non batch
     "id-out=s"          => \$idOutputFile,
     "disable-nnm"       => \$dontUseNewNeighborMethod,
 );
@@ -76,15 +76,11 @@ usage: $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <file
     -stats          file to output tabular statistics to
     -pfam           file to output PFAM hub GNN to
     -id-dir         path to directory to output lists of IDs (one file/list per cluster number)
-    -id-zip         path to a file to zip all of the output lists
     -pfam-dir       path to directory to output PFAM cluster data (one file/list per cluster number)
-    -pfam-zip       path to a file to output zip file for PFAM cluster data
     -id-out         path to a file to save the ID, cluster #, cluster color
     -config         configuration file for database info, etc.
 USAGE
 ;
-#    -nomatch        output file that contains sequences without neighbors
-#    -noneigh        output file that contains sequences without neighbors
 
 
 $batchMode = 0 if not defined $batchMode;
@@ -219,7 +215,7 @@ if (not $colorOnly) {
         print "Writing Cluster Hub GNN\n";
         $gnnoutput=new IO::File(">$gnn");
         $gnnwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $gnnoutput);
-        $util->writeClusterHubGnn($gnnwriter, $clusterNodes, $withneighbors, $numbermatch, $supernodes);
+        $util->writeClusterHubGnn($gnnwriter, $clusterNodes, $withneighbors, $numbermatch, $supernodes, $singletons);
     }
     
     if ($pfamhubfile) {
@@ -250,25 +246,25 @@ $util->writeIdMapping($idOutputFile, $numbermatch, $constellations, $supernodes)
 $util->closeClusterMapFiles() if $dataDir;
 $util->finish();
 
-if ($ssnout) {
-    (my $ssnName = $ssnout) =~ s/\.xgmml$//i;
-    my $ssnOutZip = "$ssnName.zip";
-    `zip -j $ssnOutZip $ssnout`;
-}
-
-if (not $colorOnly and $gnn) {
-    (my $gnnZip = $gnn) =~ s/\.xgmml$/.zip/i;
-    `zip -j $gnnZip $gnn`;
-}
-
-if (not $colorOnly and $pfamhubfile) {
-    (my $pfamhubfileZip = $pfamhubfile) =~ s/\.xgmml$/.zip/i;
-    `zip -j $pfamhubfileZip $pfamhubfile`;
-}
-
-`zip -j -r $pfamZip $pfamDir` if $pfamZip and $pfamDir;
-`zip -j -r $idZip $idDir` if $idZip and $idDir;
-`zip -j -r $noneZip $noneDir` if $noneZip and $noneDir;
+#if ($ssnout) {
+#    (my $ssnName = $ssnout) =~ s/\.xgmml$//i;
+#    my $ssnOutZip = "$ssnName.zip";
+#    `zip -j $ssnOutZip $ssnout`;
+#}
+#
+#if (not $colorOnly and $gnn) {
+#    (my $gnnZip = $gnn) =~ s/\.xgmml$/.zip/i;
+#    `zip -j $gnnZip $gnn`;
+#}
+#
+#if (not $colorOnly and $pfamhubfile) {
+#    (my $pfamhubfileZip = $pfamhubfile) =~ s/\.xgmml$/.zip/i;
+#    `zip -j $pfamhubfileZip $pfamhubfile`;
+#}
+#
+#`zip -j -r $pfamZip $pfamDir` if $pfamZip and $pfamDir;
+#`zip -j -r $idZip $idDir` if $idZip and $idDir;
+#`zip -j -r $noneZip $noneDir` if $noneZip and $noneDir;
 
 
 print "$0 finished\n";

@@ -11,6 +11,7 @@ use EFI::Database;
 use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm);
 use EFI::Config;
+use EFI::GNNShared;
 
 
 my ($ssnIn, $nbSize, $ssnOut, $cooc, $outputDir, $scheduler, $dryRun, $queue, $mapDirName, $mapFileName);
@@ -93,10 +94,24 @@ my $fastaDataPath = "$clusterDataPath/fasta";
 mkdir $fastaDataPath or die "Unable to create output fasta data path $fastaDataPath: $!" if not -d $fastaDataPath;
 
 my $nodeDataZip = "$outputPath/${ssnName}_UniProt_IDs.zip";
+my $fastaZip = "$outputPath/${ssnName}_FASTA.zip";
 
 my $schedType = "torque";
 $schedType = "slurm" if (defined($scheduler) and $scheduler eq "slurm") or (not defined($scheduler) and usesSlurm());
 my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => [1, 1], dryrun => $dryRun);
+
+
+my $fileInfo = {
+    color_only => 1,
+    node_data_path => $nodeDataPath,
+    node_zip => $nodeDataZip,
+    fasta_data_path => $fastaDataPath,
+    fasta_zip => $fastaZip,
+    ssn_out => "$outputPath/$ssnOut",
+    ssn_out_zip => "$outputPath/$ssnOutZip",
+    config_file => $configFile,
+    tool_path => $gntPath,
+};
 
 
 my $B = $SS->getBuilder();
@@ -104,15 +119,16 @@ $B->addAction("$str");
 $B->addAction("module load $dbModule");
 $B->addAction("module load $gntModule");
 $B->addAction("cd $outputPath");
-$B->addAction("unzip_ssn.pl -in $ssnInZip -out $ssnIn") if $ssnInZip =~ /\.zip/i;
-$B->addAction("clustergnn.pl -nb-size 10 -cooc 20 -ssnin $ssnIn -ssnout $outputPath/$ssnOut -id-dir $nodeDataPath -id-zip $nodeDataZip -id-out ${ssnName}_$mapFileName -config $configFile");
-$B->addAction("getfasta.pl -node-dir $nodeDataPath -out-dir $fastaDataPath -config $configFile");
-$B->addAction("cat $nodeDataPath/cluster_UniProt_IDs* > $nodeDataPath/cluster_All_UniProt_IDs.txt.unsorted");
-$B->addAction("sort $nodeDataPath/cluster_All_UniProt_IDs.txt.unsorted > $nodeDataPath/cluster_All_UniProt_IDs.txt");
-$B->addAction("rm $nodeDataPath/cluster_All_UniProt_IDs.txt.unsorted");
-#$B->addAction("zip -j -r $outputPath/${ssnName}_nodes.zip $nodeDataPath");
-$B->addAction("zip -j -r $outputPath/${ssnName}_FASTA.zip $fastaDataPath");
-#this is done in clustergnn.pl $B->addAction("zip -j $outputPath/$ssnOutZip $outputPath/$ssnOut");
+$B->addAction("$gntPath/unzip_ssn.pl -in $ssnInZip -out $ssnIn") if $ssnInZip =~ /\.zip/i;
+$B->addAction("$gntPath/clustergnn.pl -nb-size 10 -cooc 20 -ssnin $ssnIn -ssnout $outputPath/$ssnOut -id-dir $nodeDataPath -id-out ${ssnName}_$mapFileName -config $configFile");
+EFI::GNNShared::addFileActions($B, $fileInfo);
+#$B->addAction("getfasta.pl -node-dir $nodeDataPath -out-dir $fastaDataPath -config $configFile");
+#$B->addAction("cat $nodeDataPath/cluster_UniProt_IDs* > $nodeDataPath/cluster_All_UniProt_IDs.txt.unsorted");
+#$B->addAction("sort $nodeDataPath/cluster_All_UniProt_IDs.txt.unsorted > $nodeDataPath/cluster_All_UniProt_IDs.txt");
+#$B->addAction("rm $nodeDataPath/cluster_All_UniProt_IDs.txt.unsorted");
+##$B->addAction("zip -j -r $outputPath/${ssnName}_nodes.zip $nodeDataPath");
+#$B->addAction("zip -j -r $outputPath/${ssnName}_FASTA.zip $fastaDataPath");
+##this is done in clustergnn.pl $B->addAction("zip -j $outputPath/$ssnOutZip $outputPath/$ssnOut");
 $B->addAction("touch $outputPath/1.out.completed");
 
 my $jobScript = "$outputPath/colorgnn.sh";
