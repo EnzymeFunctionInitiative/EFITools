@@ -129,7 +129,7 @@ sub queue {
 }
 
 sub resource {
-    my ($self, $numNodes, $procPerNode) = @_;
+    my ($self, $numNodes, $procPerNode, $ram) = @_;
 
     $self->{res} = ["-l nodes=$numNodes:ppn=$procPerNode"];
 }
@@ -192,9 +192,11 @@ sub queue {
 }
 
 sub resource {
-    my ($self, $numNodes, $procPerNode) = @_;
+    my ($self, $numNodes, $procPerNode, $ram) = @_;
 
-    $self->{res} = ["--nodes=$numNodes", "--tasks-per-node=$procPerNode"];
+    my $mem = defined $ram ? "--mem=$ram" : "";
+
+    $self->{res} = ["--nodes=$numNodes", "--tasks-per-node=$procPerNode", $mem];
 }
 
 sub dependency {
@@ -244,8 +246,12 @@ sub new {
     if (exists $args{resource}) {
         $self->{resource} = $args{resource};
     } else {
-        $self->{resource} = [1, 1];
+        $self->{resource} = [];
     }
+    
+    push(@{ $self->{resource} }, 1) if scalar @{ $self->{resource} } < 1;
+    push(@{ $self->{resource} }, 1) if scalar @{ $self->{resource} } < 2;
+    push(@{ $self->{resource} }, "20gb") if scalar @{ $self->{resource} } < 3;
 
     if (exists $args{dryrun}) {
         $self->{dryrun} = $args{dryrun};
@@ -269,7 +275,7 @@ sub getBuilder {
     }
 
     $b->queue($self->{queue}) if defined $self->{queue};
-    $b->resource($self->{resource}[0], $self->{resource}[1]) if defined $self->{resource};
+    $b->resource($self->{resource}[0], $self->{resource}[1], $self->{resource}[2]) if defined $self->{resource};
 
     return $b;
 }
