@@ -261,7 +261,7 @@ sub writeColorSsnNodes {
             # find color and add attribute
             my $color = "";
             $color = $self->{colors}->{$clusterNum} if $nodeCount{$clusterNum} > 1;
-            my $clusterNumAttr = $nodeCount{$clusterNum} > 1 ? $clusterNum : "";
+            my $clusterNumAttr = $nodeCount{$clusterNum} > 1 ? $clusterNum : 999999;
 
             writeGnnField($writer, 'node.fillColor', 'string', $color);
             writeGnnField($writer, 'Cluster Number', 'integer', $clusterNumAttr);
