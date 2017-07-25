@@ -253,15 +253,18 @@ sub writeColorSsnNodes {
         # In a previous step, we included singletons (historically they were excluded).
         unless($clusterNum eq ""){
             $nodeCount{$clusterNum} = scalar @{ $supernodes->{$clusterId} } if not exists $nodeCount{$clusterNum};
-            $self->saveNodeToClusterMap($clusterId, $numbermatch, $supernodes, $gnnData);
+
+            $self->saveNodeToClusterMap($clusterId, $numbermatch, $supernodes, $gnnData) if $nodeCount{$clusterNum} > 1;
+
             $writer->startTag('node', 'id' => $nodeId, 'label' => $nodeId);
 
             # find color and add attribute
             my $color = "";
             $color = $self->{colors}->{$clusterNum} if $nodeCount{$clusterNum} > 1;
+            my $clusterNumAttr = $nodeCount{$clusterNum} > 1 ? $clusterNum : "";
 
             writeGnnField($writer, 'node.fillColor', 'string', $color);
-            writeGnnField($writer, 'Cluster Number', 'integer', $clusterNum);
+            writeGnnField($writer, 'Cluster Number', 'integer', $clusterNumAttr);
             writeGnnField($writer, 'Cluster Sequence Count', 'integer', $nodeCount{$clusterNum});
 
             if (not $self->{color_only}) {
@@ -362,6 +365,8 @@ sub writeIdMapping {
     my @data;
     foreach my $clusterId (sort keys %$supernodes) {
         my $clusterNum = $numbermatch->{$clusterId};
+        next if scalar @{ $supernodes->{$clusterId} } < 2;
+
         foreach my $nodeId (@{ $supernodes->{$clusterId} }) {
             push @data, [$nodeId, $clusterNum, $self->{colors}->{$clusterNum}];
         }
