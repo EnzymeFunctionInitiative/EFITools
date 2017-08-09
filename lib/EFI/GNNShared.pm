@@ -273,40 +273,40 @@ sub writeColorSsnNodes {
                 }else{
                     my $attrType = $attribute->getAttribute('type');
                     my $attrName = $attribute->getAttribute('name');
-                    if ($attrName eq "Other IDs") { #TODO: need to make this a shared constant
-                        writeGnnField($writer, 'Cluster Number', 'integer', $clusterNumAttr);
+                    if ($attrName eq "Organism") { #TODO: need to make this a shared constant
+                        writeGnnField($writer, 'Cluster Number', 'integer', $clusterNumAttr) if $clusterNumAttr != 999999;
                         writeGnnField($writer, 'Cluster Sequence Count', 'integer', $nodeCount{$clusterNum});
                         writeGnnField($writer, 'node.fillColor', 'string', $color);
                         if (not $self->{color_only}) {
                             $self->saveGnnAttributes($writer, $gnnData, $node);
                         }
                         $saveAttrs = 1;
-                    } else {
-                        if($attrType eq 'list'){
-                            $writer->startTag('att', 'type' => $attrType, 'name' => $attrName);
-                            foreach $listelement ($attribute->getElementsByTagName('att')){
-                                $writer->emptyTag('att', 'type' => $listelement->getAttribute('type'),
-                                                  'name' => $listelement->getAttribute('name'),
-                                                  'value' => $listelement->getAttribute('value'));
-                            }
-                            $writer->endTag;
-                        }elsif($attrName eq 'interaction'){
-                            #do nothing
-                            #this tag causes problems and it is not needed, so we do not include it
+                    }
+
+                    if($attrType eq 'list'){
+                        $writer->startTag('att', 'type' => $attrType, 'name' => $attrName);
+                        foreach $listelement ($attribute->getElementsByTagName('att')){
+                            $writer->emptyTag('att', 'type' => $listelement->getAttribute('type'),
+                                              'name' => $listelement->getAttribute('name'),
+                                              'value' => $listelement->getAttribute('value'));
+                        }
+                        $writer->endTag;
+                    }elsif($attrName eq 'interaction'){
+                        #do nothing
+                        #this tag causes problems and it is not needed, so we do not include it
+                    }else{
+                        if(defined $attribute->getAttribute('value')){
+                            $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName,
+                                              'value' => $attribute->getAttribute('value'));
                         }else{
-                            if(defined $attribute->getAttribute('value')){
-                                $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName,
-                                                  'value' => $attribute->getAttribute('value'));
-                            }else{
-                                $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName);
-                            }
+                            $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName);
                         }
                     }
                 }
             }
 
             if (not $savedAttrs) {
-                writeGnnField($writer, 'Cluster Number', 'integer', $clusterNumAttr);
+                writeGnnField($writer, 'Cluster Number', 'integer', $clusterNumAttr) if $clusterNumAttr != 999999;
                 writeGnnField($writer, 'Cluster Sequence Count', 'integer', $nodeCount{$clusterNum});
                 writeGnnField($writer, 'node.fillColor', 'string', $color);
                 if (not $self->{color_only}) {
