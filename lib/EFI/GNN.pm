@@ -256,42 +256,42 @@ sub getPdbInfo{
     my $self = shift @_;
     my @accessions=@{shift @_};
 
-    my $shape='broken';
-    my %pdbInfo=();
-    my $pdb=0;
-    my $ec=0;
-    my $pdbNumber='';
-    my $pdbEvalue='';
-    my $pdbresults;
-    my $ecresults;
+    my $shape = 'broken';
+    my %pdbInfo = ();
+    my $pdbValueCount = 0;
+    my $reviewedCount = 0;
 
     foreach my $accession (@accessions){
         my $sth=$self->{dbh}->prepare("select STATUS,EC from annotations where accession='$accession'");
         $sth->execute;
-        $ecresults=$sth->fetchrow_hashref;
-        if($ecresults->{EC} ne 'None'){
-            $ec++;
+        my $ecresults=$sth->fetchrow_hashref;
+        if($ecresults->{STATUS} eq 'Reviewed'){
+            $reviewedCount++;
         }
+
         $sth=$self->{dbh}->prepare("select PDB,e from pdbhits where ACC='$accession'");
         $sth->execute;
+
+        my $pdbEvalue = '';
+        my $pdbNumber = '';
         if($sth->rows > 0){
-            $pdb++;
-            $pdbresults=$sth->fetchrow_hashref;
-            $pdbNumber=$pdbresults->{PDB};
-            $pdbEvalue=$pdbresults->{e};
+            $pdbValueCount++;
+            my $pdbresults =$sth->fetchrow_hashref;
+            $pdbNumber = $pdbresults->{PDB};
+            $pdbEvalue = $pdbresults->{e};
         }else{
-            $pdbNumber='None';
-            $pdbEvalue='None';
+            $pdbNumber = 'None';
+            $pdbEvalue = 'None';
         }
         $pdbInfo{$accession}=$ecresults->{EC}.":$pdbNumber:$pdbEvalue:".$ecresults->{STATUS};
     }
-    if($pdb>0 and $ec>0){
+    if ($pdbValueCount > 0 and $reviewedCount > 0) {
         $shape='diamond';
-    }elsif($pdb>0){
+    } elsif ($pdbValueCount > 0) {
         $shape='square';
-    }elsif($ec>0){
+    } elsif ($reviewedCount > 0) {
         $shape='triangle'
-    }else{
+    } else {
         $shape='circle';
     }
     return $shape, \%pdbInfo;
@@ -302,6 +302,7 @@ sub writePfamSpoke{
     my $gnnwriter=shift @_;
     my $pfam=shift @_;
     my $clusternumber=shift @_;
+    my $totalSsnNodes = shift @_;
     my @cluster=@{shift @_};
     my %info=%{shift @_};
 
@@ -311,24 +312,25 @@ sub writePfamSpoke{
     (my $pfam_short, my $pfam_long)= $self->getPfamNames($pfam);
     (my $shape, my $pdbinfo)= $self->getPdbInfo(\@{$info{'neighlist'}});
     $gnnwriter->startTag('node', 'id' => "$clusternumber:$pfam", 'label' => "$pfam_short");
-    writeGnnField($gnnwriter, 'node.size', 'string', int(sprintf("%.2f",int(scalar(uniq @{$info{'orig'}})/scalar(@cluster)*100)/100)*100));
-    writeGnnField($gnnwriter, 'node.shape', 'string', $shape);
-    writeGnnField($gnnwriter, 'node.fillColor','string', '#EEEEEE');
-    writeGnnField($gnnwriter, 'Co-occurrence', 'real', sprintf("%.2f",int(scalar(uniq @{$info{'orig'}})/scalar(@cluster)*100)/100));
-    writeGnnField($gnnwriter, 'Co-occurrence Ratio','string',scalar(uniq @{$info{'orig'}})."/".scalar(@cluster));
-    writeGnnField($gnnwriter, 'Average Distance', 'real', sprintf("%.2f", int(sum(@{$info{'stats'}})/scalar(@{$info{'stats'}})*100)/100));
-    writeGnnField($gnnwriter, 'Median Distance', 'real', sprintf("%.2f",int(median(@{$info{'stats'}})*100)/100));
-    writeGnnField($gnnwriter, 'Pfam Neighbors', 'integer', scalar(@{$info{'neigh'}}));
-    writeGnnField($gnnwriter, 'Queries with Pfam Neighbors', 'integer', scalar(uniq @{$info{'orig'}}));
-    writeGnnField($gnnwriter, 'Queriable Sequences','integer',scalar(@cluster));
-    writeGnnField($gnnwriter, 'Cluster Number', 'integer', $clusternumber);
-    writeGnnField($gnnwriter, 'Pfam Description', 'string', $pfam_long);
+    writeGnnField($gnnwriter, 'SSN Cluster Number', 'integer', $clusternumber);
     writeGnnField($gnnwriter, 'Pfam', 'string', $pfam);
+    writeGnnField($gnnwriter, 'Pfam Description', 'string', $pfam_long);
+    writeGnnField($gnnwriter, 'Queries with Pfam Neighbors', 'integer', scalar(uniq @{$info{'orig'}}));
+    writeGnnField($gnnwriter, 'Pfam Neighbors', 'integer', scalar(@{$info{'neigh'}}));
+    writeGnnField($gnnwriter, '# of Sequences in SSN Cluster', 'integer', $totalSsnNodes);
+    writeGnnField($gnnwriter, '# of Sequences in SSN Cluster with Neighbors','integer',scalar(@cluster));
     writeGnnListField($gnnwriter, 'Query Accessions', 'string', \@{$info{'orig'}});
-    @tmparray=map "$pfam:$_", @{$info{'dist'}};
-    writeGnnListField($gnnwriter, 'Query-Neighbor Arrangement', 'string', \@tmparray);
     @tmparray=map "$pfam:$_:".${$pdbinfo}{(split(":",$_))[1]}, @{$info{'neigh'}};
     writeGnnListField($gnnwriter, 'Query-Neighbor Accessions', 'string', \@tmparray);
+    @tmparray=map "$pfam:$_", @{$info{'dist'}};
+    writeGnnListField($gnnwriter, 'Query-Neighbor Arrangement', 'string', \@tmparray);
+    writeGnnField($gnnwriter, 'Average Distance', 'real', sprintf("%.2f", int(sum(@{$info{'stats'}})/scalar(@{$info{'stats'}})*100)/100));
+    writeGnnField($gnnwriter, 'Median Distance', 'real', sprintf("%.2f",int(median(@{$info{'stats'}})*100)/100));
+    writeGnnField($gnnwriter, 'Co-occurrence', 'real', sprintf("%.2f",int(scalar(uniq @{$info{'orig'}})/scalar(@cluster)*100)/100));
+    writeGnnField($gnnwriter, 'Co-occurrence Ratio','string',scalar(uniq @{$info{'orig'}})."/".scalar(@cluster));
+    writeGnnField($gnnwriter, 'node.fillColor','string', '#EEEEEE');
+    writeGnnField($gnnwriter, 'node.shape', 'string', $shape);
+    writeGnnField($gnnwriter, 'node.size', 'string', int(sprintf("%.2f",int(scalar(uniq @{$info{'orig'}})/scalar(@cluster)*100)/100)*100));
     $gnnwriter->endTag;
 
     return \@tmparray;
@@ -341,18 +343,15 @@ sub writeClusterHub{
     my $info=shift @_;
     my @pdbarray=@{shift @_};
     my $numQueryable=shift @_;
-    my $ssnNodes=shift @_;
+    my $totalSsnNodes=shift @_;
     my $color=shift @_;
 
     my @tmparray=();
 
     $gnnwriter->startTag('node', 'id' => $clusterNumber, 'label' => $clusterNumber);
-    writeGnnField($gnnwriter,'node.shape', 'string', 'hexagon');
-    writeGnnField($gnnwriter,'node.size', 'string', '70.0');
-    writeGnnField($gnnwriter,'node.fillColor','string', $color);
-    writeGnnField($gnnwriter,'Cluster Number', 'integer', $clusterNumber);
-    writeGnnField($gnnwriter,'Queriable SSN Sequences', 'integer',$numQueryable);
-    writeGnnField($gnnwriter,'Total SSN Sequences', 'integer', $ssnNodes);
+    writeGnnField($gnnwriter,'SSN Cluster Number', 'integer', $clusterNumber);
+    writeGnnField($gnnwriter,'# of Sequences in SSN Cluster', 'integer', $totalSsnNodes);
+    writeGnnField($gnnwriter,'# of Sequences in SSN Cluster with Neighbors', 'integer',$numQueryable);
     @tmparray=uniq grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/$numQueryable*100)/100>$self->{incfrac}) {"$clusterNumber:$_:".scalar(uniq @{$info->{$_}{'orig'}}) }} sort keys %$info;
     writeGnnListField($gnnwriter, 'Hub Queries with Pfam Neighbors', 'string', \@tmparray);
     @tmparray= grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/$numQueryable*100)/100>$self->{incfrac}) { "$clusterNumber:$_:".scalar @{$info->{$_}{'neigh'}}}} sort keys %$info;
@@ -361,6 +360,9 @@ sub writeClusterHub{
     writeGnnListField($gnnwriter, 'Hub Average and Median Distance', 'string', \@tmparray);
     @tmparray=grep { $_ ne '' } map { if(int(scalar(uniq @{$info->{$_}{'orig'}})/$numQueryable*100)/100>$self->{incfrac}){"$clusterNumber:$_:".sprintf("%.2f",int(scalar(uniq @{$info->{$_}{'orig'}})/$numQueryable*100)/100).":".scalar(uniq @{$info->{$_}{'orig'}})."/".$numQueryable}} sort keys %$info;
     writeGnnListField($gnnwriter, 'Hub Co-occurrence and Ratio', 'string', \@tmparray);
+    writeGnnField($gnnwriter,'node.fillColor','string', $color);
+    writeGnnField($gnnwriter,'node.shape', 'string', 'hexagon');
+    writeGnnField($gnnwriter,'node.size', 'string', '70.0');
     $gnnwriter->endTag;
 }
 
@@ -440,7 +442,7 @@ sub writeClusterHubGnn{
     my $supernodes=shift @_;
     my $singletons=shift @_;
 
-    $gnnwriter->startTag('graph', 'label' => "$title gnn", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
+    $gnnwriter->startTag('graph', 'label' => $self->{title} . " GNN", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
 
     foreach my $cluster (sort {$a <=> $b} keys %$clusterNodes){
         my $numQueryableSsns = scalar @{ $withneighbors->{$cluster} };
@@ -466,7 +468,7 @@ sub writeClusterHubGnn{
 
             $cooccurrence = sprintf("%.2f", int($numNodes / $numNeighbors * 100) / 100);
             if($self->{incfrac} <= $cooccurrence){
-                my $tmparray= $self->writePfamSpoke($gnnwriter, $pfam, $numbermatch->{$cluster}, $withneighbors->{$cluster}, $clusterNodes->{$cluster}{$pfam});
+                my $tmparray= $self->writePfamSpoke($gnnwriter, $pfam, $numbermatch->{$cluster}, $totalSsns, $withneighbors->{$cluster}, $clusterNodes->{$cluster}{$pfam});
                 push @pdbinfo, @{$tmparray};
                 $self->writePfamEdge($gnnwriter, $pfam, $numbermatch->{$cluster});
             }
@@ -502,17 +504,17 @@ sub saveGnnAttributes {
             push @genomeId, $gnnData->{genomeIds}->{$accId};
         }
 
-        writeGnnListField($writer, 'Has Neighbors', 'string', \@hasNeighbors, 0);
-        writeGnnListField($writer, 'Has Match', 'string', \@hasMatch, 0);
-        writeGnnListField($writer, 'Genome ID', 'string', \@genomeId, 0);
+        writeGnnListField($writer, 'Present in ENA Database?', 'string', \@hasMatch, 0);
+        writeGnnListField($writer, 'Genome Neighbors in ENA Database?', 'string', \@hasNeighbors, 0);
+        writeGnnListField($writer, 'ENA Database Genome ID', 'string', \@genomeId, 0);
     } else {
         my $nodeId = $node->getAttribute('label');
         my $hasNeighbors = $gnnData->{noNeighborMap}->{$nodeId} == 1 ? "false" : $gnnData->{noNeighborMap}->{$nodeId} == -1 ? "n/a" : "true";
         my $genomeId = $gnnData->{genomeIds}->{$nodeId};
         my $hasMatch = $gnnData->{noMatchMap}->{$nodeId} ? "false" : "true";
-        writeGnnField($writer, 'Has Neighbors', 'string', $hasNeighbors);
-        writeGnnField($writer, 'Has Match', 'string', $hasMatch);
-        writeGnnField($writer, 'Genome ID', 'string', $genomeId);
+        writeGnnField($writer, 'Present in ENA Database?', 'string', $hasMatch);
+        writeGnnField($writer, 'Genome Neighbors in ENA Database?', 'string', $hasNeighbors);
+        writeGnnField($writer, 'ENA Database Genome ID', 'string', $genomeId);
     }
 }
 
@@ -526,7 +528,7 @@ sub writePfamHubGnn {
 
     my @pfamHubs=uniq sort map {keys %{${$clusterNodes}{$_}}} keys %{$clusterNodes};
 
-    $writer->startTag('graph', 'label' => "$title Pfam Gnn", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
+    $writer->startTag('graph', 'label' => $self->{title} . " Pfam GNN", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
 
     foreach my $pfam (@pfamHubs){
         (my $pfam_short, my $pfam_long)= $self->getPfamNames($pfam);
@@ -577,25 +579,27 @@ sub writeClusterSpoke{
     my $coOcc=(int(scalar( uniq (@{${$clusterNodes}{$cluster}{$pfam}{'orig'}}))/scalar(@{$withneighbors->{$cluster}})*100)/100);
     my $coOccRat=scalar( uniq (@{${$clusterNodes}{$cluster}{$pfam}{'orig'}}))."/".scalar(@{$withneighbors->{$cluster}});
 
+    my @tmparray=map "$_:".${$pdbinfo}{(split(":",$_))[1]}, @{${$clusterNodes}{$cluster}{$pfam}{'neigh'}};
+
     $writer->startTag('node', 'id' => "$pfam:" . $numbermatch->{$cluster}, 'label' => $numbermatch->{$cluster});
 
-    writeGnnField($writer, 'node.fillColor','string', $color);
-    writeGnnField($writer, 'Co-occurrence','real',$coOcc);
-    writeGnnField($writer, 'Co-occurrence Ratio','string',$coOccRat);
+    writeGnnField($writer, 'Pfam', 'string', "");
+    writeGnnField($writer, 'Pfam Description', 'string', "");
     writeGnnField($writer, 'Cluster Number', 'integer', $clusterNum);
-    writeGnnField($writer, 'Total SSN Sequences', 'integer', scalar(@{$supernodes->{$cluster}}));
+    writeGnnField($writer, '# of Sequences in SSN Cluster', 'integer', scalar(@{$supernodes->{$cluster}}));
+    writeGnnField($writer, '# of Sequences in SSN Cluster with Neighbors', 'integer', scalar(@{$withneighbors->{$cluster}}));
     writeGnnField($writer, 'Queries with Pfam Neighbors', 'integer', scalar( uniq (@{${$clusterNodes}{$cluster}{$pfam}{'orig'}})));
-    writeGnnField($writer, 'Queriable SSN Sequences', 'integer', scalar(@{$withneighbors->{$cluster}}));
-    writeGnnField($writer, 'node.size', 'string',$coOcc*100);
-    writeGnnField($writer, 'node.shape', 'string', $shape);
+    writeGnnField($writer, 'Pfam Neighbors', 'integer', scalar(@{${$clusterNodes}{$cluster}{$pfam}{'neigh'}}));
+    writeGnnListField($writer, 'Query Accessions', 'string', \@{${$clusterNodes}{$cluster}{$pfam}{'orig'}});
+    writeGnnListField($writer, 'Query-Neighbor Accessions', 'string', \@tmparray);
+    writeGnnListField($writer, 'Query-Neighbor Arrangement', 'string', \@{${$clusterNodes}{$cluster}{$pfam}{'dist'}});
     writeGnnField($writer, 'Average Distance', 'real', $avgDist);
     writeGnnField($writer, 'Median Distance', 'real', $medDist);
-    writeGnnField($writer, 'Pfam Neighbors', 'integer', scalar(@{${$clusterNodes}{$cluster}{$pfam}{'neigh'}}));
-    
-    writeGnnListField($writer, 'Query Accessions', 'string', \@{${$clusterNodes}{$cluster}{$pfam}{'orig'}});
-    writeGnnListField($writer, 'Query-Neighbor Arrangement', 'string', \@{${$clusterNodes}{$cluster}{$pfam}{'dist'}});
-    @tmparray=map "$_:".${$pdbinfo}{(split(":",$_))[1]}, @{${$clusterNodes}{$cluster}{$pfam}{'neigh'}};
-    writeGnnListField($writer, 'Query-Neighbor Accessions', 'string', \@tmparray);
+    writeGnnField($writer, 'Co-occurrence','real',$coOcc);
+    writeGnnField($writer, 'Co-occurrence Ratio','string',$coOccRat);
+    writeGnnField($writer, 'node.fillColor','string', $color);
+    writeGnnField($writer, 'node.shape', 'string', $shape);
+    writeGnnField($writer, 'node.size', 'string',$coOcc*100);
     
     $writer->endTag();
     
@@ -635,12 +639,10 @@ sub writePfamHub {
 
     $writer->startTag('node', 'id' => $pfam, 'label' => $pfam_short);
 
-    writeGnnField($writer,'node.shape', 'string', 'hexagon');
-    writeGnnField($writer,'node.size', 'string', '70.0');
     writeGnnField($writer, 'Pfam', 'string', $pfam);
     writeGnnField($writer, 'Pfam Description', 'string', $pfam_long);
-    writeGnnField($writer, 'Total SSN Sequences', 'integer', sum(map scalar(@{$supernodes->{$_}}), @{$clusters}));
-    writeGnnField($writer, 'Queriable SSN Sequences','integer', sum(map scalar(@{$withneighbors->{$_}}), @{$clusters}));
+    writeGnnField($writer, '# of Sequences in SSN Cluster', 'integer', sum(map scalar(@{$supernodes->{$_}}), @{$clusters}));
+    writeGnnField($writer, '# of Sequences in SSN Cluster with Neighbors','integer', sum(map scalar(@{$withneighbors->{$_}}), @{$clusters}));
     writeGnnField($writer, 'Queries with Pfam Neighbors', 'integer',sum(map scalar( uniq (@{${$clusterNodes}{$_}{$pfam}{'orig'}})), @{$clusters}));
     writeGnnField($writer, 'Pfam Neighbors', 'integer',sum(map scalar( uniq (@{${$clusterNodes}{$_}{$pfam}{'neigh'}})), @{$clusters}));
     writeGnnListField($writer, 'Query-Neighbor Accessions', 'string', $hubPdb);
@@ -651,6 +653,8 @@ sub writePfamHub {
     @tmparray=map $numbermatch->{$_}.":".sprintf("%.2f",int(scalar( uniq (@{${$clusterNodes}{$_}{$pfam}{'orig'}}))/scalar(@{$withneighbors->{$_}})*100)/100).":".scalar( uniq (@{${$clusterNodes}{$_}{$pfam}{'orig'}}))."/".scalar(@{$withneighbors->{$_}}), sort {$a <=> $b} @{$clusters};
     writeGnnListField($writer, 'Hub Co-occurrence and Ratio', 'string', \@tmparray);
     writeGnnField($writer, 'node.fillColor','string', '#EEEEEE');
+    writeGnnField($writer,'node.shape', 'string', 'hexagon');
+    writeGnnField($writer,'node.size', 'string', '70.0');
 
     $writer->endTag;
 }

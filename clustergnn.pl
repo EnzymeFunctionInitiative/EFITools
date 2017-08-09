@@ -236,7 +236,7 @@ if ($ssnout) {
     $output=new IO::File(">$ssnout");
     $writer=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $output);
 
-    $util->writeColorSsn($nodes, $edges, $title, $writer, $numbermatch, $constellations, $nodenames, $supernodes, $gnnData);
+    $util->writeColorSsn($nodes, $edges, $writer, $numbermatch, $constellations, $nodenames, $supernodes, $gnnData);
 }
 
 close($warning_fh);
