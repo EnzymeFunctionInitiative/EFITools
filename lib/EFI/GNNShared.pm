@@ -1,14 +1,21 @@
 
 package EFI::GNNShared;
 
+use File::Basename;
+use Cwd 'abs_path';
+use lib abs_path(dirname(__FILE__) . "/../");
+
 use List::MoreUtils qw{apply uniq any};
 use List::Util qw(sum);
 use Array::Utils qw(:all);
+use EFI::Annotations;
+
 
 use Exporter 'import';
 @EXPORT = qw(median writeGnnField writeGnnListField);
 
 our $ClusterUniProtIDFilePattern = "cluster_UniProt_IDs_";
+
 
 sub new {
     my ($class, %args) = @_;
@@ -22,6 +29,7 @@ sub new {
     $self->{id_dir} = ($args{id_dir} and -d $args{id_dir}) ? $args{id_dir} : "";
     $self->{cluster_fh} = {};
     $self->{color_only} = exists $args{color_only} ? $args{color_only} : 0;
+    $self->{anno} = EFI::Annotations::get_annotation_data();
 
     return $self;
 }
@@ -69,7 +77,9 @@ sub getNodes{
     my %nodenames;
     my %nodeMap;
 
-    print "parse nodes for accessions\n";
+    my $attrName = $self->{anno}->{ACC}->{display};
+
+    print "parse nodes for accessions using '$attrName'\n";
     foreach $node (@{$nodes}){
         $nodehead=$node->getAttribute('label');
         #cytoscape exports replace the id with an integer instead of the accessions
@@ -80,11 +90,12 @@ sub getNodes{
         push @{$nodehash{$nodehead}}, $nodehead;
         $nodeMap{$nodehead} = $node;
         foreach $annotation (@annotations){
-            if($annotation->getAttribute('name') eq "ACC"){
+            if($annotation->getAttribute('name') eq $attrName){
                 my @accessionlists=$annotation->findnodes('./*');
                 foreach $accessionlist (@accessionlists){
                     #make sure all accessions within the node are included in the gnn network
                     my $attrAcc = $accessionlist->getAttribute('value');
+                    print "FOUND ONE $attrAcc\n";
                     push @{$nodehash{$nodehead}}, $attrAcc if $nodehead ne $attrAcc;
                     $nodeMap{$nodehead} = $node;
                 }
