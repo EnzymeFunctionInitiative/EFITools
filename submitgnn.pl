@@ -216,7 +216,7 @@ $B->addAction("module load $efiGnnMod");
 $B->addAction("$toolpath/unzip_ssn.pl -in $ssnInZip -out $ssnIn") if $ssnInZip =~ /\.zip/i;
 $B->addAction($cmdString);
 EFI::GNNShared::addFileActions($B, $info);
-$B->addAction("touch $outputDir/gnn.completed");
+$B->addAction("$toolpath/save_version.pl > $outputDir/gnn.completed");
 
 $B->renderToFile("gnnqsub.sh");
 my $gnnjob = $SS->submit("gnnqsub.sh");

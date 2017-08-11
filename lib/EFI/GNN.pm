@@ -262,30 +262,28 @@ sub getPdbInfo{
     my $reviewedCount = 0;
 
     foreach my $accession (@accessions){
-        my $sth=$self->{dbh}->prepare("select STATUS,EC from annotations where accession='$accession'");
+        my $sth=$self->{dbh}->prepare("select STATUS,EC,pdb from annotations where accession='$accession'");
         $sth->execute;
-        my $ecresults=$sth->fetchrow_hashref;
-        my $status = $ecresults->{STATUS} eq "Reviewed" ? "SwissProt" : "TrEMBL";
+        my $attribResults=$sth->fetchrow_hashref;
+        my $status = $attribResults->{STATUS} eq "Reviewed" ? "SwissProt" : "TrEMBL";
+        my $pdbNumber = $attribResults->{pdb};
         
-        if($status eq "SwissProt"){
+        if ($status eq "SwissProt") {
+            $reviewedCount++;
+        }
+        if ($pdbNumber ne 'None') {
             $reviewedCount++;
         }
 
         $sth=$self->{dbh}->prepare("select PDB,e from pdbhits where ACC='$accession'");
         $sth->execute;
 
-        my $pdbEvalue = '';
-        my $pdbNumber = '';
-        if($sth->rows > 0){
-            $pdbValueCount++;
-            my $pdbresults =$sth->fetchrow_hashref;
-            $pdbNumber = $pdbresults->{PDB};
+        my $pdbEvalue = 'None';
+        if ($sth->rows > 0) {
+            my $pdbresults = $sth->fetchrow_hashref;
             $pdbEvalue = $pdbresults->{e};
-        }else{
-            $pdbNumber = 'None';
-            $pdbEvalue = 'None';
         }
-        $pdbInfo{$accession}=$ecresults->{EC}.":$pdbNumber:$pdbEvalue:".$status;
+        $pdbInfo{$accession} = $attribResults->{EC} . ":$pdbNumber:$pdbEvalue:" . $status;
     }
     if ($pdbValueCount > 0 and $reviewedCount > 0) {
         $shape='diamond';
@@ -330,10 +328,10 @@ sub writePfamSpoke{
     writeGnnField($gnnwriter, 'Median Distance', 'real', sprintf("%.2f",int(median(@{$info{'stats'}})*100)/100));
     writeGnnField($gnnwriter, 'Co-occurrence', 'real', sprintf("%.2f",int(scalar(uniq @{$info{'orig'}})/scalar(@cluster)*100)/100));
     writeGnnField($gnnwriter, 'Co-occurrence Ratio','string',scalar(uniq @{$info{'orig'}})."/".scalar(@cluster));
-    writeGnnField($gnnwriter, 'Hub Queries with Pfam Neighbors', 'string', '');
-    writeGnnField($gnnwriter, 'Hub Pfam Neighbors', 'string', '');
-    writeGnnField($gnnwriter, 'Hub Average and Median Distance', 'string', '');
-    writeGnnField($gnnwriter, 'Hub Co-occurrence and Ratio', 'string', '');
+    writeGnnListField($gnnwriter, 'Hub Queries with Pfam Neighbors', 'string', []);
+    writeGnnListField($gnnwriter, 'Hub Pfam Neighbors', 'string', []);
+    writeGnnListField($gnnwriter, 'Hub Average and Median Distance', 'string', []);
+    writeGnnListField($gnnwriter, 'Hub Co-occurrence and Ratio', 'string', []);
     writeGnnField($gnnwriter, 'node.fillColor','string', '#EEEEEE');
     writeGnnField($gnnwriter, 'node.shape', 'string', $shape);
     writeGnnField($gnnwriter, 'node.size', 'string', int(sprintf("%.2f",int(scalar(uniq @{$info{'orig'}})/scalar(@cluster)*100)/100)*100));
@@ -492,9 +490,11 @@ sub saveGnnAttributes {
     my $gnnData = shift;
     my $node = shift;
 
+    my $attrName = $self->{anno}->{ACC}->{display};
+
     # If this is a repnode network, there will be a child node named "ACC". If so, we need to wrap
     # all of the no matches, etc into a list rather than a simple attribute.
-    my @accIdNode = grep { $_ =~ /\S/ and $_->getAttribute('name') eq "ACC" } $node->getChildNodes;
+    my @accIdNode = grep { $_ =~ /\S/ and $_->getAttribute('name') eq $attrName } $node->getChildNodes;
     if (scalar @accIdNode) {
         my $accNode = $accIdNode[0];
         my @accIdAttrs = $accNode->findnodes("./*");
@@ -603,8 +603,8 @@ sub writeClusterSpoke{
     writeGnnField($writer, 'Median Distance', 'real', $medDist);
     writeGnnField($writer, 'Co-occurrence','real',$coOcc);
     writeGnnField($writer, 'Co-occurrence Ratio','string',$coOccRat);
-    writeGnnField($writer, 'Hub Average and Median Distances', 'string', '');
-    writeGnnField($writer, 'Hub Co-occurrence and Ratio', 'string', '');
+    writeGnnListField($writer, 'Hub Average and Median Distances', 'string', []);
+    writeGnnListField($writer, 'Hub Co-occurrence and Ratio', 'string', []);
     writeGnnField($writer, 'node.fillColor','string', $color);
     writeGnnField($writer, 'node.shape', 'string', $shape);
     writeGnnField($writer, 'node.size', 'string',$coOcc*100);
