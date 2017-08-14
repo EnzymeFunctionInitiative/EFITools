@@ -271,19 +271,21 @@ sub getPdbInfo{
         if ($status eq "SwissProt") {
             $reviewedCount++;
         }
-        if ($pdbNumber ne 'None') {
-            $reviewedCount++;
+        if ($pdbNumber ne "None") {
+            $pdbValueCount++;
         }
 
         $sth=$self->{dbh}->prepare("select PDB,e from pdbhits where ACC='$accession'");
         $sth->execute;
 
-        my $pdbEvalue = 'None';
+        my $pdbEvalue = "None";
+        my $closestPdbNumber = "None";
         if ($sth->rows > 0) {
             my $pdbresults = $sth->fetchrow_hashref;
             $pdbEvalue = $pdbresults->{e};
+            $closestPdbNumber = $pdbresults->{PDB};
         }
-        $pdbInfo{$accession} = $attribResults->{EC} . ":$pdbNumber:$pdbEvalue:" . $status;
+        $pdbInfo{$accession} = join(":", $attribResults->{EC}, $pdbNumber, $closestPdbNumber, $pdbEvalue, $status);
     }
     if ($pdbValueCount > 0 and $reviewedCount > 0) {
         $shape='diamond';
