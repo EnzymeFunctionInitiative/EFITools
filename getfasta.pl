@@ -47,7 +47,7 @@ my $pattern = $EFI::GNNShared::ClusterUniProtIDFilePattern;
 
 open ALL, ">$fastaDir/all.fasta";
 
-foreach my $file (glob("$nodeDir/$pattern*.txt")) {
+foreach my $file (sort file_sort glob("$nodeDir/$pattern*.txt")) {
     (my $clusterNum = $file) =~ s%^.*/$pattern(\d+)\.txt$%$1%;
     
     open FASTA, ">$fastaDir/cluster_$clusterNum.fasta";
@@ -100,4 +100,10 @@ close ALL;
 
 $dbh->disconnect();
 
+
+sub file_sort {
+    (my $aa = $a) =~ s/^.*?(\d+)\.txt$/$1/;
+    (my $bb = $b) =~ s/^.*?(\d+)\.txt$/$1/;
+    return $aa <=> $bb;
+}
 
