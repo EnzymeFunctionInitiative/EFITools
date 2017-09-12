@@ -77,9 +77,9 @@ sub getNodes{
     my %nodenames;
     my %nodeMap;
 
-    my $attrName = $self->{anno}->{ACC}->{display};
+    my $efi = new EFI::Annotations;
 
-    print "parse nodes for accessions using '$attrName'\n";
+    print "parse nodes for accessions\n";
     foreach $node (@{$nodes}){
         $nodehead=$node->getAttribute('label');
         #cytoscape exports replace the id with an integer instead of the accessions
@@ -90,12 +90,12 @@ sub getNodes{
         push @{$nodehash{$nodehead}}, $nodehead;
         $nodeMap{$nodehead} = $node;
         foreach $annotation (@annotations){
-            if($annotation->getAttribute('name') eq $attrName){
+            if($efi->is_expandable_attr($annotation->getAttribute('name'))){
                 my @accessionlists=$annotation->findnodes('./*');
                 foreach $accessionlist (@accessionlists){
                     #make sure all accessions within the node are included in the gnn network
                     my $attrAcc = $accessionlist->getAttribute('value');
-                    print "FOUND ONE $attrAcc\n";
+                    print "Expanded $nodehead into $attrAcc\n";
                     push @{$nodehash{$nodehead}}, $attrAcc if $nodehead ne $attrAcc;
                     $nodeMap{$nodehead} = $node;
                 }
