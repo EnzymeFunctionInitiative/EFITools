@@ -38,6 +38,7 @@ $result = GetOptions(
     "scheduler=s"       => \$scheduler,
     "dry-run"           => \$dryRun,
     "queue=s"           => \$queue,
+    "arrow-file=s"      => \$arrowDataFile,
     "config=s"          => \$configFile,
 );
 
@@ -62,6 +63,7 @@ usage: $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <file
     -scheduler      scheduler type (default to torque, but also can be slurm)
     -dry-run        only generate the scripts, don't submit to queue
     -queue          the cluster queue to use
+    -arrow-file     the file to output data to use for arrow data
 USAGE
 ;
 
@@ -183,6 +185,7 @@ my $cmdString = "$toolpath/clustergnn.pl " .
     "-none-dir \"$noneDir\" "
 #    "-none-zip \"$noneZip\""
     ;
+$cmdString .= " -arrow-file \"$arrowDataFile\"" if $arrowDataFile;
 
 my $info = {
     color_only => 0,

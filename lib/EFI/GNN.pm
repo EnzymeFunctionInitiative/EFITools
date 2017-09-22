@@ -29,20 +29,21 @@ sub new {
 
 
 sub findNeighbors {
-    my $self = shift @_;
-    my $ac=shift @_;
-    my $n=shift @_;
-    my $warning_fh = shift @_;
-    my $testForCirc = shift @_;
-    my $noneFamily = shift @_;
+    my $self = shift;
+    my $ac = shift;
+    my $neighborhoodSize = shift;
+    my $warning_fh = shift;
+    my $testForCirc = shift;
+    my $noneFamily = shift;
+    my $accessionData = shift;
 
     my $debug = 0;
 
     my $genomeId = "";
     my $noNeighbors = 0;
-    my %pfam=();
-    my $numqable=0;
-    my $numneighbors=0;
+    my %pfam;
+    my $numqable = 0;
+    my $numneighbors = 0;
 
     my $isCircSql = "select * from ena where AC='$ac' order by TYPE limit 1";
     $sth = $self->{dbh}->prepare($isCircSql);
@@ -123,24 +124,29 @@ SQL
 
     my $num = $row->{NUM};
     my $id = $row->{ID};
+    my $acc_start = $row->{start};
+    my $acc_stop = $row->{stop};
+    my $acc_seq_len = abs($acc_stop - $acc_start);
+    my $acc_strain = $row->{strain};
+    my $acc_family = $row->{pfam};
     
-    $low=$num-$n;
-    $high=$num+$n;
-    $type = $row->{TYPE};
+    $low=$num-$neighborhoodSize;
+    $high=$num+$neighborhoodSize;
+    my $acc_type = $row->{TYPE} == 1 ? "linear" : "circular";
 
     $query="select * from ena where ID='$id' ";
     my $clause = "and num>=$low and num<=$high";
 
     # Handle circular case
     my ($max, $circHigh, $circLow);
-    if (defined $testForCirc and $testForCirc and $type == 0) {
+    if (defined $testForCirc and $testForCirc and $acc_type eq "circular") {
         my $maxQuery = "select NUM from ena where ID = '$id' order by NUM desc limit 1";
         my $maxSth = $self->{dbh}->prepare($maxQuery);
         $maxSth->execute;
 
         $max = $maxSth->fetchrow_hashref()->{NUM};
 
-        if ($n < $max) {
+        if ($neighborhoodSize < $max) {
             my @maxClause;
             if ($low < 1) {
                 $circHigh = $max + $low;
@@ -170,6 +176,12 @@ SQL
     }
 
     $pfam{'genome'}{$ac} = $id;
+    $accessionData->{$ac}->{attributes} = {accession => $ac, num => $num, family => $acc_family, id => $id,
+       start => $acc_start, stop => $acc_stop, strain => $acc_strain, direction => $origdirection, type => $acc_type,
+       seq_len => $acc_seq_len};
+
+    my $max_bp = -99999;
+    my $min_bp = 2 ** 49;
 
     while(my $neighbor=$neighbors->fetchrow_hashref){
         my $tmp=join('-', sort {$a <=> $b} uniq split(",",$neighbor->{pfam}));
@@ -191,8 +203,7 @@ SQL
         print join("\t", $neighbor->{AC}, $neighbor->{NUM}, $neighbor->{pfam}, $neighNum, $num, $distance), "\n"               if $debug;
 
         unless($distance==0){
-            push @{$pfam{'neigh'}{$tmp}}, "$ac:".$neighbor->{AC};
-            push @{$pfam{'neighlist'}{$tmp}}, $neighbor->{AC};
+            my $type;
             if($neighbor->{TYPE}==1){
                 $type='linear';
             }elsif($neighbor->{TYPE}==0){
@@ -207,6 +218,13 @@ SQL
             }else{
                 die "Direction of ".$neighbor->{AC}." does not appear to be normal (0) or complement(1)\n";
             }
+            
+            push @{$accessionData->{$ac}->{neighbors}}, {accession => $neighbor->{AC}, num => int($neighbor->{NUM}),
+                family => $neighbor->{pfam}, id => $neighbor->{ID}, start => int($neighbor->{start}),
+                stop => int($neighbor->{stop}), strain => $neighbor->{strain}, direction => $direction,
+                type => $type, seq_len => abs($neighbor->{stop} - $neighbor->{start})};
+            push @{$pfam{'neigh'}{$tmp}}, "$ac:".$neighbor->{AC};
+            push @{$pfam{'neighlist'}{$tmp}}, $neighbor->{AC};
             push @{$pfam{'dist'}{$tmp}}, "$ac:$origdirection:".$neighbor->{AC}.":$direction:$distance";
             push @{$pfam{'stats'}{$tmp}}, abs $distance;
             push @{$pfam{'data'}{$tmp}}, { query_id => $ac,
@@ -214,8 +232,28 @@ SQL
                                            distance => (abs $distance),
                                            direction => "$origdirection-$direction"
                                          };
+            $min_bp = $neighbor->{start} if $neighbor->{start} < $min_bp;
+            $max_bp = $neighbor->{stop} if $neighbor->{stop} > $max_bp;
         }	
     }
+
+    # Post-process to compute relative positions and widths for the neighbors. This data is used
+    # for drawing arrow diagrams. We could compute that in JS on the client-side but we want that
+    # to be as fast as possible so we precompute that here.
+    my $max_width = $max_bp - $min_bp;
+    foreach my $neighbor (@{$accessionData->{$ac}->{neighbors}}) {
+        my $nbStart = $neighbor->{direction} eq "complement" ? 
+            ($neighbor->{stop} - $min_bp) / $max_width :
+            ($neighbor->{start} - $min_bp) / $max_width;
+        my $nbWidth = ($neighbor->{stop} - $neighbor->{start}) / $max_width;
+        $neighbor->{rel_start} = $nbStart;
+        $neighbor->{rel_width} = $nbWidth;
+    }
+
+    my $ac_start = $origdirection eq "complement" ? ($acc_stop - $min_bp) / $max_width : ($acc_start - $min_bp) / $max_width;
+    my $ac_width = ($acc_stop - $acc_start) / $max_width;
+    $accessionData->{$ac}->{attributes}->{rel_start} = $ac_start;
+    $accessionData->{$ac}->{attributes}->{rel_width} = $ac_width;
 
     foreach my $key (keys %{$pfam{'orig'}}){
         @{$pfam{'orig'}{$key}}=uniq @{$pfam{'orig'}{$key}};
@@ -401,7 +439,7 @@ sub combineArraysAddPfam{
 sub getClusterHubData {
     my $self = shift;
     my $supernodes = shift;
-    my $n = shift @_;
+    my $neighborhoodSize = shift @_;
     my $warning_fh = shift @_;
     my $useCircTest = shift @_;
     my $supernodeOrder = shift;
@@ -412,12 +450,13 @@ sub getClusterHubData {
     my %noMatches;
     my %genomeIds;
     my %noneFamily;
+    my %accessionData;
 
     foreach my $clusterNode (@{ $supernodeOrder }) {
         $noneFamily{$clusterNode} = {};
         foreach my $accession (uniq @{$supernodes->{$clusterNode}}){
             my ($pfamsearch, $localNoMatch, $localNoNeighbors, $genomeId) =
-                $self->findNeighbors($accession, $n, $warning_fh, $useCircTest, $noneFamily{$clusterNode});
+                $self->findNeighbors($accession, $neighborhoodSize, $warning_fh, $useCircTest, $noneFamily{$clusterNode}, \%accessionData);
             $noNeighbors{$accession} = $localNoNeighbors;
             $genomeIds{$accession} = $genomeId;
             $noMatches{$accession} = $localNoMatch;
@@ -435,7 +474,7 @@ sub getClusterHubData {
         }
     }
 
-    return \%clusterNodes, \%withneighbors, \%noMatches, \%noNeighbors, \%genomeIds, \%noneFamily;
+    return \%clusterNodes, \%withneighbors, \%noMatches, \%noNeighbors, \%genomeIds, \%noneFamily, \%accessionData;
 }
 
 

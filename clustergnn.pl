@@ -6,6 +6,7 @@ BEGIN {
 }
 
 
+#version 1.0.0 added support for coloring SSNs only, and refactored code, and submits to queue.
 #version 0.2.4 hub and spoke node attribute update
 #version 0.2.3 paired pfams now in combined hub nodes
 #version 0.2.2 now warn if top level structures are not a node or an edge, a fix to allow cytoscape edited networks to function.
@@ -23,31 +24,28 @@ BEGIN {
 #version 0.01
 #initial version
 
+use strict;
 
 use FindBin;
 use Getopt::Long;
 use XML::LibXML;
-use DBD::mysql;
 use IO;
 use XML::Writer;
 use XML::LibXML::Reader;
+use JSON;
+use DBI;
 
 use lib $FindBin::Bin . "/lib";
-#use lib $ENV{EFIEST} . "/lib";
 use EFI::Database;
 use EFI::GNN;
 
 
-#$configfile=read_file($ENV{'EFICFG'}) or die "could not open $ENV{'EFICFG'}\n";
-#eval $configfile;
-#$functions=read_file("$FindBin::Bin/gnnfunctions.pl");
-#eval $functions;
+my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $incfrac, $stats, $pfamhubfile, $configFile,
+    $pfamDir, $idDir, $noneDir, $idOutputFile, $arrowDataFile, $printPrettyJson, $dontUseNewNeighborMethod);
 
-$result = GetOptions(
+my $result = GetOptions(
     "ssnin=s"           => \$ssnin,
-    "n|nb-size=s"       => \$n,
-#    "nomatch=s"         => \$nomatch,
-#    "noneigh=s"         => \$noneighfile,
+    "n|nb-size=s"       => \$neighborhoodSize,
     "warning-file=s"    => \$warningFile,
     "gnn=s"             => \$gnn,
     "ssnout=s"          => \$ssnout,
@@ -56,16 +54,15 @@ $result = GetOptions(
     "pfam=s"            => \$pfamhubfile,
     "config=s"          => \$configFile,
     "pfam-dir=s"        => \$pfamDir,
-#    "pfam-zip=s"        => \$pfamZip, # only used for GNT calls, non batch
     "id-dir=s"          => \$idDir,
-#    "id-zip=s"          => \$idZip, # only used for GNT calls, non batch
     "none-dir=s"        => \$noneDir,
-#    "none-zip=s"        => \$noneZip, # only used for GNT calls, non batch
     "id-out=s"          => \$idOutputFile,
+    "arrow-file=s"      => \$arrowDataFile,
+    "json-pretty"       => \$printPrettyJson,
     "disable-nnm"       => \$dontUseNewNeighborMethod,
 );
 
-$usage = <<USAGE
+my $usage = <<USAGE
 usage: $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <filename> -ssnout <filename>
     -ssnin          name of original ssn network to process
     -nb-size        distance (+/-) to search for neighbors
@@ -78,12 +75,12 @@ usage: $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <file
     -id-dir         path to directory to output lists of IDs (one file/list per cluster number)
     -pfam-dir       path to directory to output PFAM cluster data (one file/list per cluster number)
     -id-out         path to a file to save the ID, cluster #, cluster color
+    -arrow-file     path to a file to save the neighbor data necessary to draw arrows
     -config         configuration file for database info, etc.
 USAGE
 ;
 
 
-$batchMode = 0 if not defined $batchMode;
 
 if (not -f $configFile and not exists $ENV{EFICONFIG}) {
     die "Either the configuration file or the EFICONFIG environment variable must be set\n$usage";
@@ -97,29 +94,10 @@ unless(-s $ssnin){
     die "-ssnin $ssnin does not exist or has a zero size\n$usage";
 }
 
-unless($n>0){
-    die "-nb-size $n must be an integer greater than zero\n$usage";
+unless($neighborhoodSize>0){
+    die "-nb-size $neighborhoodSize must be an integer greater than zero\n$usage";
 }
 
-#unless($gnn=~/./){
-#    die "you must specify a gnn output file\n$usage";
-#}
-
-#unless($ssnout=~/./){
-#    die "you must specify a ssn output file\n$usage";
-#}
-
-#unless($nomatch=~/./){
-#    die "you must specify and output file for nomatches\n$usage";
-#}
-
-#unless($noneighfile=~/./){
-#    die "you must specify and output file for noneigh\n$usage";
-#}
-
-#unless($pfamhubfile=~/./){
-#    die "you must specify and output file for the pfam hub gnn\n$usage";
-#}
 
 if($incfrac=~/^\d+$/){
     $incfrac=$incfrac/100;
@@ -130,10 +108,9 @@ if($incfrac=~/^\d+$/){
     $incfrac=0.20;  
 }
 
+my $useNewNeighborMethod = 0;
 if (not defined $dontUseNewNeighborMethod) {
     $useNewNeighborMethod = 1;
-} else {
-    $useNewNeighborMethod = 0;
 }
 
 my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile) ? 1 : 0;
@@ -158,12 +135,11 @@ if($stats=~/\w+/){
     open STATS, ">/dev/null" or die "could nto dump stats info to dev null\n";
 }
 
-%nodehash=();
-%constellations=();
-%supernodes=();
-%nodenames=();
-%numbermatch=();
-%withneighbors=();
+my %nodehash=();
+my %constellations=();
+my %supernodes=();
+my %nodenames=();
+my %numbermatch=();
 
 
 #nodehash correlates accessions in a node to the labeled accession of a node, this is for drilling down into repnode networks
@@ -177,7 +153,7 @@ if($stats=~/\w+/){
 
 print "read xgmml file, get list of nodes and edges\n";
 
-$reader=XML::LibXML::Reader->new(location => $ssnin);
+my $reader=XML::LibXML::Reader->new(location => $ssnin);
 my ($title, $nodes, $edges, $nodeMap) = $util->getNodesAndEdges($reader);
 
 
@@ -194,6 +170,7 @@ my ($supernodes, $constellations, $singletons) = $util->getClusters($nodehash, $
 
 print "find neighbors\n\n";
 
+my $warning_fh;
 if ($gnn and $warningFile) { #$nomatch and $noneighfile) {
     open($warning_fh, ">$warningFile") or die "cannot write file of no-match/no-neighbor warnings for accessions\n";
 } else {
@@ -203,27 +180,33 @@ print $warning_fh "UniProt ID\tNo Match/No Neighbor\n";
 
 
 my $useExistingNumber = $util->hasExistingNumber($nodes);
-($numbermatch, $numberOrder) = $util->numberClusters($supernodes, $useExistingNumber);
+my ($numbermatch, $numberOrder) = $util->numberClusters($supernodes, $useExistingNumber);
 
 my $gnnData = {};
 if (not $colorOnly) {
     my $useCircTest = 1;
-    ($clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds, $noneFamily) =
-            $util->getClusterHubData($supernodes, $n, $warning_fh, $useCircTest, $numberOrder);
+    my ($clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds, $noneFamily, $accessionData) =
+            $util->getClusterHubData($supernodes, $neighborhoodSize, $warning_fh, $useCircTest, $numberOrder);
 
     if ($gnn) {
         print "Writing Cluster Hub GNN\n";
-        $gnnoutput=new IO::File(">$gnn");
-        $gnnwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $gnnoutput);
+        my $gnnoutput=new IO::File(">$gnn");
+        my $gnnwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $gnnoutput);
         $util->writeClusterHubGnn($gnnwriter, $clusterNodes, $withneighbors, $numbermatch, $supernodes, $singletons);
     }
     
     if ($pfamhubfile) {
         print "Writing Pfam Hub GNN\n";
-        $pfamoutput=new IO::File(">$pfamhubfile");
-        $pfamwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $pfamoutput);
+        my $pfamoutput=new IO::File(">$pfamhubfile");
+        my $pfamwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $pfamoutput);
         $util->writePfamHubGnn($pfamwriter, $clusterNodes, $withneighbors, $numbermatch, $supernodes);
         $util->writePfamNoneClusters($noneDir, $noneFamily, $numbermatch);
+    }
+
+    if ($arrowDataFile) {
+        print "Writing to arrow data file\n";
+        writeArrowData($accessionData, $arrowDataFile);
+        #TODO: implement this code
     }
     
     $gnnData->{noMatchMap} = $noMatchMap;
@@ -233,39 +216,132 @@ if (not $colorOnly) {
 
 if ($ssnout) {
     print "write out colored ssn network ".scalar @{$nodes}." nodes and ".scalar @{$edges}." edges\n";
-    $output=new IO::File(">$ssnout");
-    $writer=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $output);
+    my $output=new IO::File(">$ssnout");
+    my $writer=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $output);
 
     $util->writeColorSsn($nodes, $edges, $writer, $numbermatch, $constellations, $nodenames, $supernodes, $gnnData);
 }
 
 close($warning_fh);
 
-#$util->writePfamQueryData($numbermatch, $supernodes, $clusterNodes) if $dataDir;
 $util->writeIdMapping($idOutputFile, $numbermatch, $constellations, $supernodes) if $idOutputFile;
-$util->closeClusterMapFiles() if $dataDir;
+#$util->closeClusterMapFiles();
 $util->finish();
 
-#if ($ssnout) {
-#    (my $ssnName = $ssnout) =~ s/\.xgmml$//i;
-#    my $ssnOutZip = "$ssnName.zip";
-#    `zip -j $ssnOutZip $ssnout`;
-#}
-#
-#if (not $colorOnly and $gnn) {
-#    (my $gnnZip = $gnn) =~ s/\.xgmml$/.zip/i;
-#    `zip -j $gnnZip $gnn`;
-#}
-#
-#if (not $colorOnly and $pfamhubfile) {
-#    (my $pfamhubfileZip = $pfamhubfile) =~ s/\.xgmml$/.zip/i;
-#    `zip -j $pfamhubfileZip $pfamhubfile`;
-#}
-#
-#`zip -j -r $pfamZip $pfamDir` if $pfamZip and $pfamDir;
-#`zip -j -r $idZip $idDir` if $idZip and $idDir;
-#`zip -j -r $noneZip $noneDir` if $noneZip and $noneDir;
 
 
 print "$0 finished\n";
+
+
+
+
+
+sub writeArrowData {
+    my $data = shift;
+    my $file = shift;
+
+    unlink $file if -f $file;
+
+    my $dbh = DBI->connect("dbi:SQLite:dbname=$file","","");
+    $dbh->{AutoCommit} = 0;
+
+    my @sqlStatements = getCreateAttributeTableSql();
+    push @sqlStatements, getCreateNeighborTableSql();
+    foreach my $sql (@sqlStatements) {
+        print "EXEC: $sql\n";
+        $dbh->do($sql);
+    }
+
+    foreach my $id (sort keys %$data) {
+        my $sql = getInsertStatement("attributes", $data->{$id}->{attributes}, $dbh);
+        $dbh->do($sql);
+        my $geneKey = $dbh->last_insert_id(undef, undef, undef, undef);
+
+        foreach my $nb (sort { $a->{num} cmp $b->{num} } @{ $data->{$id}->{neighbors} }) {
+            $nb->{gene_key} = $geneKey;
+            $sql = getInsertStatement("neighbors", $nb, $dbh);
+            $dbh->do($sql);
+        }
+    }
+
+    $dbh->commit;
+
+    $dbh->disconnect;
+}
+
+
+sub getCreateAttributeTableSql {
+    my @statements;
+    my $cols = getAttributeColsSql();
+    $cols .= ", cluster_num INTEGER";
+    my $sql = "CREATE TABLE attributes ($cols)";
+    push @statements, $sql;
+    $sql = "CREATE INDEX attributes_ac_index ON attributes (accession)";
+    push @statements, $sql;
+    $sql = "CREATE INDEX attributes_cl_num_index ON attributes (cluster_num)";
+    push @statements, $sql;
+    return @statements;
+}
+
+
+sub getCreateNeighborTableSql {
+    my $cols = getAttributeColsSql();
+    $cols .= ", gene_key INTEGER";
+
+    my @statements;
+    push @statements, "CREATE TABLE neighbors ($cols)";
+    push @statements, "CREATE INDEX neighbor_ac_id_index ON neighbors (gene_key)";
+    return @statements;
+}
+
+sub getAttributeColsSql {
+    my $sql = <<SQL;
+                        sort_key INTEGER PRIMARY KEY AUTOINCREMENT,
+                        accession VARCHAR(10),
+                        id VARCHAR(20),
+                        num INTEGER,
+                        family VARCHAR(1800),
+                        start INTEGER,
+                        stop INTEGER,
+                        rel_start REAL,
+                        rel_width REAL,
+                        strain VARCHAR(2000),
+                        direction VARCHAR(10),
+                        type VARCHAR(10),
+                        seq_len INTEGER
+SQL
+    return $sql;
+}
+
+
+sub getInsertStatement {
+    my $table = shift;
+    my $attr = shift;
+    my $dbh = shift;
+
+    my $clusterNumCol = exists $attr->{cluster_num} ? ", cluster_num" : "";
+    my $geneKeyCol = exists $attr->{gene_key} ? ", gene_key" : "";
+
+    my $sql = "INSERT INTO $table (accession, id, num, family, start, stop, rel_start, rel_width, strain, direction, type, seq_len $clusterNumCol $geneKeyCol) VALUES (";
+    $sql .= $dbh->quote($attr->{accession}) . ",";
+    $sql .= $dbh->quote($attr->{id}) . ",";
+    $sql .= $dbh->quote($attr->{num}) . ",";
+    $sql .= $dbh->quote($attr->{family}) . ",";
+    $sql .= $dbh->quote($attr->{start}) . ",";
+    $sql .= $dbh->quote($attr->{stop}) . ",";
+    $sql .= $dbh->quote($attr->{rel_start}) . ",";
+    $sql .= $dbh->quote($attr->{rel_width}) . ",";
+    $sql .= $dbh->quote($attr->{strain}) . ",";
+    $sql .= $dbh->quote($attr->{direction}) . ",";
+    $sql .= $dbh->quote($attr->{type}) . ",";
+    $sql .= $dbh->quote($attr->{seq_len});
+    $sql .= ", " . $dbh->quote($attr->{cluster_num}) if exists $attr->{cluster_num};
+    $sql .= ", " . $dbh->quote($attr->{gene_key}) if exists $attr->{gene_key};
+    $sql .= ")";
+
+    return $sql;
+}
+
+
+
 
