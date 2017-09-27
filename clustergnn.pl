@@ -186,7 +186,7 @@ my $gnnData = {};
 if (not $colorOnly) {
     my $useCircTest = 1;
     my ($clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds, $noneFamily, $accessionData) =
-            $util->getClusterHubData($supernodes, $neighborhoodSize, $warning_fh, $useCircTest, $numberOrder);
+            $util->getClusterHubData($supernodes, $neighborhoodSize, $warning_fh, $useCircTest, $numberOrder, $numbermatch);
 
     if ($gnn) {
         print "Writing Cluster Hub GNN\n";
@@ -248,7 +248,6 @@ sub writeArrowData {
     my @sqlStatements = getCreateAttributeTableSql();
     push @sqlStatements, getCreateNeighborTableSql();
     foreach my $sql (@sqlStatements) {
-        print "EXEC: $sql\n";
         $dbh->do($sql);
     }
 
@@ -273,7 +272,10 @@ sub writeArrowData {
 sub getCreateAttributeTableSql {
     my @statements;
     my $cols = getAttributeColsSql();
-    $cols .= ", cluster_num INTEGER";
+    $cols .= "\n                        , strain VARCHAR(2000)";
+    $cols .= "\n                        , cluster_num INTEGER";
+    $cols .= "\n                        , organism VARCHAR(2000)";
+
     my $sql = "CREATE TABLE attributes ($cols)";
     push @statements, $sql;
     $sql = "CREATE INDEX attributes_ac_index ON attributes (accession)";
@@ -286,7 +288,7 @@ sub getCreateAttributeTableSql {
 
 sub getCreateNeighborTableSql {
     my $cols = getAttributeColsSql();
-    $cols .= ", gene_key INTEGER";
+    $cols .= "\n                        , gene_key INTEGER";
 
     my @statements;
     push @statements, "CREATE TABLE neighbors ($cols)";
@@ -303,12 +305,15 @@ sub getAttributeColsSql {
                         family VARCHAR(1800),
                         start INTEGER,
                         stop INTEGER,
-                        rel_start REAL,
-                        rel_width REAL,
-                        strain VARCHAR(2000),
+                        rel_start INTEGER,
+                        rel_stop INTEGER,
                         direction VARCHAR(10),
                         type VARCHAR(10),
-                        seq_len INTEGER
+                        seq_len INTEGER,
+                        taxon_id VARCHAR(20),
+                        anno_status VARCHAR(255),
+                        desc VARCHAR(255),
+                        family_desc VARCHAR(255)
 SQL
     return $sql;
 }
@@ -319,10 +324,13 @@ sub getInsertStatement {
     my $attr = shift;
     my $dbh = shift;
 
-    my $clusterNumCol = exists $attr->{cluster_num} ? ", cluster_num" : "";
-    my $geneKeyCol = exists $attr->{gene_key} ? ", gene_key" : "";
+    my $strainCol = exists $attr->{strain} ? ",strain" : "";
+    my $clusterNumCol = exists $attr->{cluster_num} ? ",cluster_num" : "";
+    my $geneKeyCol = exists $attr->{gene_key} ? ",gene_key" : "";
+    my $organismCol = exists $attr->{organism} ? ",organism" : "";
+    my $addlCols = $strainCol . $clusterNumCol . $geneKeyCol . $organismCol;
 
-    my $sql = "INSERT INTO $table (accession, id, num, family, start, stop, rel_start, rel_width, strain, direction, type, seq_len $clusterNumCol $geneKeyCol) VALUES (";
+    my $sql = "INSERT INTO $table (accession, id, num, family, start, stop, rel_start, rel_stop, direction, type, seq_len, taxon_id, anno_status, desc, family_desc $addlCols) VALUES (";
     $sql .= $dbh->quote($attr->{accession}) . ",";
     $sql .= $dbh->quote($attr->{id}) . ",";
     $sql .= $dbh->quote($attr->{num}) . ",";
@@ -330,13 +338,18 @@ sub getInsertStatement {
     $sql .= $dbh->quote($attr->{start}) . ",";
     $sql .= $dbh->quote($attr->{stop}) . ",";
     $sql .= $dbh->quote($attr->{rel_start}) . ",";
-    $sql .= $dbh->quote($attr->{rel_width}) . ",";
-    $sql .= $dbh->quote($attr->{strain}) . ",";
+    $sql .= $dbh->quote($attr->{rel_stop}) . ",";
     $sql .= $dbh->quote($attr->{direction}) . ",";
     $sql .= $dbh->quote($attr->{type}) . ",";
-    $sql .= $dbh->quote($attr->{seq_len});
-    $sql .= ", " . $dbh->quote($attr->{cluster_num}) if exists $attr->{cluster_num};
-    $sql .= ", " . $dbh->quote($attr->{gene_key}) if exists $attr->{gene_key};
+    $sql .= $dbh->quote($attr->{seq_len}) . ",";
+    $sql .= $dbh->quote($attr->{taxon_id}) . ",";
+    $sql .= $dbh->quote($attr->{anno_status}) . ",";
+    $sql .= $dbh->quote($attr->{desc}) . ",";
+    $sql .= $dbh->quote($attr->{family_desc});
+    $sql .= "," . $dbh->quote($attr->{strain}) if exists $attr->{strain};
+    $sql .= "," . $dbh->quote($attr->{cluster_num}) if exists $attr->{cluster_num};
+    $sql .= "," . $dbh->quote($attr->{gene_key}) if exists $attr->{gene_key};
+    $sql .= "," . $dbh->quote($attr->{organism}) if exists $attr->{organism};
     $sql .= ")";
 
     return $sql;

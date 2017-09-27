@@ -62,7 +62,6 @@ sub findNeighbors {
         # genomes, has the most genes and use that one.
         if ($row->{TYPE} == 0) {
             my $sql = "select *, max(NUM) as MAX_NUM from ena where ID in (select ID from ena where AC='$ac' and TYPE=0 order by ID) group by ID order by TYPE, MAX_NUM desc limit 1";
-            print "CIRCULAR $sql\n"                                                         if $debug;
             my $sth = $self->{dbh}->prepare($sql);
             $sth->execute;
             $genomeId = $sth->fetchrow_hashref->{ID};
@@ -92,7 +91,6 @@ select
     limit 1
 SQL
             ;
-            print "LINEAR $sql\n"                                                           if $debug;
             my $sth = $self->{dbh}->prepare($sql);
             $sth->execute;
             my $row = $sth->fetchrow_hashref;
@@ -124,9 +122,9 @@ SQL
 
     my $num = $row->{NUM};
     my $id = $row->{ID};
-    my $acc_start = $row->{start};
-    my $acc_stop = $row->{stop};
-    my $acc_seq_len = abs($acc_stop - $acc_start);
+    my $acc_start = int($row->{start});
+    my $acc_stop = int($row->{stop});
+    my $acc_seq_len = int(abs($acc_stop - $acc_start) / 3 - 1);
     my $acc_strain = $row->{strain};
     my $acc_family = $row->{pfam};
     
@@ -138,13 +136,15 @@ SQL
     my $clause = "and num>=$low and num<=$high";
 
     # Handle circular case
-    my ($max, $circHigh, $circLow);
+    my ($max, $circHigh, $circLow, $maxCoord);
     if (defined $testForCirc and $testForCirc and $acc_type eq "circular") {
-        my $maxQuery = "select NUM from ena where ID = '$id' order by NUM desc limit 1";
+        my $maxQuery = "select NUM,stop from ena where ID = '$id' order by NUM desc limit 1";
         my $maxSth = $self->{dbh}->prepare($maxQuery);
         $maxSth->execute;
 
-        $max = $maxSth->fetchrow_hashref()->{NUM};
+        my $maxRow = $maxSth->fetchrow_hashref;
+        $max = $maxRow->{NUM};
+        $maxCoord = $maxRow->{stop};
 
         if ($neighborhoodSize < $max) {
             my @maxClause;
@@ -162,7 +162,7 @@ SQL
         }
     }
 
-    $query .= $clause;
+    $query .= $clause . " order by NUM";
 
     my $neighbors=$self->{dbh}->prepare($query);
     $neighbors->execute;
@@ -176,12 +176,10 @@ SQL
     }
 
     $pfam{'genome'}{$ac} = $id;
-    $accessionData->{$ac}->{attributes} = {accession => $ac, num => $num, family => $acc_family, id => $id,
-       start => $acc_start, stop => $acc_stop, strain => $acc_strain, direction => $origdirection, type => $acc_type,
-       seq_len => $acc_seq_len};
-
-    my $max_bp = -99999;
-    my $min_bp = 2 ** 49;
+    $accessionData->{$ac}->{attributes} = {accession => $ac, num => $num, family => $origtmp, id => $id,
+       start => $acc_start, stop => $acc_stop, rel_start => 0, rel_stop => $acc_stop - $acc_start, 
+       strain => $acc_strain, direction => $origdirection,
+       type => $acc_type, seq_len => $acc_seq_len};
 
     while(my $neighbor=$neighbors->fetchrow_hashref){
         my $tmp=join('-', sort {$a <=> $b} uniq split(",",$neighbor->{pfam}));
@@ -191,16 +189,28 @@ SQL
         }
         push @{$pfam{'orig'}{$tmp}}, $ac;
         
+        my $nbStart = int($neighbor->{start});
+        my $nbStop = int($neighbor->{stop});
+        my $nbSeqLen = abs($neighbor->{stop} - $neighbor->{start});
+        my $nbSeqLenBp = int($nbSeqLen / 3 - 1);
+
+        my $relNbStart;
+        my $relNbStop;
         my $neighNum = $neighbor->{NUM};
         if ($neighNum > $high and defined $circHigh and defined $max) {
             $distance = $neighNum - $num - $max;
+            $relNbStart = $nbStart - $maxCoord;
         } elsif ($neighNum < $low and defined $circLow and defined $max) {
             $distance = $neighNum - $num + $max;
+            $relNbStart = $maxCoord + $nbStart;
         } else {
             $distance = $neighNum - $num;
+            $relNbStart = $nbStart;
         }
+        $relNbStart = int($relNbStart - $acc_start);
+        $relNbStop = int($relNbStart + $nbSeqLen);
 
-        print join("\t", $neighbor->{AC}, $neighbor->{NUM}, $neighbor->{pfam}, $neighNum, $num, $distance), "\n"               if $debug;
+        print join("\t", $ac, $neighbor->{AC}, $neighbor->{NUM}, $neighbor->{pfam}, $neighNum, $num, $distance), "\n"               if $debug;
 
         unless($distance==0){
             my $type;
@@ -218,11 +228,12 @@ SQL
             }else{
                 die "Direction of ".$neighbor->{AC}." does not appear to be normal (0) or complement(1)\n";
             }
-            
+
             push @{$accessionData->{$ac}->{neighbors}}, {accession => $neighbor->{AC}, num => int($neighbor->{NUM}),
-                family => $neighbor->{pfam}, id => $neighbor->{ID}, start => int($neighbor->{start}),
-                stop => int($neighbor->{stop}), strain => $neighbor->{strain}, direction => $direction,
-                type => $type, seq_len => abs($neighbor->{stop} - $neighbor->{start})};
+                family => $tmp, id => $neighbor->{ID},
+                rel_start => $relNbStart, rel_stop => $relNbStop, start => $nbStart, stop => $nbStop,
+                #strain => $neighbor->{strain},
+                direction => $direction, type => $type, seq_len => $nbSeqLenBp};
             push @{$pfam{'neigh'}{$tmp}}, "$ac:".$neighbor->{AC};
             push @{$pfam{'neighlist'}{$tmp}}, $neighbor->{AC};
             push @{$pfam{'dist'}{$tmp}}, "$ac:$origdirection:".$neighbor->{AC}.":$direction:$distance";
@@ -232,28 +243,8 @@ SQL
                                            distance => (abs $distance),
                                            direction => "$origdirection-$direction"
                                          };
-            $min_bp = $neighbor->{start} if $neighbor->{start} < $min_bp;
-            $max_bp = $neighbor->{stop} if $neighbor->{stop} > $max_bp;
         }	
     }
-
-    # Post-process to compute relative positions and widths for the neighbors. This data is used
-    # for drawing arrow diagrams. We could compute that in JS on the client-side but we want that
-    # to be as fast as possible so we precompute that here.
-    my $max_width = $max_bp - $min_bp;
-    foreach my $neighbor (@{$accessionData->{$ac}->{neighbors}}) {
-        my $nbStart = $neighbor->{direction} eq "complement" ? 
-            ($neighbor->{stop} - $min_bp) / $max_width :
-            ($neighbor->{start} - $min_bp) / $max_width;
-        my $nbWidth = ($neighbor->{stop} - $neighbor->{start}) / $max_width;
-        $neighbor->{rel_start} = $nbStart;
-        $neighbor->{rel_width} = $nbWidth;
-    }
-
-    my $ac_start = $origdirection eq "complement" ? ($acc_stop - $min_bp) / $max_width : ($acc_start - $min_bp) / $max_width;
-    my $ac_width = ($acc_stop - $acc_start) / $max_width;
-    $accessionData->{$ac}->{attributes}->{rel_start} = $ac_start;
-    $accessionData->{$ac}->{attributes}->{rel_width} = $ac_width;
 
     foreach my $key (keys %{$pfam{'orig'}}){
         @{$pfam{'orig'}{$key}}=uniq @{$pfam{'orig'}{$key}};
@@ -443,6 +434,7 @@ sub getClusterHubData {
     my $warning_fh = shift @_;
     my $useCircTest = shift @_;
     my $supernodeOrder = shift;
+    my $numberMatch = shift;
 
     my %withneighbors=();
     my %clusterNodes=();
@@ -455,11 +447,30 @@ sub getClusterHubData {
     foreach my $clusterNode (@{ $supernodeOrder }) {
         $noneFamily{$clusterNode} = {};
         foreach my $accession (uniq @{$supernodes->{$clusterNode}}){
+            $accessionData{$accession}->{neighbors} = [];
             my ($pfamsearch, $localNoMatch, $localNoNeighbors, $genomeId) =
                 $self->findNeighbors($accession, $neighborhoodSize, $warning_fh, $useCircTest, $noneFamily{$clusterNode}, \%accessionData);
             $noNeighbors{$accession} = $localNoNeighbors;
             $genomeIds{$accession} = $genomeId;
             $noMatches{$accession} = $localNoMatch;
+            
+            my ($organism, $taxId, $annoStatus, $desc, $familyDesc) = $self->getAnnotations($accession, $accessionData{$accession}->{attributes}->{family});
+            $accessionData{$accession}->{attributes}->{organism} = $organism;
+            $accessionData{$accession}->{attributes}->{taxon_id} = $taxId;
+            $accessionData{$accession}->{attributes}->{anno_status} = $annoStatus;
+            $accessionData{$accession}->{attributes}->{desc} = $desc;
+            $accessionData{$accession}->{attributes}->{family_desc} = $familyDesc;
+            $accessionData{$accession}->{attributes}->{cluster_num} = exists $numberMatch->{$clusterNode} ? $numberMatch->{$clusterNode} : "";
+
+            foreach my $nbObj (@{ $accessionData{$accession}->{neighbors} }) {
+                my ($nbOrganism, $nbTaxId, $nbAnnoStatus, $nbDesc, $nbFamilyDesc) =
+                    $self->getAnnotations($nbObj->{accession}, $nbObj->{family});
+                $nbObj->{taxon_id} = $nbTaxId;
+                $nbObj->{anno_status} = $nbAnnoStatus;
+                $nbObj->{desc} = $nbDesc;
+                $nbObj->{family_desc} = $nbFamilyDesc;
+            }
+
             foreach my $pfamNumber (sort {$a <=> $b} keys %{${$pfamsearch}{'neigh'}}){
                 push @{$clusterNodes{$clusterNode}{$pfamNumber}{'orig'}}, @{${$pfamsearch}{'orig'}{$pfamNumber}};
                 push @{$clusterNodes{$clusterNode}{$pfamNumber}{'dist'}}, @{${$pfamsearch}{'dist'}{$pfamNumber}};
@@ -475,6 +486,41 @@ sub getClusterHubData {
     }
 
     return \%clusterNodes, \%withneighbors, \%noMatches, \%noNeighbors, \%genomeIds, \%noneFamily, \%accessionData;
+}
+
+
+sub getAnnotations {
+    my $self = shift;
+    my $accession = shift;
+    my $pfams = shift;
+    
+    my $sql = "select Organism,Taxonomy_ID,STATUS,Description from annotations where accession='$accession'";
+
+    my $sth = $self->{dbh}->prepare($sql);
+    $sth->execute;
+
+    my ($organism, $taxId, $annoStatus, $desc) = ("", "", "", "");
+    if (my $row = $sth->fetchrow_hashref) {
+        $organism = $row->{Organism};
+        $taxId = $row->{Taxonomy_ID};
+        $annoStatus = $row->{STATUS};
+        $desc = $row->{Description};
+    }
+
+    my @pfams = split '-', $pfams;
+
+    $sql = "select short_name from pfam_info where pfam in ('" . join("','", @pfams) . "')";
+
+    $sth = $self->{dbh}->prepare($sql);
+    $sth->execute;
+
+    my $rows = $sth->fetchall_arrayref;
+
+    my $pfamDesc = join("-", map { $_->[0] } @$rows);
+
+    $annoStatus = $annoStatus eq "Reviewed" ? "SwissProt" : "TrEMBL";
+
+    return ($organism, $taxId, $annoStatus, $desc, $pfamDesc);
 }
 
 
