@@ -33,6 +33,10 @@ sub mailEnd {
     my ($self, $clear) = @_;
 }
 
+sub mailError {
+    my ($self, $clear) = @_;
+}
+
 sub jobArray {
     my ($self, $array) = @_;
 }
@@ -42,7 +46,7 @@ sub queue {
 }
 
 sub resource {
-    my ($self, $numNodes, $procPerNode) = @_;
+    my ($self, $numNodes, $procPerNode, $ram) = @_;
 }
 
 sub dependency {
@@ -143,6 +147,15 @@ sub mailEnd {
     }
 }
 
+sub mailError {
+    my ($self, $clear) = @_;
+    if (defined($clear)) {
+        $self->{mail} = "";
+    } else {
+        $self->{mail} = "-m ea";
+    }
+}
+
 sub jobArray {
     my ($self, $array) = @_;
 
@@ -218,6 +231,15 @@ sub mailEnd {
         $self->{mail} = "";
     } else {
         $self->{mail} = "--mail-type=END";
+    }
+}
+
+sub mailError {
+    my ($self, $clear) = @_;
+    if (defined($clear)) {
+        $self->{mail} = "";
+    } else {
+        $self->{mail} = "--mail-type=FAIL";
     }
 }
 
