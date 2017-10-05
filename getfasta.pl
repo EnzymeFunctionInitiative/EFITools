@@ -15,10 +15,11 @@ use EFI::GNNShared;
 #$configfile=read_file($ENV{'EFICFG'}) or die "could not open $ENV{'EFICFG'}\n";
 #eval $configfile;
 
-my ($result, $nodeDir, $fastaDir, $configFile);
+my ($result, $nodeDir, $fastaDir, $configFile, $allFastaFile);
 $result = GetOptions(
     "node-dir=s"        => \$nodeDir,
     "out-dir=s"         => \$fastaDir,
+    "all=s"             => \$allFastaFile,
     "config=s"          => \$configFile,
 );
 
@@ -26,6 +27,7 @@ my $usage=<<USAGE
 usage: getfasta.pl -data-dir <path_to_data_dir> -config <config_file>
     -node-dir       path to directory containing lists of IDs (one file/list per cluster number)
     -out-dir        path to directory to output fasta files to
+    -all            path to file to put all sequences into
     -config         path to configuration file
 USAGE
 ;
@@ -42,10 +44,11 @@ my $db = new EFI::Database(config_file => $configFile);
 my $dbh = $db->getHandle();
 
 my $blastDbPath = $ENV{EFIDBPATH};
+$allFastaFile = "$fastaDir/all.fasta" if not $allFastaFile;
 
 my $pattern = $EFI::GNNShared::ClusterUniProtIDFilePattern;
 
-open ALL, ">$fastaDir/all.fasta";
+open ALL, ">$allFastaFile";
 
 foreach my $file (sort file_sort glob("$nodeDir/$pattern*.txt")) {
     (my $clusterNum = $file) =~ s%^.*/$pattern(\d+)\.txt$%$1%;

@@ -39,6 +39,7 @@ $result = GetOptions(
     "dry-run"           => \$dryRun,
     "queue=s"           => \$queue,
     "arrow-file=s"      => \$arrowDataFile,
+    "cooc-table=s"      => \$coocTableFile,
     "config=s"          => \$configFile,
 );
 
@@ -163,6 +164,7 @@ if ($ssnIn =~ /\.zip$/i) {
 my $ssnOutZip = "$outputDir/$ssnName.zip";
 (my $gnnZip = $gnn) =~ s/\.xgmml$/.zip/i;
 (my $pfamhubfileZip = $pfamhubfile) =~ s/\.xgmml$/.zip/i;
+my $allFastaFile = "$fastaDir/all.fasta";
 
 
 mkdir $fastaDir or die "Unable to create output fasta data path $fastaDir: $!" if not -d $fastaDir;
@@ -186,6 +188,7 @@ my $cmdString = "$toolpath/clustergnn.pl " .
 #    "-none-zip \"$noneZip\""
     ;
 $cmdString .= " -arrow-file \"$arrowDataFile\"" if $arrowDataFile;
+$cmdString .= " -cooc-table \"$coocTableFile\"" if $coocTableFile;
 
 my $info = {
     color_only => 0,
@@ -205,6 +208,7 @@ my $info = {
     pfam_zip => $pfamZip,
     none_dir => $noneDir,
     none_zip => $noneZip,
+    all_fasta_file => $allFastaFile,
 };
 
 
@@ -216,13 +220,17 @@ my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => 
 my $B = $SS->getBuilder();
 $B->addAction("module load $efiDbMod");
 $B->addAction("module load $efiGnnMod");
+$B->addAction("export BLASTDB=$outputDir/blast");
 $B->addAction("$toolpath/unzip_ssn.pl -in $ssnInZip -out $ssnIn") if $ssnInZip =~ /\.zip/i;
 $B->addAction($cmdString);
 EFI::GNNShared::addFileActions($B, $info);
-$B->addAction("$toolpath/save_version.pl > $outputDir/gnn.completed");
+$B->addAction("\n\nmkdir \$BLASTDB");
+$B->addAction("cd \$BLASTDB");
+$B->addAction("formatdb -i $allFastaFile -n database -p T -o T");
+$B->addAction("\n\n$toolpath/save_version.pl > $outputDir/gnn.completed");
 
-$B->renderToFile("gnnqsub.sh");
-my $gnnjob = $SS->submit("gnnqsub.sh");
+$B->renderToFile("submit_gnn.sh");
+my $gnnjob = $SS->submit("submit_gnn.sh");
 
 print "Job to make gnn network is :\n $gnnjob";
 

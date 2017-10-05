@@ -137,15 +137,14 @@ SQL
 
     # Handle circular case
     my ($max, $circHigh, $circLow, $maxCoord);
+    my $maxQuery = "select NUM,stop from ena where ID = '$id' order by NUM desc limit 1";
+    my $maxSth = $self->{dbh}->prepare($maxQuery);
+    $maxSth->execute;
+    my $maxRow = $maxSth->fetchrow_hashref;
+    $max = $maxRow->{NUM};
+    $maxCoord = $maxRow->{stop};
+
     if (defined $testForCirc and $testForCirc and $acc_type eq "circular") {
-        my $maxQuery = "select NUM,stop from ena where ID = '$id' order by NUM desc limit 1";
-        my $maxSth = $self->{dbh}->prepare($maxQuery);
-        $maxSth->execute;
-
-        my $maxRow = $maxSth->fetchrow_hashref;
-        $max = $maxRow->{NUM};
-        $maxCoord = $maxRow->{stop};
-
         if ($neighborhoodSize < $max) {
             my @maxClause;
             if ($low < 1) {
@@ -175,10 +174,13 @@ SQL
         print $warning_fh "$ac\tnoneighbor\n";
     }
 
+    my $isBound = ($low < 1 ? 1 : 0);
+    $isBound = $isBound | ($high > $max ? 2 : 0);
+
     $pfam{'genome'}{$ac} = $id;
     $accessionData->{$ac}->{attributes} = {accession => $ac, num => $num, family => $origtmp, id => $id,
        start => $acc_start, stop => $acc_stop, rel_start => 0, rel_stop => $acc_stop - $acc_start, 
-       strain => $acc_strain, direction => $origdirection,
+       strain => $acc_strain, direction => $origdirection, is_bound => $isBound,
        type => $acc_type, seq_len => $acc_seq_len};
 
     while(my $neighbor=$neighbors->fetchrow_hashref){
@@ -557,7 +559,7 @@ sub writeClusterHubGnn{
             #    next;
             #}
 
-            $cooccurrence = sprintf("%.2f", int($numNodes / $numNeighbors * 100) / 100);
+            my $cooccurrence = sprintf("%.2f", int($numNodes / $numNeighbors * 100) / 100);
             if($self->{incfrac} <= $cooccurrence){
                 my $tmparray= $self->writePfamSpoke($gnnwriter, $pfam, $numbermatch->{$cluster}, $totalSsns, $withneighbors->{$cluster}, $clusterNodes->{$cluster}{$pfam});
                 push @pdbinfo, @{$tmparray};
@@ -569,6 +571,32 @@ sub writeClusterHubGnn{
     }
 
     $gnnwriter->endTag();
+}
+
+sub getPfamCooccurrenceTable {
+    my $self = shift @_;
+    my $clusterNodes=shift @_;
+    my $withneighbors=shift @_;
+    my $numbermatch=shift @_;
+    my $supernodes=shift @_;
+    my $singletons=shift @_;
+
+    my %pfamStats;
+
+    foreach my $cluster (sort {$a <=> $b} keys %$clusterNodes){
+        my $numQueryableSsns = scalar @{ $withneighbors->{$cluster} };
+        my $totalSsns = scalar @{ $supernodes->{$cluster} };
+        next if (exists $singletons->{$cluster} || $numQueryableSsns < 2);
+
+        foreach my $pfam (keys %{$clusterNodes->{$cluster}}){
+            my $numNeighbors = scalar(@{$withneighbors->{$cluster}});
+            my $numNodes = scalar(uniq @{$clusterNodes->{$cluster}{$pfam}{'orig'}});
+            my $cooccurrence = sprintf("%.2f", int($numNodes / $numNeighbors * 100) / 100);
+            $pfamStats{$pfam}->{$numbermatch->{$cluster}} = $cooccurrence;
+        }
+    }
+
+    return \%pfamStats;
 }
 
 sub saveGnnAttributes {

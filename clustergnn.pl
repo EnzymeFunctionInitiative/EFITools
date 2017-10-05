@@ -34,6 +34,7 @@ use XML::Writer;
 use XML::LibXML::Reader;
 use JSON;
 use DBI;
+use List::MoreUtils qw(uniq);
 
 use lib $FindBin::Bin . "/lib";
 use EFI::Database;
@@ -41,7 +42,8 @@ use EFI::GNN;
 
 
 my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $incfrac, $stats, $pfamhubfile, $configFile,
-    $pfamDir, $idDir, $noneDir, $idOutputFile, $arrowDataFile, $printPrettyJson, $dontUseNewNeighborMethod);
+    $pfamDir, $idDir, $noneDir, $idOutputFile, $arrowDataFile, $printPrettyJson, $dontUseNewNeighborMethod,
+    $pfamCoocTable);
 
 my $result = GetOptions(
     "ssnin=s"           => \$ssnin,
@@ -58,6 +60,7 @@ my $result = GetOptions(
     "none-dir=s"        => \$noneDir,
     "id-out=s"          => \$idOutputFile,
     "arrow-file=s"      => \$arrowDataFile,
+    "cooc-table=s"      => \$pfamCoocTable,
     "json-pretty"       => \$printPrettyJson,
     "disable-nnm"       => \$dontUseNewNeighborMethod,
 );
@@ -76,6 +79,7 @@ usage: $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <file
     -pfam-dir       path to directory to output PFAM cluster data (one file/list per cluster number)
     -id-out         path to a file to save the ID, cluster #, cluster color
     -arrow-file     path to a file to save the neighbor data necessary to draw arrows
+    -cooc-table     path to a file to save the pfam/cooccurrence table data to
     -config         configuration file for database info, etc.
 USAGE
 ;
@@ -188,6 +192,11 @@ if (not $colorOnly) {
     my ($clusterNodes, $withneighbors, $noMatchMap, $noNeighborMap, $genomeIds, $noneFamily, $accessionData) =
             $util->getClusterHubData($supernodes, $neighborhoodSize, $warning_fh, $useCircTest, $numberOrder, $numbermatch);
 
+    if ($pfamCoocTable) {
+        my $pfamTable = $util->getPfamCooccurrenceTable($clusterNodes, $withneighbors, $numbermatch, $supernodes, $singletons);
+        writePfamCoocTable($pfamCoocTable, $pfamTable);
+    }
+
     if ($gnn) {
         print "Writing Cluster Hub GNN\n";
         my $gnnoutput=new IO::File(">$gnn");
@@ -236,6 +245,41 @@ print "$0 finished\n";
 
 
 
+
+
+
+
+
+
+sub writePfamCoocTable {
+    my $file = shift;
+    my $pfamTable = shift;
+
+    my @pfams = sort keys %$pfamTable;
+    my @clusters = uniq sort { $a <=> $b }  map { keys %{$pfamTable->{$_}} } @pfams;
+
+    open PFAMFILE, ">$file" or die "Unable to create the Pfam cooccurrence table $file: $!";
+
+    print PFAMFILE join("\t", @clusters), "\n";
+    foreach my $pf (@pfams) {
+        my $line = $pf;
+        foreach my $cluster (@clusters) {
+            $line .= "\t" if $line;
+            if (exists $pfamTable->{$pf}->{$cluster}) {
+                $line .= $pfamTable->{$pf}->{$cluster};
+            } else {
+                $line .= "NA";
+            }
+        }
+        $line .= "\n";
+        print PFAMFILE $line;
+    }
+
+    close PFAMFILE;
+}
+
+
+
 sub writeArrowData {
     my $data = shift;
     my $file = shift;
@@ -245,8 +289,11 @@ sub writeArrowData {
     my $dbh = DBI->connect("dbi:SQLite:dbname=$file","","");
     $dbh->{AutoCommit} = 0;
 
+    my %families;
+
     my @sqlStatements = getCreateAttributeTableSql();
     push @sqlStatements, getCreateNeighborTableSql();
+    push @sqlStatements, getCreateFamilyTableSql();
     foreach my $sql (@sqlStatements) {
         $dbh->do($sql);
     }
@@ -255,12 +302,19 @@ sub writeArrowData {
         my $sql = getInsertStatement("attributes", $data->{$id}->{attributes}, $dbh);
         $dbh->do($sql);
         my $geneKey = $dbh->last_insert_id(undef, undef, undef, undef);
+        $families{$data->{$id}->{attributes}->{family}} = 1;
 
         foreach my $nb (sort { $a->{num} cmp $b->{num} } @{ $data->{$id}->{neighbors} }) {
             $nb->{gene_key} = $geneKey;
             $sql = getInsertStatement("neighbors", $nb, $dbh);
             $dbh->do($sql);
+            $families{$nb->{family}} = 1;
         }
+    }
+
+    foreach my $id (sort keys %families) {
+        my $sql = "INSERT INTO families (family) VALUES (" . $dbh->quote($id) . ")";
+        $dbh->do($sql);
     }
 
     $dbh->commit;
@@ -275,6 +329,7 @@ sub getCreateAttributeTableSql {
     $cols .= "\n                        , strain VARCHAR(2000)";
     $cols .= "\n                        , cluster_num INTEGER";
     $cols .= "\n                        , organism VARCHAR(2000)";
+    $cols .= "\n                        , is_bound INTEGER"; # 0 - not encountering any contig boundary; 1 - left; 2 - right; 3 - both
 
     my $sql = "CREATE TABLE attributes ($cols)";
     push @statements, $sql;
@@ -318,6 +373,13 @@ SQL
     return $sql;
 }
 
+sub getCreateFamilyTableSql {
+    my $sql = <<SQL;
+CREATE TABLE families (family VARCHAR(1800));
+SQL
+    return $sql;
+}
+
 
 sub getInsertStatement {
     my $table = shift;
@@ -328,7 +390,8 @@ sub getInsertStatement {
     my $clusterNumCol = exists $attr->{cluster_num} ? ",cluster_num" : "";
     my $geneKeyCol = exists $attr->{gene_key} ? ",gene_key" : "";
     my $organismCol = exists $attr->{organism} ? ",organism" : "";
-    my $addlCols = $strainCol . $clusterNumCol . $geneKeyCol . $organismCol;
+    my $isBoundCol = exists $attr->{is_bound} ? ",is_bound" : "";
+    my $addlCols = $strainCol . $clusterNumCol . $geneKeyCol . $organismCol . $isBoundCol;
 
     my $sql = "INSERT INTO $table (accession, id, num, family, start, stop, rel_start, rel_stop, direction, type, seq_len, taxon_id, anno_status, desc, family_desc $addlCols) VALUES (";
     $sql .= $dbh->quote($attr->{accession}) . ",";
@@ -350,6 +413,7 @@ sub getInsertStatement {
     $sql .= "," . $dbh->quote($attr->{cluster_num}) if exists $attr->{cluster_num};
     $sql .= "," . $dbh->quote($attr->{gene_key}) if exists $attr->{gene_key};
     $sql .= "," . $dbh->quote($attr->{organism}) if exists $attr->{organism};
+    $sql .= "," . $dbh->quote($attr->{is_bound}) if exists $attr->{is_bound};
     $sql .= ")";
 
     return $sql;
