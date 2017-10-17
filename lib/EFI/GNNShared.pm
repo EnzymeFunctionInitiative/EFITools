@@ -53,7 +53,12 @@ sub getNodesAndEdges{
     my $tmpstring=$reader->readOuterXml;
     my $tmpnode=$parser->parse_string($tmpstring);
     my $node=$tmpnode->firstChild;
-    push @nodes, $node;
+    
+    if ($reader->name() eq "node"){
+        push @nodes, $node;
+    }
+
+    my %degrees;
     while($reader->nextSiblingElement()){
         $tmpstring=$reader->readOuterXml;
         $tmpnode=$parser->parse_string($tmpstring);
@@ -62,11 +67,17 @@ sub getNodesAndEdges{
             push @nodes, $node;
         }elsif($reader->name() eq "edge"){
             push @edges, $node;
+            my $label = $node->getAttribute("label");
+            my ($source, $target) = split /,/, $label;
+            $degrees{$source} = 0 if not exists $degrees{$source};
+            $degrees{$target} = 0 if not exists $degrees{$target};
+            $degrees{$source}++;
+            $degrees{$target}++;
         }else{
             warn "not a node or an edge\n $tmpstring\n";
         }
     }
-    return ($graphname, \@nodes, \@edges);
+    return ($graphname, \@nodes, \@edges, \%degrees);
 }
 
 sub getNodes{
@@ -111,7 +122,7 @@ sub getClusters{
     my $nodehash = shift @_;
     my $nodenames = shift @_;
     my $edges = shift @_;
-    my $nodeMap = shift @_;
+    my $nodemap = shift @_; # Deprecated, don't use
     my $includeSingletons = shift @_;
 
     my %constellations=();
@@ -124,10 +135,6 @@ sub getClusters{
         my $edgeTarget = $edge->getAttribute('target');
         my $nodeSource = $nodenames->{$edgeSource};
         my $nodeTarget = $nodenames->{$edgeTarget};
-
-        if (exists $nodeMap->{$nodeSource}) {
-
-        }
 
         #if source exists, add target to source sc
         if(exists $constellations{$nodeSource}){
@@ -497,7 +504,7 @@ sub addFileActions {
     my $B = shift; # This is an EFI::SchedulerApi::Builder object
     my $info = shift;
 
-    $B->addAction("$info->{tool_path}/getfasta.pl -node-dir $info->{node_data_path} -out-dir $info->{fasta_data_path} -config $info->{config_file}");
+    $B->addAction("$info->{tool_path}/getfasta.pl -node-dir $info->{node_data_path} -out-dir $info->{fasta_data_path} -config $info->{config_file} -all $info->{all_fasta_file}");
     $B->addAction("cat $info->{node_data_path}/cluster_UniProt_IDs* > $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
     $B->addAction("sort $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted > $info->{node_data_path}/cluster_All_UniProt_IDs.txt");
     $B->addAction("rm $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
