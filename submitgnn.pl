@@ -40,31 +40,34 @@ $result = GetOptions(
     "queue=s"           => \$queue,
     "arrow-file=s"      => \$arrowDataFile,
     "cooc-table=s"      => \$coocTableFile,
+    "hub-count-file=s"  => \$hubCountFile,
     "config=s"          => \$configFile,
 );
 
 $usage = <<USAGE
 usage: $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <filename> -ssnout <filename>
-    -ssnin          name of original ssn network to process
-    -nb-size        distance (+/-) to search for neighbors
-    -gnn            filename of genome neighborhood network output file
-    -ssnout         output filename for colorized sequence similarity network
-    -warning-file   output file that contains sequences without neighbors or matches
-    -cooc           co-occurrence
-    -stats          file to output tabular statistics to
-    -pfam           file to output PFAM hub GNN to
-    -id-dir         path to directory to output lists of IDs (one file/list per cluster number)
-    -id-zip         path to a file to zip all of the output lists
-    -pfam-dir       path to directory to output PFAM cluster data (one file/list per cluster number)
-    -pfam-zip       path to a file to output zip file for PFAM cluster data
-    -fasta-dir      path a directory output FASTA files
-    -fasta-zip      path to a file to create compressed all FASTA files
-    -id-out         path to a file to save the ID, cluster #, cluster color
-    -config         configuration file for database info, etc.
-    -scheduler      scheduler type (default to torque, but also can be slurm)
-    -dry-run        only generate the scripts, don't submit to queue
-    -queue          the cluster queue to use
-    -arrow-file     the file to output data to use for arrow data
+    -ssnin              name of original ssn network to process
+    -nb-size            distance (+/-) to search for neighbors
+    -gnn                filename of genome neighborhood network output file
+    -ssnout             output filename for colorized sequence similarity network
+    -warning-file       output file that contains sequences without neighbors or matches
+    -cooc               co-occurrence
+    -stats              file to output tabular statistics to
+    -pfam               file to output PFAM hub GNN to
+    -id-dir             path to directory to output lists of IDs (one file/list per cluster number)
+    -id-zip             path to a file to zip all of the output lists
+    -pfam-dir           path to directory to output PFAM cluster data (one file/list per cluster number)
+    -pfam-zip           path to a file to output zip file for PFAM cluster data
+    -fasta-dir          path a directory output FASTA files
+    -fasta-zip          path to a file to create compressed all FASTA files
+    -id-out             path to a file to save the ID, cluster #, cluster color
+    -config             configuration file for database info, etc.
+    -scheduler          scheduler type (default to torque, but also can be slurm)
+    -dry-run            only generate the scripts, don't submit to queue
+    -queue              the cluster queue to use
+    -arrow-file         the file to output data to use for arrow data
+    -cooc-table         the file to output co-occurrence (pfam v cluster) data to
+    -hub-count-file     the file to output #sequences for each hub cluster in the GNN
 USAGE
 ;
 
@@ -189,6 +192,7 @@ my $cmdString = "$toolpath/clustergnn.pl " .
     ;
 $cmdString .= " -arrow-file \"$arrowDataFile\"" if $arrowDataFile;
 $cmdString .= " -cooc-table \"$coocTableFile\"" if $coocTableFile;
+$cmdString .= " -hub-count-file \"$hubCountFile\"" if $hubCountFile;
 
 my $info = {
     color_only => 0,

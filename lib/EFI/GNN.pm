@@ -111,9 +111,9 @@ SQL
     $sth->execute;
 
     my $row = $sth->fetchrow_hashref;
-    if($row->{DIRECTION}==1){
+    if($row->{DIRECTION}==0){
         $origdirection='complement';
-    }elsif($row->{DIRECTION}==0){
+    }elsif($row->{DIRECTION}==1){
         $origdirection='normal';
     }else{
         die "Direction of ".$row->{AC}." does not appear to be normal (0) or complement(1)\n";
@@ -223,12 +223,12 @@ SQL
             }else{
                 die "Type of ".$neighbor->{AC}." does not appear to be circular (0) or linear(1)\n";
             }
-            if($neighbor->{DIRECTION}==1){
+            if($neighbor->{DIRECTION}==0){
                 $direction='complement';
-            }elsif($neighbr->{DIRECTION}==0){
+            }elsif($neighbor->{DIRECTION}==1){
                 $direction='normal';
             }else{
-                die "Direction of ".$neighbor->{AC}." does not appear to be normal (0) or complement(1)\n";
+                die "Direction of ".$neighbor->{AC}." does not appear to be normal (1) or complement(0)\n";
             }
 
             push @{$accessionData->{$ac}->{neighbors}}, {accession => $neighbor->{AC}, num => int($neighbor->{NUM}),
@@ -585,14 +585,18 @@ sub getPfamCooccurrenceTable {
 
     foreach my $cluster (sort {$a <=> $b} keys %$clusterNodes){
         my $numQueryableSsns = scalar @{ $withneighbors->{$cluster} };
-        my $totalSsns = scalar @{ $supernodes->{$cluster} };
         next if (exists $singletons->{$cluster} || $numQueryableSsns < 2);
+        my $clusterNum = $numbermatch->{$cluster};
 
         foreach my $pfam (keys %{$clusterNodes->{$cluster}}){
             my $numNeighbors = scalar(@{$withneighbors->{$cluster}});
             my $numNodes = scalar(uniq @{$clusterNodes->{$cluster}{$pfam}{'orig'}});
             my $cooccurrence = sprintf("%.2f", int($numNodes / $numNeighbors * 100) / 100);
-            $pfamStats{$pfam}->{$numbermatch->{$cluster}} = $cooccurrence;
+            foreach my $subPfam (split('-', $pfam)) {
+                $pfamStats{$subPfam}->{$clusterNum} = 0 if (not exists $pfamStats{$subPfam}->{$clusterNum});
+                $pfamStats{$subPfam}->{$clusterNum} += $cooccurrence;
+                #            y$$pfamStats{$pfam}->{$clusterNum} = $cooccurrence;
+            }
         }
     }
 

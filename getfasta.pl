@@ -86,8 +86,8 @@ foreach my $file (sort file_sort glob("$nodeDir/$pattern*.txt")) {
                     $pfam = $row->{PFAM};
                 }
 
-                print FASTA ">$clusterNum|$accession|$organism|$pfam$seq\n";
-                print ALL ">$clusterNum|$accession|$organism|$pfam$seq\n";
+                print FASTA ">$accession $clusterNum|$organism|$pfam$seq\n";
+                print ALL ">$accession $clusterNum|$organism|$pfam$seq\n";
             }
         }
     }

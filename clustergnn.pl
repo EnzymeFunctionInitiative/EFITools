@@ -43,7 +43,7 @@ use EFI::GNN;
 
 my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $incfrac, $stats, $pfamhubfile, $configFile,
     $pfamDir, $idDir, $noneDir, $idOutputFile, $arrowDataFile, $printPrettyJson, $dontUseNewNeighborMethod,
-    $pfamCoocTable);
+    $pfamCoocTable, $hubCountFile);
 
 my $result = GetOptions(
     "ssnin=s"           => \$ssnin,
@@ -61,26 +61,28 @@ my $result = GetOptions(
     "id-out=s"          => \$idOutputFile,
     "arrow-file=s"      => \$arrowDataFile,
     "cooc-table=s"      => \$pfamCoocTable,
+    "hub-count-file=s"  => \$hubCountFile,
     "json-pretty"       => \$printPrettyJson,
     "disable-nnm"       => \$dontUseNewNeighborMethod,
 );
 
 my $usage = <<USAGE
 usage: $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <filename> -ssnout <filename>
-    -ssnin          name of original ssn network to process
-    -nb-size        distance (+/-) to search for neighbors
-    -gnn            filename of genome neighborhood network output file
-    -ssnout         output filename for colorized sequence similarity network
-    -warning-file   output file that contains sequences without neighbors or matches
-    -cooc           co-occurrence
-    -stats          file to output tabular statistics to
-    -pfam           file to output PFAM hub GNN to
-    -id-dir         path to directory to output lists of IDs (one file/list per cluster number)
-    -pfam-dir       path to directory to output PFAM cluster data (one file/list per cluster number)
-    -id-out         path to a file to save the ID, cluster #, cluster color
-    -arrow-file     path to a file to save the neighbor data necessary to draw arrows
-    -cooc-table     path to a file to save the pfam/cooccurrence table data to
-    -config         configuration file for database info, etc.
+    -ssnin              name of original ssn network to process
+    -nb-size            distance (+/-) to search for neighbors
+    -gnn                filename of genome neighborhood network output file
+    -ssnout             output filename for colorized sequence similarity network
+    -warning-file       output file that contains sequences without neighbors or matches
+    -cooc               co-occurrence
+    -stats              file to output tabular statistics to
+    -pfam               file to output PFAM hub GNN to
+    -id-dir             path to directory to output lists of IDs (one file/list per cluster number)
+    -pfam-dir           path to directory to output PFAM cluster data (one file/list per cluster number)
+    -id-out             path to a file to save the ID, cluster #, cluster color
+    -arrow-file         path to a file to save the neighbor data necessary to draw arrows
+    -cooc-table         path to a file to save the pfam/cooccurrence table data to
+    -hub-count-file     path to a file to save the sequence count for each GNN hub node
+    -config             configuration file for database info, etc.
 USAGE
 ;
 
@@ -158,19 +160,19 @@ my %numbermatch=();
 print "read xgmml file, get list of nodes and edges\n";
 
 my $reader=XML::LibXML::Reader->new(location => $ssnin);
-my ($title, $nodes, $edges, $nodeMap) = $util->getNodesAndEdges($reader);
+my ($title, $nodes, $edges, $nodeDegrees) = $util->getNodesAndEdges($reader);
 
 
 print "found ".scalar @{$nodes}." nodes\n";
 print "found ".scalar @{$edges}." edges\n";
 print "graph name is $title\n";
 
-my ($nodehash, $nodenames) = $util->getNodes($nodes);
+my ($nodehash, $nodenames, $nodeMap) = $util->getNodes($nodes);
 
 #my $includeSingletonsInSsn = (not defined $gnn or not length $gnn) and (not defined $pfamhubfile or not length $pfamhubfile);
 # We include singletons by default, although if they don't have any represented nodes they won't be colored in the SSN.
 my $includeSingletons = 1;
-my ($supernodes, $constellations, $singletons) = $util->getClusters($nodehash, $nodenames, $edges, $nodeMap, $includeSingletons);
+my ($supernodes, $constellations, $singletons) = $util->getClusters($nodehash, $nodenames, $edges, undef, $includeSingletons);
 
 print "find neighbors\n\n";
 
@@ -214,8 +216,14 @@ if (not $colorOnly) {
 
     if ($arrowDataFile) {
         print "Writing to arrow data file\n";
-        writeArrowData($accessionData, $arrowDataFile);
+        my $clusterCenters = computeClusterCenters($supernodes, $numbermatch, $singletons, $nodeDegrees);
+        writeArrowData($accessionData, $clusterCenters, $arrowDataFile);
         #TODO: implement this code
+    }
+
+    if ($hubCountFile) {
+        print "Writing to GNN hub sequence count file\n";
+        writeHubCountFile($clusterNodes, $withneighbors, $supernodes, $numbermatch, $hubCountFile);
     }
     
     $gnnData->{noMatchMap} = $noMatchMap;
@@ -260,15 +268,16 @@ sub writePfamCoocTable {
 
     open PFAMFILE, ">$file" or die "Unable to create the Pfam cooccurrence table $file: $!";
 
-    print PFAMFILE join("\t", @clusters), "\n";
+    print PFAMFILE join("\t", "PFAM", @clusters), "\n";
     foreach my $pf (@pfams) {
+        next if $pf =~ /none/i;
         my $line = $pf;
         foreach my $cluster (@clusters) {
             $line .= "\t" if $line;
             if (exists $pfamTable->{$pf}->{$cluster}) {
                 $line .= $pfamTable->{$pf}->{$cluster};
             } else {
-                $line .= "NA";
+                $line .= "0";
             }
         }
         $line .= "\n";
@@ -279,9 +288,43 @@ sub writePfamCoocTable {
 }
 
 
+sub writeHubCountFile {
+    my $clusterNodes = shift;
+    my $withneighbors = shift;
+    my $supernodes = shift;
+    my $numbermatch = shift;
+    my $file = shift;
+
+    open HUBFILE, ">$file" or die "Unable to create the hub count file $file: $!";
+
+    print HUBFILE join("\t", "ClusterNum", "NumQueryableSeq", "TotalNumSeq"), "\n";
+    foreach my $cluster (sort hubCountSortFn keys %$clusterNodes) {
+        my $numQueryableSeq = scalar @{ $withneighbors->{$cluster} };
+        my $totalSeq = scalar @{ $supernodes->{$cluster} };
+        my $clusterNum = $numbermatch->{$cluster};
+        my $line = join("\t", $clusterNum, $numQueryableSeq, $totalSeq);
+        print HUBFILE $line, "\n";
+    }
+
+    close HUBFILE;
+}
+
+
+sub hubCountSortFn {
+    if (not exists $numbermatch->{$a} and not exists $numbermatch->{$b}) {
+        return 0;
+    } elsif (not exists $numbermatch->{$a}) {
+        return 1;
+    } elsif (not exists $numbermatch->{$b}) {
+        return -1;
+    } else {
+        return $numbermatch->{$a} <=> $numbermatch->{$b};
+    }
+}
 
 sub writeArrowData {
     my $data = shift;
+    my $clusterCenters = shift;
     my $file = shift;
 
     unlink $file if -f $file;
@@ -294,7 +337,16 @@ sub writeArrowData {
     my @sqlStatements = getCreateAttributeTableSql();
     push @sqlStatements, getCreateNeighborTableSql();
     push @sqlStatements, getCreateFamilyTableSql();
+    push @sqlStatements, getCreateDegreeTableSql();
     foreach my $sql (@sqlStatements) {
+        $dbh->do($sql);
+    }
+
+    foreach my $clusterNum (keys %$clusterCenters) {
+        my $sql = "INSERT INTO cluster_degree (cluster_num, accession, degree) VALUES (" .
+                    $dbh->quote($clusterNum) . "," .
+                    $dbh->quote($clusterCenters->{$clusterNum}->{id}) . "," .
+                    $dbh->quote($clusterCenters->{$clusterNum}->{degree}) . ")";
         $dbh->do($sql);
     }
 
@@ -381,6 +433,16 @@ SQL
 }
 
 
+sub getCreateDegreeTableSql {
+    my @statements;
+    my $sql = "CREATE TABLE cluster_degree (cluster_num INTEGER PRIMARY KEY, accession VARCHAR(10), degree INTEGER);";
+    push @statements, $sql;
+    $sql = "CREATE INDEX degree_cluster_num_index on cluster_degree (cluster_num)";
+    push @statements, $sql;
+    return @statements;
+}
+
+
 sub getInsertStatement {
     my $table = shift;
     my $attr = shift;
@@ -419,6 +481,30 @@ sub getInsertStatement {
     return $sql;
 }
 
+sub computeClusterCenters {
+    my $supernodes = shift;
+    my $numbermatch = shift;
+    my $singletons = shift;
+    my $degrees = shift;
 
+    my %centers;
+    foreach my $clusterId (keys %$supernodes) {
+        my @nodes = @{ $supernodes->{$clusterId} };
+        my $clusterNum = $numbermatch->{$clusterId};
+
+        if (exists $singletons->{$clusterId} and scalar @nodes > 1) {
+            $centers{$clusterNum} = {degree => 1, id => $nodes[0]};
+        } else {
+            foreach my $acc (@nodes) {
+                next if not exists $degrees->{$acc};
+                if (not exists $centers{$clusterNum} or $degrees->{$acc} > $centers{$clusterNum}->{degree}) {
+                    $centers{$clusterNum} = {degree => $degrees->{$acc}, id => $acc};
+                }
+            }
+        }
+    }
+
+    return \%centers;
+}
 
 
