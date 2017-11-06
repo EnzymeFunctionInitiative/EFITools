@@ -41,7 +41,7 @@ use EFI::Database;
 use EFI::GNN;
 
 
-my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $incfrac, $stats, $pfamhubfile, $configFile,
+my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $cooccurrence, $stats, $pfamhubfile, $configFile,
     $pfamDir, $idDir, $noneDir, $idOutputFile, $arrowDataFile, $printPrettyJson, $dontUseNewNeighborMethod,
     $pfamCoocTable, $hubCountFile);
 
@@ -51,7 +51,7 @@ my $result = GetOptions(
     "warning-file=s"    => \$warningFile,
     "gnn=s"             => \$gnn,
     "ssnout=s"          => \$ssnout,
-    "incfrac|cooc=i"    => \$incfrac,
+    "incfrac|cooc=i"    => \$cooccurrence,
     "stats=s"           => \$stats,
     "pfam=s"            => \$pfamhubfile,
     "config=s"          => \$configFile,
@@ -105,13 +105,13 @@ unless($neighborhoodSize>0){
 }
 
 
-if($incfrac=~/^\d+$/){
-    $incfrac=$incfrac/100;
+if($cooccurrence=~/^\d+$/){
+    $cooccurrence=$cooccurrence/100;
 }else{
-    if(defined $incfrac){
+    if(defined $cooccurrence){
         die "incfrac must be an integer\n";
     }
-    $incfrac=0.20;  
+    $cooccurrence=0.20;  
 }
 
 my $useNewNeighborMethod = 0;
@@ -121,6 +121,10 @@ if (not defined $dontUseNewNeighborMethod) {
 
 my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile) ? 1 : 0;
 
+(my $jobName = $ssnin) =~ s%^.*/([^/]+)$%$1%;
+$jobName =~ s/\.(xgmml|zip)//g;
+
+
 my $db = new EFI::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
 
@@ -128,7 +132,7 @@ mkdir $pfamDir  or die "Unable to create $pfamDir: $!"  if $pfamDir and not -d $
 mkdir $idDir    or die "Unable to create $idDir: $!"    if $idDir and not -d $idDir;
 mkdir $noneDir  or die "Unable to create $noneDir: $!"  if $noneDir and not -d $noneDir;
 
-my %gnnArgs = (dbh => $dbh, incfrac => $incfrac, use_nnm => $useNewNeighborMethod, color_only => $colorOnly);
+my %gnnArgs = (dbh => $dbh, incfrac => $cooccurrence, use_nnm => $useNewNeighborMethod, color_only => $colorOnly);
 $gnnArgs{pfam_dir} = $pfamDir if $pfamDir and -d $pfamDir;
 $gnnArgs{id_dir} = $idDir if $idDir and -d $idDir;
 
@@ -217,7 +221,7 @@ if (not $colorOnly) {
     if ($arrowDataFile) {
         print "Writing to arrow data file\n";
         my $clusterCenters = computeClusterCenters($supernodes, $numbermatch, $singletons, $nodeDegrees);
-        writeArrowData($accessionData, $clusterCenters, $arrowDataFile);
+        writeArrowData($accessionData, $clusterCenters, $arrowDataFile, $util);
         #TODO: implement this code
     }
 
@@ -248,6 +252,7 @@ $util->finish();
 
 
 print "$0 finished\n";
+
 
 
 
@@ -322,10 +327,12 @@ sub hubCountSortFn {
     }
 }
 
+
 sub writeArrowData {
     my $data = shift;
     my $clusterCenters = shift;
     my $file = shift;
+    my $colorizer = shift;
 
     unlink $file if -f $file;
 
@@ -338,9 +345,16 @@ sub writeArrowData {
     push @sqlStatements, getCreateNeighborTableSql();
     push @sqlStatements, getCreateFamilyTableSql();
     push @sqlStatements, getCreateDegreeTableSql();
+    push @sqlStatements, getCreateMetadataTableSql();
     foreach my $sql (@sqlStatements) {
         $dbh->do($sql);
     }
+
+    my $sql = "INSERT INTO metadata (coocurrence, neighborhood_size, name) VALUES(" .
+        $dbh->quote($cooccurrence) . "," .
+        $dbh->quote($neighborhoodSize) . "," .
+        $dbh->quote($jobName) . ")";
+    $dbh->do($sql);
 
     foreach my $clusterNum (keys %$clusterCenters) {
         my $sql = "INSERT INTO cluster_degree (cluster_num, accession, degree) VALUES (" .
@@ -351,14 +365,14 @@ sub writeArrowData {
     }
 
     foreach my $id (sort keys %$data) {
-        my $sql = getInsertStatement("attributes", $data->{$id}->{attributes}, $dbh);
+        my $sql = getInsertStatement("attributes", $data->{$id}->{attributes}, $dbh, $colorizer);
         $dbh->do($sql);
         my $geneKey = $dbh->last_insert_id(undef, undef, undef, undef);
         $families{$data->{$id}->{attributes}->{family}} = 1;
 
         foreach my $nb (sort { $a->{num} cmp $b->{num} } @{ $data->{$id}->{neighbors} }) {
             $nb->{gene_key} = $geneKey;
-            $sql = getInsertStatement("neighbors", $nb, $dbh);
+            $sql = getInsertStatement("neighbors", $nb, $dbh, $colorizer);
             $dbh->do($sql);
             $families{$nb->{family}} = 1;
         }
@@ -378,6 +392,7 @@ sub writeArrowData {
 sub getCreateAttributeTableSql {
     my @statements;
     my $cols = getAttributeColsSql();
+    $cols .= "\n                        , sort_order INTEGER";
     $cols .= "\n                        , strain VARCHAR(2000)";
     $cols .= "\n                        , cluster_num INTEGER";
     $cols .= "\n                        , organism VARCHAR(2000)";
@@ -420,7 +435,8 @@ sub getAttributeColsSql {
                         taxon_id VARCHAR(20),
                         anno_status VARCHAR(255),
                         desc VARCHAR(255),
-                        family_desc VARCHAR(255)
+                        family_desc VARCHAR(255),
+                        color VARCHAR(7)
 SQL
     return $sql;
 }
@@ -443,19 +459,31 @@ sub getCreateDegreeTableSql {
 }
 
 
+sub getCreateMetadataTableSql {
+    my @statements;
+    my $sql = "CREATE TABLE metadata (coocurrence REAL, name VARCHAR(255), neighborhood_size INTEGER);";
+    push @statements, $sql;
+    return @statements;
+}
+
+
 sub getInsertStatement {
     my $table = shift;
     my $attr = shift;
     my $dbh = shift;
+    my $colorizer = shift;
 
     my $strainCol = exists $attr->{strain} ? ",strain" : "";
     my $clusterNumCol = exists $attr->{cluster_num} ? ",cluster_num" : "";
     my $geneKeyCol = exists $attr->{gene_key} ? ",gene_key" : "";
     my $organismCol = exists $attr->{organism} ? ",organism" : "";
     my $isBoundCol = exists $attr->{is_bound} ? ",is_bound" : "";
-    my $addlCols = $strainCol . $clusterNumCol . $geneKeyCol . $organismCol . $isBoundCol;
+    my $orderCol = exists $attr->{sort_order} ? ",sort_order" : "";
+    my $addlCols = $strainCol . $clusterNumCol . $geneKeyCol . $organismCol . $isBoundCol . $orderCol;
 
-    my $sql = "INSERT INTO $table (accession, id, num, family, start, stop, rel_start, rel_stop, direction, type, seq_len, taxon_id, anno_status, desc, family_desc $addlCols) VALUES (";
+    my $color = $colorizer->getColorForPfam($attr->{family});
+
+    my $sql = "INSERT INTO $table (accession, id, num, family, start, stop, rel_start, rel_stop, direction, type, seq_len, taxon_id, anno_status, desc, family_desc, color $addlCols) VALUES (";
     $sql .= $dbh->quote($attr->{accession}) . ",";
     $sql .= $dbh->quote($attr->{id}) . ",";
     $sql .= $dbh->quote($attr->{num}) . ",";
@@ -470,12 +498,14 @@ sub getInsertStatement {
     $sql .= $dbh->quote($attr->{taxon_id}) . ",";
     $sql .= $dbh->quote($attr->{anno_status}) . ",";
     $sql .= $dbh->quote($attr->{desc}) . ",";
-    $sql .= $dbh->quote($attr->{family_desc});
+    $sql .= $dbh->quote($attr->{family_desc}) . ",";
+    $sql .= $dbh->quote($color);
     $sql .= "," . $dbh->quote($attr->{strain}) if exists $attr->{strain};
     $sql .= "," . $dbh->quote($attr->{cluster_num}) if exists $attr->{cluster_num};
     $sql .= "," . $dbh->quote($attr->{gene_key}) if exists $attr->{gene_key};
     $sql .= "," . $dbh->quote($attr->{organism}) if exists $attr->{organism};
     $sql .= "," . $dbh->quote($attr->{is_bound}) if exists $attr->{is_bound};
+    $sql .= "," . $dbh->quote($attr->{sort_order}) if exists $attr->{sort_order};
     $sql .= ")";
 
     return $sql;
@@ -506,5 +536,4 @@ sub computeClusterCenters {
 
     return \%centers;
 }
-
 

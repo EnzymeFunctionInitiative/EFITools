@@ -446,6 +446,9 @@ sub getClusterHubData {
     my %noneFamily;
     my %accessionData;
 
+    # This is used to retain the order of the nodes in the xgmml file when we write the arrow sqlite database.
+    my $sortKey = 0;
+
     foreach my $clusterNode (@{ $supernodeOrder }) {
         $noneFamily{$clusterNode} = {};
         foreach my $accession (uniq @{$supernodes->{$clusterNode}}){
@@ -457,6 +460,7 @@ sub getClusterHubData {
             $noMatches{$accession} = $localNoMatch;
             
             my ($organism, $taxId, $annoStatus, $desc, $familyDesc) = $self->getAnnotations($accession, $accessionData{$accession}->{attributes}->{family});
+            $accessionData{$accession}->{attributes}->{sort_order} = $sortKey++;
             $accessionData{$accession}->{attributes}->{organism} = $organism;
             $accessionData{$accession}->{attributes}->{taxon_id} = $taxId;
             $accessionData{$accession}->{attributes}->{anno_status} = $annoStatus;
