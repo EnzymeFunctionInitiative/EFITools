@@ -26,6 +26,9 @@ sub new {
     $self->{dbh} = $args{dbh};
     $self->{incfrac} = $args{incfrac};
     $self->{colors} = $self->getColors();
+    $self->{num_colors} = scalar keys %{$self->{colors}};
+    $self->{pfam_color_counter} = 1;
+    $self->{pfam_colors} = {};
     $self->{id_dir} = ($args{id_dir} and -d $args{id_dir}) ? $args{id_dir} : "";
     $self->{cluster_fh} = {};
     $self->{color_only} = exists $args{color_only} ? $args{color_only} : 0;
@@ -448,6 +451,23 @@ sub getColors {
     }
     return \%colors;
 }
+
+
+sub getColorForPfam {
+    my $self = shift;
+    my $pfam = shift;
+
+    if (not exists $self->{pfam_colors}->{$pfam}) {
+        if ($self->{pfam_color_counter} > $self->{num_colors}) {
+            $self->{pfam_color_counter} = 1;
+        }
+        $self->{pfam_colors}->{$pfam} = $self->{colors}->{$self->{pfam_color_counter}};
+        $self->{pfam_color_counter}++;
+    }
+
+    return $self->{pfam_colors}->{$pfam};
+}
+
 
 sub median{
     my @vals = sort {$a <=> $b} @_;
