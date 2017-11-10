@@ -461,7 +461,7 @@ sub getCreateDegreeTableSql {
 
 sub getCreateMetadataTableSql {
     my @statements;
-    my $sql = "CREATE TABLE metadata (coocurrence REAL, name VARCHAR(255), neighborhood_size INTEGER);";
+    my $sql = "CREATE TABLE metadata (cooccurrence REAL, name VARCHAR(255), neighborhood_size INTEGER);";
     push @statements, $sql;
     return @statements;
 }
