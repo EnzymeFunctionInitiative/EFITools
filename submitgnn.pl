@@ -122,6 +122,7 @@ print "fasta-dir is $fastaDir\n";
 print "fasta-zip is $fastaZip\n";
 print "none-dir is $noneDir\n";
 print "none-zip is $noneZip\n";
+print "arrow-dir is $arrowDataFile\n";
 
 unless($n>0){
     die "-n $n must be an integer greater than zero\n$usage";
@@ -168,6 +169,7 @@ my $ssnOutZip = "$outputDir/$ssnName.zip";
 (my $gnnZip = $gnn) =~ s/\.xgmml$/.zip/i;
 (my $pfamhubfileZip = $pfamhubfile) =~ s/\.xgmml$/.zip/i;
 my $allFastaFile = "$fastaDir/all.fasta";
+(my $arrowZip = $arrowDataFile) =~ s/\.sqlite/.zip/i if $arrowDataFile;
 
 
 mkdir $fastaDir or die "Unable to create output fasta data path $fastaDir: $!" if not -d $fastaDir;
@@ -214,6 +216,9 @@ my $info = {
     none_zip => $noneZip,
     all_fasta_file => $allFastaFile,
 };
+
+$info->{arrow_zip} = $arrowZip if $arrowZip;
+$info->{arrow_file} = $arrowDataFile if $arrowDataFile;
 
 
 my $schedType = "torque";
