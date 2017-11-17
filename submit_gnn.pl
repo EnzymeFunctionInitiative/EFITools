@@ -13,7 +13,7 @@ use lib $FindBin::Bin . "/lib";
 use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm);
 use EFI::Config;
-use EFI::GNNShared;
+use EFI::GNN::Base;
 
 
 $result = GetOptions(
@@ -175,7 +175,7 @@ my $allFastaFile = "$fastaDir/all.fasta";
 mkdir $fastaDir or die "Unable to create output fasta data path $fastaDir: $!" if not -d $fastaDir;
 
 
-my $cmdString = "$toolpath/clustergnn.pl " .
+my $cmdString = "$toolpath/cluster_gnn.pl " .
     "-n $n " . 
     "-incfrac \"$incfrac\" " .
     "-ssnin \"$ssnIn\" " . 
@@ -205,7 +205,7 @@ my $info = {
     ssn_out => $ssnOut,
     ssn_out_zip => $ssnOutZip,
     config_file => $configFile,
-    tool_path => $toolpath,
+    fasta_tool_path => "$toolpath/get_fasta.pl",
     gnn => $gnn,
     gnn_zip => $gnnZip,
     pfamhubfile => $pfamhubfile,
@@ -230,9 +230,9 @@ my $B = $SS->getBuilder();
 $B->addAction("module load $efiDbMod");
 $B->addAction("module load $efiGnnMod");
 $B->addAction("export BLASTDB=$outputDir/blast");
-$B->addAction("$toolpath/unzip_ssn.pl -in $ssnInZip -out $ssnIn") if $ssnInZip =~ /\.zip/i;
+$B->addAction("$toolpath/unzip_file.pl -in $ssnInZip -out $ssnIn") if $ssnInZip =~ /\.zip/i;
 $B->addAction($cmdString);
-EFI::GNNShared::addFileActions($B, $info);
+EFI::GNN::Base::addFileActions($B, $info);
 $B->addAction("\n\nmkdir \$BLASTDB");
 $B->addAction("cd \$BLASTDB");
 $B->addAction("formatdb -i $allFastaFile -n database -p T -o T");

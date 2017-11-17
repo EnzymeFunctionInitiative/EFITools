@@ -39,6 +39,8 @@ use List::MoreUtils qw(uniq);
 use lib $FindBin::Bin . "/lib";
 use EFI::Database;
 use EFI::GNN;
+use EFI::GNN::Arrows;
+use EFI::GNN::ColorUtil;
 
 
 my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $cooccurrence, $stats, $pfamhubfile, $configFile,
@@ -132,9 +134,12 @@ mkdir $pfamDir  or die "Unable to create $pfamDir: $!"  if $pfamDir and not -d $
 mkdir $idDir    or die "Unable to create $idDir: $!"    if $idDir and not -d $idDir;
 mkdir $noneDir  or die "Unable to create $noneDir: $!"  if $noneDir and not -d $noneDir;
 
+
+my $colorUtil = new EFI::GNN::ColorUtil(dbh => $dbh);
 my %gnnArgs = (dbh => $dbh, incfrac => $cooccurrence, use_nnm => $useNewNeighborMethod, color_only => $colorOnly);
 $gnnArgs{pfam_dir} = $pfamDir if $pfamDir and -d $pfamDir;
 $gnnArgs{id_dir} = $idDir if $idDir and -d $idDir;
+$gnnArgs{color_util} = $colorUtil;
 
 my $util = new EFI::GNN(%gnnArgs);
 
@@ -220,9 +225,9 @@ if (not $colorOnly) {
 
     if ($arrowDataFile) {
         print "Writing to arrow data file\n";
-        my $clusterCenters = computeClusterCenters($supernodes, $numbermatch, $singletons, $nodeDegrees);
-        writeArrowData($accessionData, $clusterCenters, $arrowDataFile, $util);
-        #TODO: implement this code
+        my $arrowTool = new EFI::GNN::Arrows(color_util => $colorUtil);
+        my $clusterCenters = $arrowTool->computeClusterCenters($supernodes, $numbermatch, $singletons, $nodeDegrees);
+        $arrowTool->writeArrowData($accessionData, $clusterCenters, $arrowDataFile);
     }
 
     if ($hubCountFile) {
@@ -327,213 +332,4 @@ sub hubCountSortFn {
     }
 }
 
-
-sub writeArrowData {
-    my $data = shift;
-    my $clusterCenters = shift;
-    my $file = shift;
-    my $colorizer = shift;
-
-    unlink $file if -f $file;
-
-    my $dbh = DBI->connect("dbi:SQLite:dbname=$file","","");
-    $dbh->{AutoCommit} = 0;
-
-    my %families;
-
-    my @sqlStatements = getCreateAttributeTableSql();
-    push @sqlStatements, getCreateNeighborTableSql();
-    push @sqlStatements, getCreateFamilyTableSql();
-    push @sqlStatements, getCreateDegreeTableSql();
-    push @sqlStatements, getCreateMetadataTableSql();
-    foreach my $sql (@sqlStatements) {
-        $dbh->do($sql);
-    }
-
-    my $sql = "INSERT INTO metadata (coocurrence, neighborhood_size, name) VALUES(" .
-        $dbh->quote($cooccurrence) . "," .
-        $dbh->quote($neighborhoodSize) . "," .
-        $dbh->quote($jobName) . ")";
-    $dbh->do($sql);
-
-    foreach my $clusterNum (keys %$clusterCenters) {
-        my $sql = "INSERT INTO cluster_degree (cluster_num, accession, degree) VALUES (" .
-                    $dbh->quote($clusterNum) . "," .
-                    $dbh->quote($clusterCenters->{$clusterNum}->{id}) . "," .
-                    $dbh->quote($clusterCenters->{$clusterNum}->{degree}) . ")";
-        $dbh->do($sql);
-    }
-
-    foreach my $id (sort keys %$data) {
-        my $sql = getInsertStatement("attributes", $data->{$id}->{attributes}, $dbh, $colorizer);
-        $dbh->do($sql);
-        my $geneKey = $dbh->last_insert_id(undef, undef, undef, undef);
-        $families{$data->{$id}->{attributes}->{family}} = 1;
-
-        foreach my $nb (sort { $a->{num} cmp $b->{num} } @{ $data->{$id}->{neighbors} }) {
-            $nb->{gene_key} = $geneKey;
-            $sql = getInsertStatement("neighbors", $nb, $dbh, $colorizer);
-            $dbh->do($sql);
-            $families{$nb->{family}} = 1;
-        }
-    }
-
-    foreach my $id (sort keys %families) {
-        my $sql = "INSERT INTO families (family) VALUES (" . $dbh->quote($id) . ")";
-        $dbh->do($sql);
-    }
-
-    $dbh->commit;
-
-    $dbh->disconnect;
-}
-
-
-sub getCreateAttributeTableSql {
-    my @statements;
-    my $cols = getAttributeColsSql();
-    $cols .= "\n                        , sort_order INTEGER";
-    $cols .= "\n                        , strain VARCHAR(2000)";
-    $cols .= "\n                        , cluster_num INTEGER";
-    $cols .= "\n                        , organism VARCHAR(2000)";
-    $cols .= "\n                        , is_bound INTEGER"; # 0 - not encountering any contig boundary; 1 - left; 2 - right; 3 - both
-
-    my $sql = "CREATE TABLE attributes ($cols)";
-    push @statements, $sql;
-    $sql = "CREATE INDEX attributes_ac_index ON attributes (accession)";
-    push @statements, $sql;
-    $sql = "CREATE INDEX attributes_cl_num_index ON attributes (cluster_num)";
-    push @statements, $sql;
-    return @statements;
-}
-
-
-sub getCreateNeighborTableSql {
-    my $cols = getAttributeColsSql();
-    $cols .= "\n                        , gene_key INTEGER";
-
-    my @statements;
-    push @statements, "CREATE TABLE neighbors ($cols)";
-    push @statements, "CREATE INDEX neighbor_ac_id_index ON neighbors (gene_key)";
-    return @statements;
-}
-
-sub getAttributeColsSql {
-    my $sql = <<SQL;
-                        sort_key INTEGER PRIMARY KEY AUTOINCREMENT,
-                        accession VARCHAR(10),
-                        id VARCHAR(20),
-                        num INTEGER,
-                        family VARCHAR(1800),
-                        start INTEGER,
-                        stop INTEGER,
-                        rel_start INTEGER,
-                        rel_stop INTEGER,
-                        direction VARCHAR(10),
-                        type VARCHAR(10),
-                        seq_len INTEGER,
-                        taxon_id VARCHAR(20),
-                        anno_status VARCHAR(255),
-                        desc VARCHAR(255),
-                        family_desc VARCHAR(255),
-                        color VARCHAR(7)
-SQL
-    return $sql;
-}
-
-sub getCreateFamilyTableSql {
-    my $sql = <<SQL;
-CREATE TABLE families (family VARCHAR(1800));
-SQL
-    return $sql;
-}
-
-
-sub getCreateDegreeTableSql {
-    my @statements;
-    my $sql = "CREATE TABLE cluster_degree (cluster_num INTEGER PRIMARY KEY, accession VARCHAR(10), degree INTEGER);";
-    push @statements, $sql;
-    $sql = "CREATE INDEX degree_cluster_num_index on cluster_degree (cluster_num)";
-    push @statements, $sql;
-    return @statements;
-}
-
-
-sub getCreateMetadataTableSql {
-    my @statements;
-    my $sql = "CREATE TABLE metadata (cooccurrence REAL, name VARCHAR(255), neighborhood_size INTEGER);";
-    push @statements, $sql;
-    return @statements;
-}
-
-
-sub getInsertStatement {
-    my $table = shift;
-    my $attr = shift;
-    my $dbh = shift;
-    my $colorizer = shift;
-
-    my $strainCol = exists $attr->{strain} ? ",strain" : "";
-    my $clusterNumCol = exists $attr->{cluster_num} ? ",cluster_num" : "";
-    my $geneKeyCol = exists $attr->{gene_key} ? ",gene_key" : "";
-    my $organismCol = exists $attr->{organism} ? ",organism" : "";
-    my $isBoundCol = exists $attr->{is_bound} ? ",is_bound" : "";
-    my $orderCol = exists $attr->{sort_order} ? ",sort_order" : "";
-    my $addlCols = $strainCol . $clusterNumCol . $geneKeyCol . $organismCol . $isBoundCol . $orderCol;
-
-    my $color = $colorizer->getColorForPfam($attr->{family});
-
-    my $sql = "INSERT INTO $table (accession, id, num, family, start, stop, rel_start, rel_stop, direction, type, seq_len, taxon_id, anno_status, desc, family_desc, color $addlCols) VALUES (";
-    $sql .= $dbh->quote($attr->{accession}) . ",";
-    $sql .= $dbh->quote($attr->{id}) . ",";
-    $sql .= $dbh->quote($attr->{num}) . ",";
-    $sql .= $dbh->quote($attr->{family}) . ",";
-    $sql .= $dbh->quote($attr->{start}) . ",";
-    $sql .= $dbh->quote($attr->{stop}) . ",";
-    $sql .= $dbh->quote($attr->{rel_start}) . ",";
-    $sql .= $dbh->quote($attr->{rel_stop}) . ",";
-    $sql .= $dbh->quote($attr->{direction}) . ",";
-    $sql .= $dbh->quote($attr->{type}) . ",";
-    $sql .= $dbh->quote($attr->{seq_len}) . ",";
-    $sql .= $dbh->quote($attr->{taxon_id}) . ",";
-    $sql .= $dbh->quote($attr->{anno_status}) . ",";
-    $sql .= $dbh->quote($attr->{desc}) . ",";
-    $sql .= $dbh->quote($attr->{family_desc}) . ",";
-    $sql .= $dbh->quote($color);
-    $sql .= "," . $dbh->quote($attr->{strain}) if exists $attr->{strain};
-    $sql .= "," . $dbh->quote($attr->{cluster_num}) if exists $attr->{cluster_num};
-    $sql .= "," . $dbh->quote($attr->{gene_key}) if exists $attr->{gene_key};
-    $sql .= "," . $dbh->quote($attr->{organism}) if exists $attr->{organism};
-    $sql .= "," . $dbh->quote($attr->{is_bound}) if exists $attr->{is_bound};
-    $sql .= "," . $dbh->quote($attr->{sort_order}) if exists $attr->{sort_order};
-    $sql .= ")";
-
-    return $sql;
-}
-
-sub computeClusterCenters {
-    my $supernodes = shift;
-    my $numbermatch = shift;
-    my $singletons = shift;
-    my $degrees = shift;
-
-    my %centers;
-    foreach my $clusterId (keys %$supernodes) {
-        my @nodes = @{ $supernodes->{$clusterId} };
-        my $clusterNum = $numbermatch->{$clusterId};
-
-        if (exists $singletons->{$clusterId} and scalar @nodes > 1) {
-            $centers{$clusterNum} = {degree => 1, id => $nodes[0]};
-        } else {
-            foreach my $acc (@nodes) {
-                next if not exists $degrees->{$acc};
-                if (not exists $centers{$clusterNum} or $degrees->{$acc} > $centers{$clusterNum}->{degree}) {
-                    $centers{$clusterNum} = {degree => $degrees->{$acc}, id => $acc};
-                }
-            }
-        }
-    }
-
-    return \%centers;
-}
 

@@ -10,7 +10,7 @@ use File::Slurp;
 use Capture::Tiny qw(:all);
 
 use EFI::Database;
-use EFI::GNNShared;
+use EFI::GNN::Base;
 
 #$configfile=read_file($ENV{'EFICFG'}) or die "could not open $ENV{'EFICFG'}\n";
 #eval $configfile;
@@ -24,7 +24,7 @@ $result = GetOptions(
 );
 
 my $usage=<<USAGE
-usage: getfasta.pl -data-dir <path_to_data_dir> -config <config_file>
+usage: $0 -data-dir <path_to_data_dir> -config <config_file>
     -node-dir       path to directory containing lists of IDs (one file/list per cluster number)
     -out-dir        path to directory to output fasta files to
     -all            path to file to put all sequences into

@@ -35,9 +35,12 @@ my $tempDir = "$outFile.tempunzip";
 
 mkdir $tempDir or die "Unable to extract the zip file to $tempDir: $!";
 
+my $cmd = "unzip $zipFile -d $tempDir";
 my ($out, $err) = capture {
-    system("unzip $zipFile -d $tempDir");
+    system($cmd);
 };
+
+die "There was an error executing $cmd: $err" if $err;
 
 my $firstFile = "";
 
