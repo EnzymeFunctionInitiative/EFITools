@@ -1,9 +1,9 @@
 
-package EFI::GNNShared;
+package EFI::GNN::Base;
 
 use File::Basename;
 use Cwd 'abs_path';
-use lib abs_path(dirname(__FILE__) . "/../");
+use lib abs_path(dirname(__FILE__) . "/../../");
 
 use List::MoreUtils qw{apply uniq any};
 use List::Util qw(sum);
@@ -25,10 +25,11 @@ sub new {
 
     $self->{dbh} = $args{dbh};
     $self->{incfrac} = $args{incfrac};
-    $self->{colors} = $self->getColors();
-    $self->{num_colors} = scalar keys %{$self->{colors}};
-    $self->{pfam_color_counter} = 1;
-    $self->{pfam_colors} = {};
+    $self->{color_util} = $args{color_util};
+#    $self->{colors} = $self->getColors();
+#    $self->{num_colors} = scalar keys %{$self->{colors}};
+#    $self->{pfam_color_counter} = 1;
+#    $self->{pfam_colors} = {};
     $self->{id_dir} = ($args{id_dir} and -d $args{id_dir}) ? $args{id_dir} : "";
     $self->{cluster_fh} = {};
     $self->{color_only} = exists $args{color_only} ? $args{color_only} : 0;
@@ -281,7 +282,8 @@ sub writeColorSsnNodes {
 
             # find color and add attribute
             my $color = "";
-            $color = $self->{colors}->{$clusterNum} if $nodeCount{$clusterNum} > 1;
+            $color = $self->getColor($clusterNum) if $nodeCount{$clusterNum} > 1;
+            #$color = $self->{colors}->{$clusterNum} if $nodeCount{$clusterNum} > 1;
             my $clusterNumAttr = $nodeCount{$clusterNum} > 1 ? $clusterNum : 999999;
 
             my $savedAttrs = 0;
@@ -403,7 +405,9 @@ sub writeIdMapping {
         next if scalar @{ $supernodes->{$clusterId} } < 2;
 
         foreach my $nodeId (@{ $supernodes->{$clusterId} }) {
-            push @data, [$nodeId, $clusterNum, $self->{colors}->{$clusterNum}];
+            my $color = $self->getColor($clusterNum);
+            #push @data, [$nodeId, $clusterNum, $self->{colors}->{$clusterNum}];
+            push @data, [$nodeId, $clusterNum, $color];
         }
     }
 
@@ -440,33 +444,33 @@ sub closeClusterMapFiles {
 }
 
 
-sub getColors {
-    my $self = shift @_;
-
-    my %colors=();
-    my $sth=$self->{dbh}->prepare("select * from colors;");
-    $sth->execute;
-    while(my $row=$sth->fetchrow_hashref){
-        $colors{$row->{cluster}}=$row->{color};
-    }
-    return \%colors;
-}
-
-
-sub getColorForPfam {
-    my $self = shift;
-    my $pfam = shift;
-
-    if (not exists $self->{pfam_colors}->{$pfam}) {
-        if ($self->{pfam_color_counter} > $self->{num_colors}) {
-            $self->{pfam_color_counter} = 1;
-        }
-        $self->{pfam_colors}->{$pfam} = $self->{colors}->{$self->{pfam_color_counter}};
-        $self->{pfam_color_counter}++;
-    }
-
-    return $self->{pfam_colors}->{$pfam};
-}
+#sub getColors {
+#    my $self = shift @_;
+#
+#    my %colors=();
+#    my $sth=$self->{dbh}->prepare("select * from colors;");
+#    $sth->execute;
+#    while(my $row=$sth->fetchrow_hashref){
+#        $colors{$row->{cluster}}=$row->{color};
+#    }
+#    return \%colors;
+#}
+#
+#
+#sub getColorForPfam {
+#    my $self = shift;
+#    my $pfam = shift;
+#
+#    if (not exists $self->{pfam_colors}->{$pfam}) {
+#        if ($self->{pfam_color_counter} > $self->{num_colors}) {
+#            $self->{pfam_color_counter} = 1;
+#        }
+#        $self->{pfam_colors}->{$pfam} = $self->{colors}->{$self->{pfam_color_counter}};
+#        $self->{pfam_color_counter}++;
+#    }
+#
+#    return $self->{pfam_colors}->{$pfam};
+#}
 
 
 sub median{
@@ -524,7 +528,7 @@ sub addFileActions {
     my $B = shift; # This is an EFI::SchedulerApi::Builder object
     my $info = shift;
 
-    $B->addAction("$info->{tool_path}/getfasta.pl -node-dir $info->{node_data_path} -out-dir $info->{fasta_data_path} -config $info->{config_file} -all $info->{all_fasta_file}");
+    $B->addAction("$info->{fasta_tool_path} -node-dir $info->{node_data_path} -out-dir $info->{fasta_data_path} -config $info->{config_file} -all $info->{all_fasta_file}");
     $B->addAction("cat $info->{node_data_path}/cluster_UniProt_IDs* > $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
     $B->addAction("sort $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted > $info->{node_data_path}/cluster_All_UniProt_IDs.txt");
     $B->addAction("rm $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
@@ -537,6 +541,13 @@ sub addFileActions {
     $B->addAction("zip -j -r $info->{pfam_zip} $info->{pfam_dir}") if $info->{pfam_zip} and $info->{pfam_dir};
     $B->addAction("zip -j -r $info->{none_zip} $info->{none_dir}") if $info->{none_zip} and $info->{none_dir};
     $B->addAction("zip -j $info->{arrow_zip} $info->{arrow_file}") if $info->{arrow_zip} and $info->{arrow_file};
+}
+
+sub getColor {
+    my $self = shift;
+    my $clusterNum = shift;
+
+    return $self->{color_util}->getColorForCluster($clusterNum);
 }
 
 
