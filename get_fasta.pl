@@ -46,7 +46,7 @@ my $dbh = $db->getHandle();
 my $blastDbPath = $ENV{EFIDBPATH};
 $allFastaFile = "$fastaDir/all.fasta" if not $allFastaFile;
 
-my $pattern = $EFI::GNNShared::ClusterUniProtIDFilePattern;
+my $pattern = $EFI::GNN::Base::ClusterUniProtIDFilePattern;
 
 open ALL, ">$allFastaFile";
 
