@@ -16,13 +16,19 @@ use EFI::GNN::ColorUtil;
 use EFI::GNN::AnnotationUtil;
 
 
-my ($idListFile, $dbFile, $nbSize, $noMatchFile, $noNeighborFile, $doIdMapping, $configFile);
+my ($idListFile, $dbFile, $nbSize, $noMatchFile, $noNeighborFile, $doIdMapping, $configFile, $title, $blastSeq, $jobType);
 my $result = GetOptions(
     "id-file=s"             => \$idListFile,
     "db-file=s"             => \$dbFile,
+
     "no-match-file=s"       => \$noMatchFile,
     "no-neighbor-file=s"    => \$noNeighborFile,
+
     "nb-size=n"             => \$nbSize,
+    "blast-seq-file=s"      => \$blastSeq,
+    "title=s"               => \$title,
+    "job-type=s"            => \$jobType,
+
     "do-id-mapping"         => \$doIdMapping,
     "config=s"              => \$configFile,
 );
@@ -44,10 +50,13 @@ usage: $0 -id-file <input_file> -db-file <output_file> [-no-match-file <output_f
 USAGE
 
 
-die "No -id-file provided: \n$usage" if not -f $idListFile;
+die "Invalid -id-file provided: \n$usage" if not -f $idListFile;
 die "No -db-file provided: \n$usage" if not $dbFile;
 
 $nbSize = $defaultNbSize if not $nbSize;
+$title = "" if not $title;
+$blastSeq = "" if not $blastSeq;
+$jobType = "" if not $jobType;
 
 my %dbArgs;
 $dbArgs{config_file_path} = $configFile if $configFile and -f $configFile;
@@ -68,7 +77,13 @@ if ($doIdMapping) {
 
 my $accessionData = findNeighbors($mysqlDbh, $nbSize, $noNeighborFile, @inputIds);
 
-my $resCode = saveData($dbFile, $accessionData, $colorUtil);
+my %arrowMeta;
+$arrowMeta{neighborhood_size} = $nbSize;
+$arrowMeta{title} = $title;
+$arrowMeta{type} = $jobType;
+$arrowMeta{sequence} = readBlastSequence($blastSeq) if $blastSeq;
+
+my $resCode = saveData($dbFile, $accessionData, $colorUtil, \%arrowMeta);
 
 
 
@@ -79,10 +94,11 @@ sub saveData {
     my $dbFile = shift;
     my $data = shift;
     my $colorUtil = shift;
+    my $metadata = shift;
 
     my $arrowTool = new EFI::GNN::Arrows(color_util => $colorUtil);
     my $clusterCenters = {}; # For the future, we might use this for ordering
-    $arrowTool->writeArrowData($data, $clusterCenters, $dbFile);
+    $arrowTool->writeArrowData($data, $clusterCenters, $dbFile, $metadata);
 
     return 1;
 }
@@ -165,11 +181,28 @@ sub getInputIds {
     open FILE, $file or die "Unable to open $file for reading: $!";
     while (<FILE>) {
         chomp;
-        push @ids, $_;
+        push @ids, split(/,+/, $_);
     }
     close FILE;
 
     return @ids;
+}
+
+
+sub readBlastSequence {
+    my $blastSeqFile = shift;
+
+    return "" if not -f $blastSeqFile;
+
+    my $seq = "";
+
+    open SEQ, $blastSeqFile or die "Unable to open BLAST sequence file for reading: $!";
+    while (<SEQ>) {
+        $seq .= $_;
+    }
+    close SEQ;
+
+    return $seq;
 }
 
 

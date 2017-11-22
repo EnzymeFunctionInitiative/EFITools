@@ -123,9 +123,6 @@ if (not defined $dontUseNewNeighborMethod) {
 
 my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile) ? 1 : 0;
 
-(my $jobName = $ssnin) =~ s%^.*/([^/]+)$%$1%;
-$jobName =~ s/\.(xgmml|zip)//g;
-
 
 my $db = new EFI::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
@@ -227,7 +224,15 @@ if (not $colorOnly) {
         print "Writing to arrow data file\n";
         my $arrowTool = new EFI::GNN::Arrows(color_util => $colorUtil);
         my $clusterCenters = $arrowTool->computeClusterCenters($supernodes, $numbermatch, $singletons, $nodeDegrees);
-        $arrowTool->writeArrowData($accessionData, $clusterCenters, $arrowDataFile);
+        (my $jobName = $ssnin) =~ s%^.*/([^/]+)$%$1%;
+        $jobName =~ s/\.(xgmml|zip)//g;
+        my $arrowMeta = {
+            cooccurrence => $cooccurrence,
+            title => $jobName,
+            neighborhood_size => $neighborhoodSize,
+            type => "gnn"
+        };
+        $arrowTool->writeArrowData($accessionData, $clusterCenters, $arrowDataFile, $arrowMeta);
     }
 
     if ($hubCountFile) {
