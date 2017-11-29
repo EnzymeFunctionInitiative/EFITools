@@ -16,24 +16,26 @@ use EFI::Util qw(usesSlurm);
 
 
 my ($diagramZipFile, $blastSeq, $evalue, $maxNumSeq, $outputFile, $scheduler, $queue, $dryRun,
-    $legacy, $title, $nbSize, $idFile);
+    $legacy, $title, $nbSize, $idFile, $jobType, $fastaFile);
 my $result = GetOptions(
-    "zip-file=s"        => \$diagramZipFile,
+    "zip-file=s"            => \$diagramZipFile,
 
-    "blast=s"           => \$blastSeq,
-    "evalue=n"          => \$evalue,
-    "max-seq=n"         => \$maxNumSeq,
-    "nb-size=n"         => \$nbSize, # neighborhood size
+    "blast=s"               => \$blastSeq,
+    "evalue=n"              => \$evalue,
+    "max-seq=n"             => \$maxNumSeq,
+    "nb-size=n"             => \$nbSize, # neighborhood size
 
-    "id-file=s"         => \$idFile,
+    "id-file=s"             => \$idFile,
+    "fasta-file=s"          => \$fastaFile,
 
-    "output=s"          => \$outputFile,
-    "title=s"           => \$title,
+    "output=s"              => \$outputFile,
+    "title=s"               => \$title,
+    "job-type=s"            => \$jobType,
 
-    "scheduler=s"       => \$scheduler,
-    "queue=s"           => \$queue,
-    "dryrun"            => \$dryRun,
-    "legacy"            => \$legacy,
+    "scheduler=s"           => \$scheduler,
+    "queue=s"               => \$queue,
+    "dryrun"                => \$dryRun,
+    "legacy"                => \$legacy,
 );
 
 my $usage = <<USAGE
@@ -46,9 +48,12 @@ usage: $0 -diagram-file <filename> [-scheduler <slurm|torque>] [-queue <queue_na
     -nb-size            the neighborhood window on either side of the query sequence
 
     -id-file            file containing a list of IDs to use to generate the diagrams
+    -fasta-file         file containing FASTA sequences with headers; we extract the IDs from
+                        the headers and use those IDs to generate the diagrams
 
     -output             output sqlite file for Options A-D
     -title              the job title to save in the output file
+    -job-type           the string to put in for the job type (used by the web app)
 
     -scheduler          scheduler type (default to torque, but also can be slurm)
     -queue              the cluster queue to use
@@ -58,7 +63,7 @@ usage: $0 -diagram-file <filename> [-scheduler <slurm|torque>] [-queue <queue_na
 USAGE
 ;
 
-if (not -f $diagramZipFile and not $blastSeq and not -f $idFile) {
+if (not -f $diagramZipFile and not $blastSeq and not -f $idFile and not -f $fastaFile) {
     die "$usage";
 }
 
@@ -121,7 +126,6 @@ $B->addAction("module load $efiGnnMod");
 $B->addAction("module load $dbMod");
 
 my $jobId;
-my $jobType;
 
 
 ###################################################################################################
@@ -136,7 +140,7 @@ if ($diagramZipFile) {
 # This job runs a BLAST on the input sequence, then extracts the sequence IDs from the output BLAST
 # and then finds all of the neighbors for those IDs and creates the sqlite database from that.
 elsif ($blastSeq) {
-    $jobType = "blast";
+    $jobType = "BLAST" if not $jobType;
 
     my $seqFile = "$outputDir/query.fa";
     my $blastOutFile = "$outputDir/blast.raw";
@@ -155,16 +159,31 @@ elsif ($blastSeq) {
 }
 
 elsif ($idFile) {
-    $jobType = "lookup";
+    $jobType = "ID_LOOKUP" if not $jobType;
 
-    $B->addAction("create_diagram_db.pl -id-file $idFile -db-file $outputFile -job-type $jobType $titleArg -nb-size $nbSize");
+    $B->addAction("create_diagram_db.pl -id-file $idFile -db-file $outputFile -job-type $jobType $titleArg -nb-size $nbSize -do-id-mapping");
 
     addBashErrorCheck($B, 0);
 }
+
+elsif ($fastaFile) {
+    $jobType = "FASTA" if not $jobType;
+
+    my $tempIdFile = "$outputFile.temp-ids";
+    my $tempUnmatchedFile = "$outputFile.temp-unmatched";
+    my $unmatchedFileArg = "-unmatched-id-file $tempUnmatchedFile";
     
+    $B->addAction("extract_ids_from_fasta.pl -fasta-file $fastaFile -output-file $tempIdFile $unmatchedFileArg");
+    # Don't do ID mapping here because the previous step already reverse-mapped
+    $B->addAction("create_diagram_db.pl -id-file $tempIdFile -db-file $outputFile -job-type $jobType $titleArg $unmatchedFileArg -nb-size $nbSize");
+    $B->addAction("rm $tempIdFile");
+    $B->addAction("rm $tempUnmatchedFile");
+    
+    addBashErrorCheck($B, 0, $outputFile);
+}
 
 
-
+$jobType = lc $jobType;
 
 my $jobScript = "diagram_$jobType.sh";
 $B->renderToFile($jobScript);
@@ -175,17 +194,17 @@ print "Diagram job ($jobType) is :\n $jobId";
 
 
 sub addBashErrorCheck {
-    my ($B, $markAbort) = @_;
+    my ($B, $markAbort, $outputFile) = @_;
 
     if ($markAbort) {
-        $B->addAction("if [ \$? -eq 0 ]; then");
-        $B->addAction("    touch $jobCompletedFile");
-        $B->addAction("else");
+        $B->addAction("if [ \$? -ne 0 ]; then");
         $B->addAction("    touch $jobErrorFile");
         $B->addAction("fi");
-    } else {
-        $B->addAction("touch $jobCompletedFile");
     }
+    $B->addAction("if [ ! -f \"$outputFile\" ]; then");
+    $B->addAction("    touch $jobErrorFile");
+    $B->addAction("fi");
+    $B->addAction("touch $jobCompletedFile");
 
     $B->addAction("");
 }

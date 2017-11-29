@@ -14,6 +14,8 @@ use EFI::GNN::Arrows;
 use EFI::Database;
 use EFI::GNN::ColorUtil;
 use EFI::GNN::AnnotationUtil;
+use EFI::IdMapping;
+use EFI::IdMapping::Util;
 
 
 my ($idListFile, $dbFile, $nbSize, $noMatchFile, $noNeighborFile, $doIdMapping, $configFile, $title, $blastSeq, $jobType);
@@ -21,7 +23,7 @@ my $result = GetOptions(
     "id-file=s"             => \$idListFile,
     "db-file=s"             => \$dbFile,
 
-    "no-match-file=s"       => \$noMatchFile,
+    "unmatched-id-file=s"   => \$noMatchFile,
     "no-neighbor-file=s"    => \$noNeighborFile,
 
     "nb-size=n"             => \$nbSize,
@@ -37,14 +39,19 @@ my $defaultNbSize = 10;
 
 my $usage = <<USAGE;
 usage: $0 -id-file <input_file> -db-file <output_file> [-no-match-file <output_file> -do-id-mapping]
-        [-nb-size <neighborhood_size>] [-config <config_file>]
+        [-no-neighbor-file <output_file>] [-nb-size <neighborhood_size>] [-config <config_file>]
+
     -id-file            path to a file containing a list of IDs to retrieve neighborhoods for
     -db-file            path to an output file (sqlite) to put the arrow diagram data in
-    -no-match-file      path to an output file to put a list of IDs that weren't matched
+
+    -unmatched-id-file  path to an input file to put a list of IDs that weren't matched from a previous
+                        step (e.g. FASTA parse)
     -no-neighbor-file   path to an output file to put a list of IDs that didn't have neighbors or
                         weren't found in the ENA database
+
     -do-id-mapping      if this flag is present, then the IDs in the input file are reverse mapped
                         to the idmapping table
+
     -nb-size            number of neighbors on either side to retrieve; defaults to $defaultNbSize
     -config             configuration file to use; if not present looks for EFI_CONFIG env. var
 USAGE
@@ -52,6 +59,9 @@ USAGE
 
 die "Invalid -id-file provided: \n$usage" if not -f $idListFile;
 die "No -db-file provided: \n$usage" if not $dbFile;
+die "No configuration file found in environment or as argument: \n$usage" if not -f $configFile and not exists $ENV{EFICONFIG} and not -f $ENV{EFICONFIG};
+
+$configFile = $ENV{EFICONFIG} if not -f $configFile;
 
 $nbSize = $defaultNbSize if not $nbSize;
 $title = "" if not $title;
@@ -59,7 +69,7 @@ $blastSeq = "" if not $blastSeq;
 $jobType = "" if not $jobType;
 
 my %dbArgs;
-$dbArgs{config_file_path} = $configFile if $configFile and -f $configFile;
+$dbArgs{config_file_path} = $configFile;
 
 my $mysqlDb = new EFI::Database(%dbArgs);
 my $mysqlDbh = $mysqlDb->getHandle();
@@ -70,10 +80,19 @@ my $annoUtil = new EFI::GNN::AnnotationUtil(dbh => $mysqlDbh);
 
 
 my @inputIds = getInputIds($idListFile);
+my @unmatchedIds;
 
 if ($doIdMapping) {
-    @inputIds = reverseMapIds($mysqlDbh, $noMatchFile, @inputIds);
+    my $mapper = new EFI::IdMapping(%dbArgs);
+    my ($ids, $unmatched) = reverseMapIds($mapper, @inputIds);
+    @inputIds = @$ids;
+    push @unmatchedIds, @$unmatched;
 }
+if ($noMatchFile) {
+    my @ids = getUnmatchedIds($noMatchFile);
+    push @unmatchedIds, @ids;
+}
+
 
 my $accessionData = findNeighbors($mysqlDbh, $nbSize, $noNeighborFile, @inputIds);
 
@@ -83,7 +102,7 @@ $arrowMeta{title} = $title;
 $arrowMeta{type} = $jobType;
 $arrowMeta{sequence} = readBlastSequence($blastSeq) if $blastSeq;
 
-my $resCode = saveData($dbFile, $accessionData, $colorUtil, \%arrowMeta);
+my $resCode = saveData($dbFile, $accessionData, $colorUtil, \%arrowMeta, \@unmatchedIds);
 
 
 
@@ -95,10 +114,12 @@ sub saveData {
     my $data = shift;
     my $colorUtil = shift;
     my $metadata = shift;
+    my $unmatched = shift;
 
     my $arrowTool = new EFI::GNN::Arrows(color_util => $colorUtil);
     my $clusterCenters = {}; # For the future, we might use this for ordering
     $arrowTool->writeArrowData($data, $clusterCenters, $dbFile, $metadata);
+    $arrowTool->writeUnmatchedIds($dbFile, $unmatched);
 
     return 1;
 }
@@ -163,14 +184,47 @@ sub getAnnotations {
 
 
 sub reverseMapIds {
-    my $dbh = shift;
-    my $noMatchFile = shift;
-    my @ids = @_;
+    my $mapper = shift;
+    my @inputIds = @_;
 
-    #TODO: implement the reverse mapping
+    my @ids;
+    my @unmatched;
+
+    foreach my $id (@inputIds) {
+        my $idType = check_id_type($id);
+        next if ($idType eq EFI::IdMapping::Util::UNKNOWN);
+
+        if ($idType ne EFI::IdMapping::Util::UNIPROT) {
+            my ($uniprotId, $noMatch) = $mapper->reverseLookup($idType, $id);
+            if (defined $uniprotId and $#$uniprotId >= 0) {
+                push @ids, @$uniprotId;
+            }
+            push @unmatched, @$noMatch;
+        } else {
+            $id =~ s/\..+$//;
+            push @ids, $id;
+        }
+    }
+
+    return \@ids, \@unmatched;
+}
+
+
+sub getUnmatchedIds {
+    my $noMatchFile = shift;
+
+    my @ids;
+
+    open NOMATCH, $noMatchFile;
+    while (<NOMATCH>) {
+        chomp;
+        push @ids, $_;
+    }
+    close NOMATCH;
 
     return @ids;
 }
+
 
 
 sub getInputIds {
