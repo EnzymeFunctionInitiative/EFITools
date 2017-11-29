@@ -1,6 +1,7 @@
 
 package EFI::GNN::Arrows;
 
+use strict;
 use DBI;
 
 
@@ -27,6 +28,7 @@ sub writeArrowData {
     my $data = shift;
     my $clusterCenters = shift;
     my $file = shift;
+    my $metadata = shift;
 
     unlink $file if -f $file;
 
@@ -44,10 +46,31 @@ sub writeArrowData {
         $dbh->do($sql);
     }
 
-    my $sql = "INSERT INTO metadata (cooccurrence, neighborhood_size, name) VALUES(" .
-        $dbh->quote($cooccurrence) . "," .
-        $dbh->quote($neighborhoodSize) . "," .
-        $dbh->quote($jobName) . ")";
+    my (@cols, @vals);
+
+    if (exists $metadata->{cooccurrence}) {
+        push @cols, "cooccurrence";
+        push @vals, $metadata->{cooccurrence};
+    }
+    if (exists $metadata->{neighborhood_size}) {
+        push @cols, "neighborhood_size";
+        push @vals, $metadata->{neighborhood_size};
+    }
+    if (exists $metadata->{title}) {
+        push @cols, "name";
+        push @vals, $metadata->{title};
+    }
+    if (exists $metadata->{type}) {
+        push @cols, "type";
+        push @vals, $metadata->{type};
+    }
+    if (exists $metadata->{sequence}) {
+        push @cols, "sequence";
+        push @vals, $metadata->{sequence};
+    }
+
+    my $sql = "INSERT INTO metadata (" . join(", ", @cols) . ") VALUES(" .
+        join(", ", map { $dbh->quote($_) } @vals) . ")";
     $dbh->do($sql);
 
     foreach my $clusterNum (keys %$clusterCenters) {
@@ -79,6 +102,28 @@ sub writeArrowData {
 
     $dbh->commit;
 
+    $dbh->disconnect;
+}
+
+
+sub writeUnmatchedIds {
+    my $self = shift;
+    my $file = shift;
+    my $ids = shift;
+    
+    my $dbh = DBI->connect("dbi:SQLite:dbname=$file","","");
+    $dbh->{AutoCommit} = 0;
+
+    my $createSql = getCreateUnmatchedTableSql();
+    $dbh->do($createSql);
+
+    foreach my $idList (@$ids) {
+        my $sql = "INSERT INTO unmatched (id_list) VALUES (" . $dbh->quote($idList) . ")";
+        print "$sql\n";
+        $dbh->do($sql);
+    }
+
+    $dbh->commit;
     $dbh->disconnect;
 }
 
@@ -142,6 +187,12 @@ SQL
     return $sql;
 }
 
+sub getCreateUnmatchedTableSql {
+    my $sql = <<SQL;
+CREATE TABLE unmatched (id_list TEXT);
+SQL
+    return $sql;
+}
 
 sub getCreateDegreeTableSql {
     my @statements;
@@ -155,7 +206,7 @@ sub getCreateDegreeTableSql {
 
 sub getCreateMetadataTableSql {
     my @statements;
-    my $sql = "CREATE TABLE metadata (cooccurrence REAL, name VARCHAR(255), neighborhood_size INTEGER);";
+    my $sql = "CREATE TABLE metadata (cooccurrence REAL, name VARCHAR(255), neighborhood_size INTEGER, type VARCHAR(10), sequence TEXT);";
     push @statements, $sql;
     return @statements;
 }
