@@ -18,12 +18,11 @@ use EFI::IdMapping;
 use EFI::IdMapping::Util;
 
 
-my ($idListFile, $dbFile, $nbSize, $noMatchFile, $noNeighborFile, $doIdMapping, $configFile, $title, $blastSeq, $jobType);
+my ($idListFile, $dbFile, $nbSize, $noNeighborFile, $doIdMapping, $configFile, $title, $blastSeq, $jobType);
 my $result = GetOptions(
     "id-file=s"             => \$idListFile,
     "db-file=s"             => \$dbFile,
 
-    "unmatched-id-file=s"   => \$noMatchFile,
     "no-neighbor-file=s"    => \$noNeighborFile,
 
     "nb-size=n"             => \$nbSize,
@@ -44,7 +43,6 @@ usage: $0 -id-file <input_file> -db-file <output_file> [-no-match-file <output_f
     -id-file            path to a file containing a list of IDs to retrieve neighborhoods for
     -db-file            path to an output file (sqlite) to put the arrow diagram data in
 
-    -unmatched-id-file  path to an input file to put a list of IDs that weren't matched from a previous
                         step (e.g. FASTA parse)
     -no-neighbor-file   path to an output file to put a list of IDs that didn't have neighbors or
                         weren't found in the ENA database
@@ -81,16 +79,14 @@ my $annoUtil = new EFI::GNN::AnnotationUtil(dbh => $mysqlDbh);
 
 my @inputIds = getInputIds($idListFile);
 my @unmatchedIds;
+my $idsMapped = {};
 
 if ($doIdMapping) {
     my $mapper = new EFI::IdMapping(%dbArgs);
-    my ($ids, $unmatched) = reverseMapIds($mapper, @inputIds);
+    my ($ids, $unmatched, $mapData) = reverseMapIds($mapper, @inputIds);
     @inputIds = @$ids;
+    $idsMapped = $mapData;
     push @unmatchedIds, @$unmatched;
-}
-if ($noMatchFile) {
-    my @ids = getUnmatchedIds($noMatchFile);
-    push @unmatchedIds, @ids;
 }
 
 
@@ -102,8 +98,7 @@ $arrowMeta{title} = $title;
 $arrowMeta{type} = $jobType;
 $arrowMeta{sequence} = readBlastSequence($blastSeq) if $blastSeq;
 
-my $resCode = saveData($dbFile, $accessionData, $colorUtil, \%arrowMeta, \@unmatchedIds);
-
+my $resCode = saveData($dbFile, $accessionData, $colorUtil, \%arrowMeta, \@unmatchedIds, $idsMapped);
 
 
 
@@ -115,11 +110,13 @@ sub saveData {
     my $colorUtil = shift;
     my $metadata = shift;
     my $unmatched = shift;
+    my $idsMapped = shift;
 
     my $arrowTool = new EFI::GNN::Arrows(color_util => $colorUtil);
     my $clusterCenters = {}; # For the future, we might use this for ordering
     $arrowTool->writeArrowData($data, $clusterCenters, $dbFile, $metadata);
     $arrowTool->writeUnmatchedIds($dbFile, $unmatched);
+    $arrowTool->writeMatchedIds($dbFile, $idsMapped);
 
     return 1;
 }
@@ -189,24 +186,30 @@ sub reverseMapIds {
 
     my @ids;
     my @unmatched;
+    my %mapData;
 
     foreach my $id (@inputIds) {
         my $idType = check_id_type($id);
         next if ($idType eq EFI::IdMapping::Util::UNKNOWN);
 
         if ($idType ne EFI::IdMapping::Util::UNIPROT) {
-            my ($uniprotId, $noMatch) = $mapper->reverseLookup($idType, $id);
+            my ($uniprotId, $noMatch, $revMap) = $mapper->reverseLookup($idType, $id);
             if (defined $uniprotId and $#$uniprotId >= 0) {
+                foreach my $upId (@$uniprotId) {
+                    push @ids, $upId;
+                    push @{$mapData{$upId}}, @{$revMap->{$upId}};
+                }
                 push @ids, @$uniprotId;
             }
             push @unmatched, @$noMatch;
         } else {
             $id =~ s/\..+$//;
             push @ids, $id;
+            push @{$mapData{$id}}, $id;
         }
     }
 
-    return \@ids, \@unmatched;
+    return \@ids, \@unmatched, \%mapData;
 }
 
 

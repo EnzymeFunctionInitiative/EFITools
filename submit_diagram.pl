@@ -132,8 +132,8 @@ my $jobId;
 # This job simply unzips the file.
 if ($diagramZipFile) {
     $jobType = "unzip";
-    $B->addAction("$toolpath/unzip_file.pl -in $diagramZipFile -out $diagramDbFile -out-ext sqlite 2> $errorFile");
-    addBashErrorCheck($B, 1);
+    $B->addAction("$toolpath/unzip_file.pl -in $diagramZipFile -out $outputFile -out-ext sqlite 2> $errorFile");
+    addBashErrorCheck($B, 1, $outputFile);
 }
 
 ###################################################################################################
@@ -155,7 +155,7 @@ elsif ($blastSeq) {
     $B->addAction("grep -v '#' $blastOutFile | cut -f 2,12 | sort -k2,2nr | cut -d'|' -f2 > $blastIdListFile");
     $B->addAction("create_diagram_db.pl -id-file $blastIdListFile -db-file $outputFile -blast-seq-file $seqFile -job-type $jobType $titleArg -nb-size $nbSize");
 
-    addBashErrorCheck($B, 0);
+    addBashErrorCheck($B, 0, $outputFile);
 }
 
 elsif ($idFile) {
@@ -163,21 +163,17 @@ elsif ($idFile) {
 
     $B->addAction("create_diagram_db.pl -id-file $idFile -db-file $outputFile -job-type $jobType $titleArg -nb-size $nbSize -do-id-mapping");
 
-    addBashErrorCheck($B, 0);
+    addBashErrorCheck($B, 0, $outputFile);
 }
 
 elsif ($fastaFile) {
     $jobType = "FASTA" if not $jobType;
 
     my $tempIdFile = "$outputFile.temp-ids";
-    my $tempUnmatchedFile = "$outputFile.temp-unmatched";
-    my $unmatchedFileArg = "-unmatched-id-file $tempUnmatchedFile";
-    
-    $B->addAction("extract_ids_from_fasta.pl -fasta-file $fastaFile -output-file $tempIdFile $unmatchedFileArg");
-    # Don't do ID mapping here because the previous step already reverse-mapped
-    $B->addAction("create_diagram_db.pl -id-file $tempIdFile -db-file $outputFile -job-type $jobType $titleArg $unmatchedFileArg -nb-size $nbSize");
+
+    $B->addAction("extract_ids_from_fasta.pl -fasta-file $fastaFile -output-file $tempIdFile");
+    $B->addAction("create_diagram_db.pl -id-file $tempIdFile -db-file $outputFile -job-type $jobType $titleArg -nb-size $nbSize -do-id-mapping");
     $B->addAction("rm $tempIdFile");
-    $B->addAction("rm $tempUnmatchedFile");
     
     addBashErrorCheck($B, 0, $outputFile);
 }
