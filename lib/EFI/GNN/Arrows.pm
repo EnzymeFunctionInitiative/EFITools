@@ -114,12 +114,33 @@ sub writeUnmatchedIds {
     my $dbh = DBI->connect("dbi:SQLite:dbname=$file","","");
     $dbh->{AutoCommit} = 0;
 
-    my $createSql = getCreateUnmatchedTableSql();
+    my $createSql = getCreateUnmatchedIdsTableSql();
     $dbh->do($createSql);
 
     foreach my $idList (@$ids) {
         my $sql = "INSERT INTO unmatched (id_list) VALUES (" . $dbh->quote($idList) . ")";
-        print "$sql\n";
+        $dbh->do($sql);
+    }
+
+    $dbh->commit;
+    $dbh->disconnect;
+}
+
+
+sub writeMatchedIds {
+    my $self = shift;
+    my $file = shift;
+    my $ids = shift;
+    
+    my $dbh = DBI->connect("dbi:SQLite:dbname=$file","","");
+    $dbh->{AutoCommit} = 0;
+
+    my $createSql = getCreateMatchedIdsTableSql();
+    $dbh->do($createSql);
+
+    foreach my $uniprotId (keys %$ids) {
+        my $idList = join(",", @{$ids->{$uniprotId}});
+        my $sql = "INSERT INTO matched (uniprot_id, id_list) VALUES (" . $dbh->quote($uniprotId) . ", " . $dbh->quote($idList) . ")";
         $dbh->do($sql);
     }
 
@@ -187,9 +208,16 @@ SQL
     return $sql;
 }
 
-sub getCreateUnmatchedTableSql {
+sub getCreateUnmatchedIdsTableSql {
     my $sql = <<SQL;
 CREATE TABLE unmatched (id_list TEXT);
+SQL
+    return $sql;
+}
+
+sub getCreateMatchedIdsTableSql {
+    my $sql = <<SQL;
+CREATE TABLE matched (uniprot_id VARCHAR(10), id_list TEXT);
 SQL
     return $sql;
 }

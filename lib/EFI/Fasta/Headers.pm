@@ -17,6 +17,7 @@ use constant FLUSH      => 3;
 
 our @ISA        = qw(Exporter);
 our @EXPORT     = qw();
+our @EXPORT_OK  = qw(get_fasta_header_ids);
 
 
 
