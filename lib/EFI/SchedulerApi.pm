@@ -1,4 +1,5 @@
 
+use strict;
 
 
 
@@ -19,6 +20,7 @@ sub new {
     $self->{sched_prefix} = "";
     $self->{actions} = [];
     $self->{working_dir} = "";
+    $self->{output_dir_base} = "";
     $self->{output_file_stderr} = "";
     $self->{output_file_stdout} = "";
     $self->{output_file_seq_num} = "";
@@ -59,12 +61,28 @@ sub workingDirectory {
 
 sub outputBaseFilepath {
     my ($self, $filepath) = @_;
+    if ($filepath) {
+        $self->{output_file_stderr} = "-e $filepath";
+        $self->{output_file_stdout} = "-o $filepath";
+    } else {
+        $self->{output_file_stderr} = $self->{output_file_stdout} = "";
+    }
+}
+
+sub outputBaseDirpath {
+    my ($self, $dirpath) = @_;
+
+    if ($dirpath) {
+        $self->{output_dir_base} = $dirpath;
+    } else {
+        $self->{output_dir_base} = "";
+    }
 }
 
 sub addAction {
     my ($self, $actionLine) = @_;
 
-    $actionLine =~ s/JOB_ARRAYID/$self->{arrayid_var_name}/g;
+    $actionLine =~ s/{JOB_ARRAYID}/\${$self->{arrayid_var_name}}/g;
 
     push(@{$self->{actions}}, $actionLine);
 }
@@ -108,6 +126,13 @@ sub render {
 
 sub renderToFile {
     my ($self, $filePath) = @_;
+
+    if ($self->{output_dir_base} && not $self->{output_file_stdout}) {
+        (my $fileName = $filePath) =~ s{^.*/([^/]+)$}{$1};
+        $self->outputBaseFilepath($self->{output_dir_base} . "/" . $fileName);
+    } elsif (not $self->{output_file_stdout}) {
+        $self->outputBaseFilepath($filePath);
+    }
 
     if (not $self->{dryrun}) {
         open(FH, "> $filePath") or die "Unable to open job script file $filePath for writing: $!";
@@ -183,23 +208,19 @@ sub dependency {
 
     if (defined $jobId) {
         my $okStr = $isArray ? "afterokarray" : "afterok";
-        $self->{deps} = "-W depend=$okStr:$jobId";
+        my $depStr = "";
+        if (ref $jobId eq "ARRAY") {
+            $depStr = join(",", map { s/\s//sg; "$okStr:$_" } @$jobId);
+        } else {
+            $depStr = "$okStr:$jobId";
+        }
+        $self->{deps} = "-W depend=$depStr";
     }
 }
 
 sub workingDirectory {
     my ($self, $workingDir) = @_;
     $self->{working_dir} = "-w $workingDir";
-}
-
-sub outputBaseFilepath {
-    my ($self, $filepath) = @_;
-    if ($filepath) {
-        $self->{output_file_stderr} = "-e $filepath";
-        $self->{output_file_stdout} = "-o $filepath";
-    } else {
-        $self->{output_file_stderr} = $self->{output_file_stdout} = "";
-    }
 }
 
 
@@ -272,23 +293,19 @@ sub dependency {
 
     if (defined $jobId) {
         my $okStr = "afterok";
-        $self->{deps} = "--dependency=$okStr:$jobId";
+        my $depStr = "";
+        if (ref $jobId eq "ARRAY") {
+            $depStr = join(",", map { s/\s//sg; "$okStr:$_" } @$jobId);
+        } else {
+            $depStr = "$okStr:$jobId";
+        }
+        $self->{deps} = "--dependency=$depStr";
     }
 }
 
 sub workingDirectory {
     my ($self, $workingDir) = @_;
     $self->{working_dir} = "-D $workingDir";
-}
-
-sub outputBaseFilepath {
-    my ($self, $filepath) = @_;
-    if ($filepath) {
-        $self->{output_file_stderr} = "-e $filepath";
-        $self->{output_file_stdout} = "-o $filepath";
-    } else {
-        $self->{output_file_stderr} = $self->{output_file_stdout} = "";
-    }
 }
 
 
@@ -346,6 +363,10 @@ sub new {
         $self->{output_base_filepath} = $args{output_base_filepath};
     }
 
+    if (exists $args{output_base_dirpath}) {
+        $self->{output_base_dirpath} = $args{output_base_dirpath};
+    }
+
     return $self;
 }
 
@@ -365,6 +386,7 @@ sub getBuilder {
     $b->resource($self->{resource}[0], $self->{resource}[1], $self->{resource}[2]) if defined $self->{resource};
     $b->workingDirectory($self->{default_working_dir}) if exists $self->{default_working_dir} and -d $self->{default_working_dir};
     $b->outputBaseFilepath($self->{output_base_filepath}) if exists $self->{output_base_filepath} and length $self->{output_base_filepath};
+    $b->outputBaseDirpath($self->{output_base_dirpath}) if exists $self->{output_base_dirpath} and length $self->{output_base_dirpath};
 
     return $b;
 }

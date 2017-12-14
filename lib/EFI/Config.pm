@@ -18,6 +18,7 @@ use constant {
     DATABASE_NAME               => "database",
     DATABASE_HOST               => "host",
     DATABASE_PORT               => "port",
+    DATABASE_IP_RANGE           => "ip_range",
 
     IDMAPPING_SECTION           => "idmapping",
     IDMAPPING_TABLE_NAME        => "table_name",
@@ -94,6 +95,7 @@ sub parseConfig {
     $object->{db}->{password} = $cfg->val(DATABASE_SECTION, DATABASE_PASSWORD);
     $object->{db}->{host} = $cfg->val(DATABASE_SECTION, DATABASE_HOST, "localhost");
     $object->{db}->{port} = $cfg->val(DATABASE_SECTION, DATABASE_PORT, "3306");
+    $object->{db}->{ip_range} = $cfg->val(DATABASE_SECTION, DATABASE_IP_RANGE, "");
 
     if (exists $ENV{&ENVIRONMENT_DB}) {
         $object->{db}->{name} = $ENV{&ENVIRONMENT_DB};
