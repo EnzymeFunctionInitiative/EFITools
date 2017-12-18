@@ -184,6 +184,7 @@ $jobType = lc $jobType;
 my $jobScript = "diagram_$jobType.sh";
 $B->renderToFile($jobScript);
 $jobId = $SS->submit($jobScript);
+chomp $jobId;
 
 print "Diagram job ($jobType) is :\n $jobId";
 
