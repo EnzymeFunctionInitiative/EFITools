@@ -383,7 +383,7 @@ sub saveNodeToClusterMap {
         open($self->{cluster_fh}->{$clusterNum}, ">" . $self->{id_dir} . "/cluster_UniProt_IDs_$clusterNum.txt");
     }
 
-    foreach my $nodeId (@{ $supernodes->{$clusterId} }) {
+    foreach my $nodeId (uniq @{ $supernodes->{$clusterId} }) {
         $self->{cluster_fh}->{$clusterNum}->print("$nodeId\n");
     }
 }
@@ -404,7 +404,7 @@ sub writeIdMapping {
         my $clusterNum = $numbermatch->{$clusterId};
         next if scalar @{ $supernodes->{$clusterId} } < 2;
 
-        foreach my $nodeId (@{ $supernodes->{$clusterId} }) {
+        foreach my $nodeId (uniq @{ $supernodes->{$clusterId} }) {
             my $color = $self->getColor($clusterNum);
             #push @data, [$nodeId, $clusterNum, $self->{colors}->{$clusterNum}];
             push @data, [$nodeId, $clusterNum, $color];
