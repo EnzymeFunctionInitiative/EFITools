@@ -28,6 +28,9 @@ sub new {
     $self->{arrayid_var_name} = "";
     $self->{other_config} = [];
     $self->{dryrun} = exists $args{dryrun} ? $args{dryrun} : 0;
+    # Echo the first part of all acctions
+    $self->{echo_actions} = exists $args{echo_actions} ? $args{echo_actions} : 0;
+    $self->{abort_script_on_action_fail} = exists $args{abort_script_on_action_fail} ? $args{abort_script_on_action_fail} : 1;
 
     return $self;
 }
@@ -84,6 +87,11 @@ sub addAction {
     my ($self, $actionLine) = @_;
 
     $actionLine =~ s/{JOB_ARRAYID}/\${$self->{arrayid_var_name}}/g;
+    if ($self->{echo_actions}) {
+        (my $cmdType = $actionLine) =~ s/^(\S+).*$/$1/g;
+        $cmdType =~ s/[^A-Za-z0-9_\-\/]//g;
+        push(@{$self->{actions}}, "echo 'RUNNING $cmdType'");
+    }
 
     push(@{$self->{actions}}, $actionLine);
 }
@@ -119,6 +127,10 @@ sub render {
         } else {
             print $fh ("$pfx " . $self->{output_file_stderr} . ".stderr." . $self->{output_file_seq_num} . "\n");
         }
+    }
+
+    if ($self->{abort_script_on_action_fail}) {
+        print $fh "set -e\n";
     }
 
     foreach my $action (@{$self->{actions}}) {
