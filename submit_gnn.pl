@@ -240,6 +240,7 @@ $B->addAction("\n\n$toolpath/save_version.pl > $outputDir/gnn.completed");
 
 $B->renderToFile("submit_gnn.sh");
 my $gnnjob = $SS->submit("submit_gnn.sh");
+chomp $gnnjob;
 
 print "Job to make gnn network is :\n $gnnjob";
 
