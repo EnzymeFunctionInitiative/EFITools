@@ -63,6 +63,12 @@ sub workingDirectory {
     my ($self, $workingDir) = @_;
 }
 
+sub setScriptAbortOnError {
+    my ($self, $doAbort) = @_;
+
+    $self->{abort_script_on_action_fail} = $doAbort;
+}
+
 sub outputBaseFilepath {
     my ($self, $filepath) = @_;
     if ($filepath) {
