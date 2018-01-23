@@ -65,20 +65,7 @@ foreach my $file (sort file_sort glob("$nodeDir/$pattern*.txt")) {
 
     print "Retrieving sequences for cluster $clusterNum...\n";
 
-    while (scalar @ids) {
-        my $batchLine = join(",", splice(@ids, 0, 1000));
-        my ($fastacmdOutput, $fastaErr) = capture {
-            system("fastacmd", "-d", "$blastDbPath/combined.fasta", "-s", $batchLine);
-        };
-        my @sequences = split /\n>/, $fastacmdOutput;
-        $sequences[0] = substr($sequences[0], 1) if $#sequences >= 0 and substr($sequences[0], 0, 1) eq ">";
-        foreach my $seq (@sequences) {
-            if ($seq =~ s/^\w\w\|(\w{6,10})\|.*//) {
-                my $accession = $1;
-                writeSequence($accession, $clusterNum, \*FASTA, \*ALL);
-            }
-        }
-    }
+    saveSequences($clusterNum, \*FASTA, \*ALL, @ids);
 
     print "Done retrieving sequences!\n";
 
@@ -90,16 +77,13 @@ close ALL;
 
 my $inputSingletonFile = "$nodeDir/singletons.txt";
 if ($singletonFile and -f $inputSingletonFile) {
-    open SINGLES, $inputSingletonFile or die "Unable to read singleton file $inputSingletonFile: $!";
     open FASTA, "> $singletonFile" or die "Unable to write to $singletonFile: $!";
     
-    while (<SINGLES>) {
-        chomp;
-        writeSequence($_, 0, \*FASTA, undef);
-    }
+    my @ids = map { $_ =~ s/[\r\n]//g; $_ } read_file($inputSingletonFile);
+
+    saveSequences(0, \*FASTA, undef, @ids);
 
     close FASTA;
-    close SINGLES;
 }
 
 
@@ -113,12 +97,34 @@ sub file_sort {
     return $aa <=> $bb;
 }
 
+sub saveSequences {
+    my $clusterNum = shift;
+    my $outputFh = shift;
+    my $allFh = shift;
+    my @ids = @_;
+
+    while (scalar @ids) {
+        my $batchLine = join(",", splice(@ids, 0, 1000));
+        my ($fastacmdOutput, $fastaErr) = capture {
+            system("fastacmd", "-d", "$blastDbPath/combined.fasta", "-s", $batchLine);
+        };
+        my @sequences = split /\n>/, $fastacmdOutput;
+        $sequences[0] = substr($sequences[0], 1) if $#sequences >= 0 and substr($sequences[0], 0, 1) eq ">";
+        foreach my $seq (@sequences) {
+            if ($seq =~ s/^\w\w\|(\w{6,10})\|.*//) {
+                my $accession = $1;
+                writeSequence($accession, $clusterNum, $outputFh, $allFh, $seq);
+            }
+        }
+    }
+}
 
 sub writeSequence {
     my $accession = shift;
     my $clusterNum = shift;
     my $fastaFh = shift;
     my $allFh = shift;
+    my $seq = shift;
 
     my $sql = "select Organism,PFAM from annotations where accession = '$accession'";
     my $sth = $dbh->prepare($sql);
