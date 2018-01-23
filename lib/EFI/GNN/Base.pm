@@ -419,6 +419,24 @@ sub writeIdMapping {
 }
 
 
+sub writeSingletons {
+    my $self = shift @_;
+    my $filePath = shift @_;
+    my $supernodes = shift @_;
+
+    open SINGLE, ">$filePath";
+
+    print SINGLE "UniProt ID\n";
+    foreach my $clusterId (sort keys %$supernodes) {
+        if (scalar @{ $supernodes->{$clusterId} } == 1) {
+            print SINGLE $supernodes->{$clusterId}->[0], "\n";
+        }
+    }
+
+    close SINGLE;
+}
+
+
 sub idmapsort {
     my $comp = $a->[1] <=> $b->[1];
     if ($comp == 0) {
@@ -528,7 +546,10 @@ sub addFileActions {
     my $B = shift; # This is an EFI::SchedulerApi::Builder object
     my $info = shift;
 
-    $B->addAction("$info->{fasta_tool_path} -node-dir $info->{node_data_path} -out-dir $info->{fasta_data_path} -config $info->{config_file} -all $info->{all_fasta_file}");
+    my $fastaTool = "$info->{fasta_tool_path} -node-dir $info->{node_data_path} -out-dir $info->{fasta_data_path} -config $info->{config_file}";
+    $fastaTool .= " -all $info->{all_fasta_file}" if $info->{all_fasta_file};
+    $fastaTool .= " -singletons $info->{singletons_file}" if $info->{singletons_file};
+    $B->addAction($fastaTool);
     $B->addAction("cat $info->{node_data_path}/cluster_UniProt_IDs* > $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
     $B->addAction("sort $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted > $info->{node_data_path}/cluster_All_UniProt_IDs.txt");
     $B->addAction("rm $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
