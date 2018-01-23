@@ -15,11 +15,12 @@ use EFI::GNN::Base;
 #$configfile=read_file($ENV{'EFICFG'}) or die "could not open $ENV{'EFICFG'}\n";
 #eval $configfile;
 
-my ($result, $nodeDir, $fastaDir, $configFile, $allFastaFile);
+my ($result, $nodeDir, $fastaDir, $configFile, $allFastaFile, $singletonFile);
 $result = GetOptions(
     "node-dir=s"        => \$nodeDir,
     "out-dir=s"         => \$fastaDir,
     "all=s"             => \$allFastaFile,
+    "singletons=s"      => \$singletonFile,
     "config=s"          => \$configFile,
 );
 
@@ -28,6 +29,7 @@ usage: $0 -data-dir <path_to_data_dir> -config <config_file>
     -node-dir       path to directory containing lists of IDs (one file/list per cluster number)
     -out-dir        path to directory to output fasta files to
     -all            path to file to put all sequences into
+    -singletons     path to file containing a list of singletons (nodes without a cluster)
     -config         path to configuration file
 USAGE
 ;
@@ -73,21 +75,7 @@ foreach my $file (sort file_sort glob("$nodeDir/$pattern*.txt")) {
         foreach my $seq (@sequences) {
             if ($seq =~ s/^\w\w\|(\w{6,10})\|.*//) {
                 my $accession = $1;
-                my $sql = "select Organism,PFAM from annotations where accession = '$accession'";
-                my $sth = $dbh->prepare($sql);
-                $sth->execute();
-                
-                my $organism = "Unknown";
-                my $pfam = "Unknown";
-
-                my $row = $sth->fetchrow_hashref();
-                if ($row) {
-                    $organism = $row->{Organism};
-                    $pfam = $row->{PFAM};
-                }
-
-                print FASTA ">$accession $clusterNum|$organism|$pfam$seq\n";
-                print ALL ">$accession $clusterNum|$organism|$pfam$seq\n";
+                writeSequence($accession, $clusterNum, \*FASTA, \*ALL);
             }
         }
     }
@@ -100,6 +88,21 @@ foreach my $file (sort file_sort glob("$nodeDir/$pattern*.txt")) {
 
 close ALL;
 
+my $inputSingletonFile = "$nodeDir/singletons.txt";
+if ($singletonFile and -f $inputSingletonFile) {
+    open SINGLES, $inputSingletonFile or die "Unable to read singleton file $inputSingletonFile: $!";
+    open FASTA, "> $singletonFile" or die "Unable to write to $singletonFile: $!";
+    
+    while (<SINGLES>) {
+        chomp;
+        writeSequence($_, 0, \*FASTA, undef);
+    }
+
+    close FASTA;
+    close SINGLES;
+}
+
+
 
 $dbh->disconnect();
 
@@ -109,4 +112,29 @@ sub file_sort {
     (my $bb = $b) =~ s/^.*?(\d+)\.txt$/$1/;
     return $aa <=> $bb;
 }
+
+
+sub writeSequence {
+    my $accession = shift;
+    my $clusterNum = shift;
+    my $fastaFh = shift;
+    my $allFh = shift;
+
+    my $sql = "select Organism,PFAM from annotations where accession = '$accession'";
+    my $sth = $dbh->prepare($sql);
+    $sth->execute();
+    
+    my $organism = "Unknown";
+    my $pfam = "Unknown";
+
+    my $row = $sth->fetchrow_hashref();
+    if ($row) {
+        $organism = $row->{Organism};
+        $pfam = $row->{PFAM};
+    }
+
+    $fastaFh->print(">$accession $clusterNum|$organism|$pfam$seq\n");
+    $allFh->print(">$accession $clusterNum|$organism|$pfam$seq\n") if $allFh;
+}
+
 
