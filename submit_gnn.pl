@@ -170,6 +170,7 @@ my $ssnOutZip = "$outputDir/$ssnName.zip";
 (my $pfamhubfileZip = $pfamhubfile) =~ s/\.xgmml$/.zip/i;
 my $allFastaFile = "$fastaDir/all.fasta";
 (my $arrowZip = $arrowDataFile) =~ s/\.sqlite/.zip/i if $arrowDataFile;
+my $singletonsFastaFile = "$fastaDir/singletons.fasta";
 
 
 mkdir $fastaDir or die "Unable to create output fasta data path $fastaDir: $!" if not -d $fastaDir;
@@ -215,6 +216,7 @@ my $info = {
     none_dir => $noneDir,
     none_zip => $noneZip,
     all_fasta_file => $allFastaFile,
+    singletons_file => $singletonsFastaFile,
 };
 
 $info->{arrow_zip} = $arrowZip if $arrowZip;

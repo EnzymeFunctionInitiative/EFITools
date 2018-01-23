@@ -29,7 +29,7 @@ use strict;
 use FindBin;
 use Getopt::Long;
 use XML::LibXML;
-use IO;
+use IO qw(File);
 use XML::Writer;
 use XML::LibXML::Reader;
 use JSON;
@@ -137,6 +137,10 @@ my %gnnArgs = (dbh => $dbh, incfrac => $cooccurrence, use_nnm => $useNewNeighbor
 $gnnArgs{pfam_dir} = $pfamDir if $pfamDir and -d $pfamDir;
 $gnnArgs{id_dir} = $idDir if $idDir and -d $idDir;
 $gnnArgs{color_util} = $colorUtil;
+
+
+my $singletonsFile;
+$singletonsFile = "$idDir/singletons.txt" if $idDir and $idOutputFile;
 
 my $util = new EFI::GNN(%gnnArgs);
 
@@ -256,6 +260,7 @@ if ($ssnout) {
 close($warning_fh);
 
 $util->writeIdMapping($idOutputFile, $numbermatch, $constellations, $supernodes) if $idOutputFile;
+$util->writeSingletons($singletonsFile, $supernodes) if $singletonsFile;
 #$util->closeClusterMapFiles();
 $util->finish();
 
