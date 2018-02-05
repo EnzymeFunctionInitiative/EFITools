@@ -196,7 +196,7 @@ sub getAttributeColsSql {
                         anno_status VARCHAR(255),
                         desc VARCHAR(255),
                         family_desc VARCHAR(255),
-                        color VARCHAR(7)
+                        color VARCHAR(255)
 SQL
     return $sql;
 }
@@ -254,7 +254,9 @@ sub getInsertStatement {
     my $orderCol = exists $attr->{sort_order} ? ",sort_order" : "";
     my $addlCols = $strainCol . $clusterNumCol . $geneKeyCol . $organismCol . $isBoundCol . $orderCol;
 
-    my $color = $self->{color_util}->getColorForPfam($attr->{family});
+    # If the family field is a fusion of multiple pfams, we get the color for each pfam in the fusion
+    # as well as a color for the fusion.
+    my $color = join(",", $self->{color_util}->getColorForPfam($attr->{family}));
 
     my $sql = "INSERT INTO $table (accession, id, num, family, start, stop, rel_start, rel_stop, direction, type, seq_len, taxon_id, anno_status, desc, family_desc, color $addlCols) VALUES (";
     $sql .= $dbh->quote($attr->{accession}) . ",";

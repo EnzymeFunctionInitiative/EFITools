@@ -33,17 +33,35 @@ sub getColors {
 
 sub getColorForPfam {
     my $self = shift;
-    my $pfam = shift;
+    my $pfamList = shift;
 
-    if (not exists $self->{pfam_colors}->{$pfam}) {
-        if ($self->{pfam_color_counter} > $self->{num_colors}) {
-            $self->{pfam_color_counter} = 1;
+    my @colors;
+    foreach my $pfam (split(m/-/, $pfamList)) {
+        if (not exists $self->{pfam_colors}->{$pfam}) {
+            if ($self->{pfam_color_counter} > $self->{num_colors}) {
+                $self->{pfam_color_counter} = 1;
+            }
+            $self->{pfam_colors}->{$pfam} = $self->{colors}->{$self->{pfam_color_counter}};
+            $self->{pfam_color_counter}++;
         }
-        $self->{pfam_colors}->{$pfam} = $self->{colors}->{$self->{pfam_color_counter}};
-        $self->{pfam_color_counter}++;
+
+        push @colors, $self->{pfam_colors}->{$pfam};
     }
 
-    return $self->{pfam_colors}->{$pfam};
+    ## Also add the fusion
+    #if ($pfamList =~ m/-/) {
+    #    if (not exists $self->{pfam_colors}->{$pfamList}) {
+    #        if ($self->{pfam_color_counter} > $self->{num_colors}) {
+    #            $self->{pfam_color_counter} = 1;
+    #        }
+    #        $self->{pfam_colors}->{$pfamList} = $self->{colors}->{$self->{pfam_color_counter}};
+    #        $self->{pfam_color_counter}++;
+    #    }
+    #
+    #    push @colors, $self->{pfam_colors}->{$pfamList};
+    #}
+
+    return @colors;
 }
 
 
