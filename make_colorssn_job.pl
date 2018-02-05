@@ -120,6 +120,8 @@ my $fileInfo = {
 
 
 my $B = $SS->getBuilder();
+
+$B->resource(1, 1, "90gb");
 $B->addAction("$str");
 $B->addAction("module load $dbModule");
 $B->addAction("module load $gntModule");

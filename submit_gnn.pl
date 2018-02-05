@@ -229,6 +229,8 @@ my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => 
 
 
 my $B = $SS->getBuilder();
+
+$B->resource(1, 1, "90gb");
 $B->addAction("module load $efiDbMod");
 $B->addAction("module load $efiGnnMod");
 $B->addAction("export BLASTDB=$outputDir/blast");
