@@ -113,7 +113,7 @@ my $jobErrorFile = "$outputDir/job.error";
 
 my $schedType = "torque";
 $schedType = "slurm" if (defined($scheduler) and $scheduler eq "slurm") or (not defined($scheduler) and usesSlurm());
-my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => [1, 1], dryrun => $dryRun);
+my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => [1, 1, "50GB"], dryrun => $dryRun);
 
 
 my $titleArg = $title ? "-title \"$title\"" : "";

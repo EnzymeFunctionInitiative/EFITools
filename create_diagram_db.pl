@@ -87,7 +87,10 @@ if ($doIdMapping) {
     @inputIds = @$ids;
     $idsMapped = $mapData;
     push @unmatchedIds, @$unmatched;
+} else {
+    map { push(@{$idsMapped->{$_}}, $_); } @inputIds;
 }
+
 
 
 my $accessionData = findNeighbors($mysqlDbh, $nbSize, $noNeighborFile, @inputIds);
