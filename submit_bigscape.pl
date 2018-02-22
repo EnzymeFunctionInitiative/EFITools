@@ -89,7 +89,7 @@ my $metaFile = "cluster.metadata";
 
 my $schedType = "torque";
 $schedType = "slurm" if (defined($scheduler) and $scheduler eq "slurm") or (not defined($scheduler) and usesSlurm());
-my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => [1, 24, "20GB"], dryrun => $dryRun);
+my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => [1, 24, "50GB"], dryrun => $dryRun);
 
 
 my $B = $SS->getBuilder();
@@ -108,6 +108,7 @@ $B->addAction("    bsDir=\"$bigscapeDir/run/\$dirName\"");
 $B->addAction("    mkdir -p \$outDir");
 $B->addAction("    mkdir -p \$bsDir");
 $B->addAction("    $toolpath/get_fasta.pl -node-dir \$outDir -out-dir \$outDir -use-all-files");
+$B->addAction("    $toolpath/remove_empty_entries.pl -input-dir \$outDir -metadata-file \$outDir/$metaFile");
 $B->addAction("    python /home/n-z/noberg/bigscape/BiG-SCAPE/bigscape.py -i \$outDir -o \$bsDir --cores 24 --clans --clan_cutoff 0.95 0.95 --pfam_dir /home/n-z/noberg/bigscape/hmm --precomputed_fasta --no_classify --mix --run_name \$dirName");
 $B->addAction("done");
 $B->addAction("cp $diagramFile $updatedDiagram");

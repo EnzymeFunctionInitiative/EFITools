@@ -80,7 +80,7 @@ foreach my $meta (@metadata) {
         print METANEW $meta->[1], "\n";
     } else {
         print "Removing $fastaFile\n";
-        #unlink($fastaFile);
+        unlink($fastaFile);
     }
 }
 
