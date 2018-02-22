@@ -16,6 +16,7 @@ sub new {
     $self->{queue} = "";
     $self->{res} = [];
     $self->{mail} = "";
+    $self->{name} = "";
     $self->{deps} = "";
     $self->{sched_prefix} = "";
     $self->{actions} = [];
@@ -33,6 +34,10 @@ sub new {
     $self->{abort_script_on_action_fail} = exists $args{abort_script_on_action_fail} ? $args{abort_script_on_action_fail} : 1;
 
     return $self;
+}
+
+sub jobName {
+    my ($self, $name) = @_;
 }
 
 sub mailEnd {
@@ -182,6 +187,10 @@ sub new {
     return bless($self, $class);
 }
 
+sub jobName {
+    my ($self, $name) = @_;
+    $self->{name} = "-N \"$name\"";
+}
 
 sub mailEnd {
     my ($self, $clear) = @_;
@@ -266,6 +275,10 @@ sub new {
     return bless($self, $class);
 }
 
+sub jobName {
+    my ($self, $name) = @_;
+    $self->{name} = "--job-name=\"$name\"";
+}
 
 sub mailEnd {
     my ($self, $clear) = @_;

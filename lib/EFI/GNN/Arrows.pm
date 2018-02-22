@@ -4,6 +4,8 @@ package EFI::GNN::Arrows;
 use strict;
 use DBI;
 
+our $AttributesTable = "attributes";
+our $NeighborsTable = "neighbors";
 
 sub new {
     my ($class, %args) = @_;
@@ -82,14 +84,14 @@ sub writeArrowData {
     }
 
     foreach my $id (sort keys %$data) {
-        my $sql = $self->getInsertStatement("attributes", $data->{$id}->{attributes}, $dbh);
+        my $sql = $self->getInsertStatement($EFI::GNN::Arrows::AttributesTable, $data->{$id}->{attributes}, $dbh);
         $dbh->do($sql);
         my $geneKey = $dbh->last_insert_id(undef, undef, undef, undef);
         $families{$data->{$id}->{attributes}->{family}} = 1;
 
         foreach my $nb (sort { $a->{num} cmp $b->{num} } @{ $data->{$id}->{neighbors} }) {
             $nb->{gene_key} = $geneKey;
-            $sql = $self->getInsertStatement("neighbors", $nb, $dbh);
+            $sql = $self->getInsertStatement($EFI::GNN::Arrows::NeighborsTable, $nb, $dbh);
             $dbh->do($sql);
             $families{$nb->{family}} = 1;
         }
@@ -158,11 +160,11 @@ sub getCreateAttributeTableSql {
     $cols .= "\n                        , organism VARCHAR(2000)";
     $cols .= "\n                        , is_bound INTEGER"; # 0 - not encountering any contig boundary; 1 - left; 2 - right; 3 - both
 
-    my $sql = "CREATE TABLE attributes ($cols)";
+    my $sql = "CREATE TABLE $EFI::GNN::Arrows::AttributesTable ($cols)";
     push @statements, $sql;
-    $sql = "CREATE INDEX attributes_ac_index ON attributes (accession)";
+    $sql = "CREATE INDEX ${EFI::GNN::Arrows::AttributesTable}_ac_index ON $EFI::GNN::Arrows::AttributesTable (accession)";
     push @statements, $sql;
-    $sql = "CREATE INDEX attributes_cl_num_index ON attributes (cluster_num)";
+    $sql = "CREATE INDEX ${EFI::GNN::Arrows::AttributesTable}_cl_num_index ON $EFI::GNN::Arrows::AttributesTable (cluster_num)";
     push @statements, $sql;
     return @statements;
 }
@@ -173,8 +175,8 @@ sub getCreateNeighborTableSql {
     $cols .= "\n                        , gene_key INTEGER";
 
     my @statements;
-    push @statements, "CREATE TABLE neighbors ($cols)";
-    push @statements, "CREATE INDEX neighbor_ac_id_index ON neighbors (gene_key)";
+    push @statements, "CREATE TABLE $EFI::GNN::Arrows::NeighborsTable ($cols)";
+    push @statements, "CREATE INDEX ${EFI::GNN::Arrows::NeighborsTable}_ac_id_index ON $EFI::GNN::Arrows::NeighborsTable (gene_key)";
     return @statements;
 }
 
@@ -285,6 +287,52 @@ sub getInsertStatement {
 
     return $sql;
 }
+
+
+#sub exportIdInfo {
+#    my $self = shift;
+#    my $sqliteFile = shift;
+#    my $outFile = shift;
+#
+#    my $dbh = DBI->connect("dbi:SQLite:dbname=$sqliteFile","","");
+#    
+#    my $sql = "SELECT * FROM $EFI::GNN::Arrows::AttributesTable";
+#    my $sth = $dbh->prepare($sql);
+#    $sth->execute();
+#
+#    my %groupData;
+#
+#    while (my $row = $sth->fetchrow_hashref()) {
+#        $groupData->{$row->{accession}} = {
+#            gene_id => $row->{id},
+#            seq_len => $row->{seq_len},
+#            product => "",
+#            organism => "", #$row->{strain},
+#            taxonomy => "",
+#            description => "",
+#            contig_edge => 0, #TODO: compute this correctly
+#            gene_key => $row->{sort_key},
+#            neighbors => [],
+#            position => $row->{num},
+#        };
+#    }
+#
+#    foreach my $id (sort keys %groupData) {
+#        $sql = "SELECT * FROM $EFI::GNN::Arrows::NeighborsTable WHERE gene_key = " . $groupData{$id}->{gene_key} . " ORDER BY num";
+#        $sth = $dbh->prepare($sql);
+#        $sth->execute();
+#
+#        while (my $row = $sth->fetchrow_hashref()) {
+#            my $num = $row->{num};
+#            # Insert the main query/cluster ID into the middle of the neighbors where it belongs.
+#            if ($row->{num} < $num) {
+#                
+#            }
+#        }
+#    }
+#}
+
+
 
 sub computeClusterCenters {
     my $self = shift;
