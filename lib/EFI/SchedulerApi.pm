@@ -122,6 +122,7 @@ sub render {
     print $fh ("$pfx " . $self->{deps} . "\n") if length($self->{deps});
     print $fh ("$pfx " . $self->{mail} . "\n") if length($self->{mail});
     print $fh ("$pfx " . $self->{working_dir} . "\n") if length($self->{working_dir});
+    print $fh ("$pfx " . $self->{name} . "\n") if length($self->{name});
     print $fh join("\n", @{$self->{other_config}}), "\n" if scalar(@{$self->{other_config}});
     
     if (length $self->{output_file_stdout}) {
