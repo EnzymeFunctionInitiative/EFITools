@@ -77,7 +77,8 @@ my $annoUtil = new EFI::GNN::AnnotationUtil(dbh => $mysqlDbh);
 
 
 
-my @inputIds = getInputIds($idListFile);
+my ($inputIdsRef, $evalues) = getInputIds($idListFile);
+my @inputIds = @$inputIdsRef;
 my @unmatchedIds;
 my $idsMapped = {};
 
@@ -93,7 +94,9 @@ if ($doIdMapping) {
 
 
 
-my $accessionData = findNeighbors($mysqlDbh, $nbSize, $noNeighborFile, @inputIds);
+use Data::Dumper;
+print Dumper($evalues);
+my $accessionData = findNeighbors($mysqlDbh, $nbSize, $noNeighborFile, $evalues, @inputIds);
 
 my %arrowMeta;
 $arrowMeta{neighborhood_size} = $nbSize;
@@ -129,6 +132,7 @@ sub findNeighbors {
     my $dbh = shift;
     my $nbSize = shift;
     my $noNbFile = shift;
+    my $evalues = shift;
     my @ids = @_;
 
     my $nbFind = new EFI::GNN::NeighborUtil(dbh => $dbh, use_nnm => 1);
@@ -147,7 +151,7 @@ sub findNeighbors {
     my $sortKey = 0;
     foreach my $id (@ids) {
         my (undef, undef, undef, undef) = $nbFind->findNeighbors($id, $nbSize, $warningFh, $useCircTest, $noneFamily, $accessionData);
-        getAnnotations($dbh, $id, $accessionData, $sortKey);
+        getAnnotations($dbh, $id, $accessionData, $sortKey, $evalues);
         $sortKey++;
     }
 
@@ -162,6 +166,7 @@ sub getAnnotations {
     my $accession = shift;
     my $accessionData = shift;
     my $sortKey = shift;
+    my $evalues = shift;
 
     my ($organism, $taxId, $annoStatus, $desc, $familyDesc) = $annoUtil->getAnnotations($accession, $accessionData->{$accession}->{attributes}->{family});
     $accessionData->{$accession}->{attributes}->{sort_order} = $sortKey;
@@ -171,6 +176,8 @@ sub getAnnotations {
     $accessionData->{$accession}->{attributes}->{desc} = $desc;
     $accessionData->{$accession}->{attributes}->{family_desc} = $familyDesc;
     $accessionData->{$accession}->{attributes}->{cluster_num} = 1;
+    $accessionData->{$accession}->{attributes}->{evalue} = $evalues->{$accession}
+        if exists $evalues->{$accession} and $evalues->{$accession};
 
     foreach my $nbObj (@{ $accessionData->{$accession}->{neighbors} }) {
         my ($nbOrganism, $nbTaxId, $nbAnnoStatus, $nbDesc, $nbFamilyDesc) =
@@ -237,15 +244,24 @@ sub getInputIds {
     my $file = shift;
 
     my @ids;
+    my %evalues;
 
     open FILE, $file or die "Unable to open $file for reading: $!";
     while (<FILE>) {
         chomp;
-        push @ids, split(/,+/, $_);
+        my @lineIds = split(/,+/, $_);
+        foreach my $idLine (@lineIds) {
+            my ($id, $evalue);
+            if ($idLine =~ m/\|/) {
+                ($id, $evalue) = split(m/\|/, $idLine);
+                $evalues{$id} = $evalue;
+            }
+            push @ids, $id;
+        }
     }
     close FILE;
 
-    return @ids;
+    return (\@ids, \%evalues);
 }
 
 

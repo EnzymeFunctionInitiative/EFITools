@@ -152,7 +152,8 @@ elsif ($blastSeq) {
 
     $B->addAction("module load $blastMod");
     $B->addAction("blastall -p blastp -i $seqFile -d $blastDb -m 8 -e $evalue -b $maxNumSeq -o $blastOutFile");
-    $B->addAction("grep -v '#' $blastOutFile | cut -f 2,12 | sort -k2,2nr | cut -d'|' -f2 > $blastIdListFile");
+    #$B->addAction("grep -v '#' $blastOutFile | cut -f 2,11,12 | sort -k3,3nr | cut -d'|' -f2 > $blastIdListFile");
+    $B->addAction("grep -v '#' $blastOutFile | cut -f 2,11,12 | sort -k3,3nr | sed 's/[\t ]\\{1,\\}/|/g' | cut -d'|' -f2,4 > $blastIdListFile");
     $B->addAction("create_diagram_db.pl -id-file $blastIdListFile -db-file $outputFile -blast-seq-file $seqFile -job-type $jobType $titleArg -nb-size $nbSize");
 
     addBashErrorCheck($B, 0, $outputFile);

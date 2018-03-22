@@ -15,7 +15,7 @@ use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm);
 
 
-my ($diagramFile, $dryRun, $scheduler, $queue, $bigscapeDir, $clusterInfoFile, $updatedDiagram);
+my ($diagramFile, $dryRun, $scheduler, $queue, $bigscapeDir, $clusterInfoFile, $updatedDiagram, $configFile);
 my $result = GetOptions(
     "diagram-file=s"            => \$diagramFile,
     "updated-diagram-file=s"    => \$updatedDiagram,
@@ -24,11 +24,12 @@ my $result = GetOptions(
     "dryrun"                    => \$dryRun,
     "scheduler=s"               => \$scheduler,
     "queue=s"                   => \$queue,
+    "config=s"                  => \$configFile,
 );
 
 my $usage = <<USAGE
 usage: $0 -diagram-file <filename> [-bigscape-dir <directory>] [-updated-diagram-file <filename>]
-    [-cluster-info <filename>] [-scheduler <slurm|torque>] [-queue <queue_name>]
+    [-cluster-info <filename>] [-scheduler <slurm|torque>] [-queue <queue_name>] [-config <filename>]
 
     -diagram-file           path to the input diagram file to use
     -bigscape-dir           path to the directory to put BiG-SCAPE data into; defaults to a directory
@@ -38,6 +39,7 @@ usage: $0 -diagram-file <filename> [-bigscape-dir <directory>] [-updated-diagram
     -cluster-info-file      path to the output file containing the info on the BiG-SCAPE clans;
                             defaults to the name of the diagram file with '.cluster-info' appended
 
+    -config                 path to config file (if not provided, assumed from environment)
     -scheduler              scheduler type (default to torque, but also can be slurm)
     -queue                  the cluster queue to use
     -dryrun                 if this flag is present, the jobs aren't executed but the job scripts
@@ -51,6 +53,12 @@ if (not $ENV{'EFIGNN'}) {
 
 if (not $ENV{"EFIDBMOD"}) {
     die "The efidb module must be loaded.";
+}
+
+if ((not defined $configFile or not -f $configFile) and not exists $ENV{EFICONFIG}) {
+    die "Either the configuration file or the EFICONFIG environment variable must be set\n$usage";
+} elsif (not defined $configFile or not -f $configFile) {
+    $configFile = $ENV{EFICONFIG};
 }
 
 die "$usage" if not -f $diagramFile;
@@ -84,16 +92,25 @@ my $outputDir = "$bigscapeDir/fasta";
 my $errorFile = "$bigscapeDir/error.message";
 my $jobCompletedFile = "$bigscapeDir/job.completed";
 my $jobErrorFile = "$bigscapeDir/job.error";
-
+my $logDir = "$bigscapeDir/log";
 my $metaFile = "cluster.metadata";
+
+mkdir $bigscapeDir if not -d $bigscapeDir;
+mkdir $logDir if not -d $logDir;
 
 my $schedType = "torque";
 $schedType = "slurm" if (defined($scheduler) and $scheduler eq "slurm") or (not defined($scheduler) and usesSlurm());
-my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => [1, 24, "50GB"], dryrun => $dryRun);
+
+my %schedArgs = (type => $schedType, queue => $queue, resource => [1, 24, "50GB"], dryrun => $dryRun);
+$schedArgs{output_base_dirpath} = $logDir;
+
+my $SS = new EFI::SchedulerApi(%schedArgs);
 
 
 my $B = $SS->getBuilder();
-$B->addAction("rm -rf $bigscapeDir");
+$B->setScriptAbortOnError(0);
+$B->addAction("rm -rf $bigscapeDir/fasta") if (-d "$bigscapeDir/fasta");
+$B->addAction("rm -rf $bigscapeDir/run") if (-d "$bigscapeDir/run");
 $B->addAction("mkdir -p $outputDir");
 $B->addAction("rm -f $errorFile");
 $B->addAction("touch $errorFile");
@@ -112,7 +129,7 @@ $B->addAction("    $toolpath/remove_empty_entries.pl -input-dir \$outDir -metada
 $B->addAction("    python /home/n-z/noberg/bigscape/BiG-SCAPE/bigscape.py -i \$outDir -o \$bsDir --cores 24 --clans --clan_cutoff 0.95 0.95 --pfam_dir /home/n-z/noberg/bigscape/hmm --precomputed_fasta --no_classify --mix --run_name \$dirName");
 $B->addAction("done");
 $B->addAction("cp $diagramFile $updatedDiagram");
-$B->addAction("$toolpath/update_diagram_order.pl -diagram-file $updatedDiagram -bigscape-dir $bigscapeDir -cluster-file $clusterInfoFile");
+$B->addAction("$toolpath/update_diagram_order.pl -diagram-file $updatedDiagram -bigscape-dir $bigscapeDir -cluster-file $clusterInfoFile -config $configFile");
 $B->addAction("touch $jobCompletedFile");
 $B->addAction("date");
 

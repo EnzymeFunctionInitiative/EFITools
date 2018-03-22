@@ -10,19 +10,25 @@ use strict;
 use DBI;
 use Getopt::Long;
 use EFI::GNN::Arrows;
+use EFI::GNN::ColorUtil;
+use EFI::Database;
 
-my ($inputFile, $bigscapeDir, $clusterFile);
+my ($inputFile, $bigscapeDir, $clusterFile, $configFile);
 my $result = GetOptions(
     "diagram-file=s"        => \$inputFile,
     "bigscape-dir=s"        => \$bigscapeDir,
     "cluster-file=s"        => \$clusterFile,
+    "config=s"              => \$configFile,
 );
 
 my $usage = <<USAGE;
-$0 -diagram-file INPUT_FILE -bigscape-dir DIRECTORY
+$0 -diagram-file INPUT_FILE -bigscape-dir DIRECTORY -config CONFIG_FILE [-cluster-file OUTPUT_CLUSTER_FILE]
 
     -diagram-file       path to input diagram file
     -bigscape-dir       path to directory to read BiG-SCAPE data from
+    -cluster-file       path to file to output cluster information (tabular)
+    -config             path to config file so we can get colors from database (required
+                        if -cluster-file is specified)
 
 USAGE
 
@@ -90,12 +96,26 @@ foreach my $clusterNum (keys %groupData) {
 }
 
 if ($clusterFile) {
+    
+    my $colorUtil = getColors();
+
     open CLUSTER, "> $clusterFile" or die "Unable to open cluster file $clusterFile: $!";
     
-    print CLUSTER join("\t", "ClusterNum", "Accession", "ClanNumInCluster", "FamilyNumInCluster", "SortOrderInClan"), "\n";
+    my @headers = ("ID", "ClusterNum", "Accession", "ClanNumInCluster", "FamilyNumInCluster", "SortOrderInClan");
+    push @headers, "ClanColor" if $colorUtil;
+    print CLUSTER join("\t", @headers), "\n";
+
     foreach my $clusterNum (sort { $a <=> $b } keys %clusterData) {
         foreach my $line (@{$clusterData{$clusterNum}}) {
-            print CLUSTER join("\t", $clusterNum, @$line), "\n";
+            my $id = "SSN$clusterNum-CL" . $line->[1] . "-FAM" . $line->[2] . "-" . $line->[3];
+            my $clusterId = "SSN" . $clusterNum;
+            my $clanId = "CL" . $line->[1];
+            my $famId = "FAM" . $line->[2];
+            my $sortOrder = $line->[3];
+            my $uniqueId = join("-", $clusterId, $clanId, $famId, $sortOrder);
+            my @values = ($uniqueId, $clusterId, $line->[0], $clanId, $famId, $sortOrder);
+            push @values, $colorUtil->getColorForPfam($clanId) if $colorUtil;
+            print CLUSTER join("\t", @values), "\n";
         }
     }
     
@@ -114,6 +134,39 @@ sub sortFn {
     }
 
     $sortResult;
+}
+
+
+sub getColors {
+    my $colorUtil = 0;
+    # If a config file was specified, then connect to the database and retrieve the available colors.
+    if (defined $configFile and -f $configFile) {
+        my $db = new EFI::Database(config_file_path => $configFile);
+        my $colorDbh = $db->getHandle();
+        $colorUtil = new EFI::GNN::ColorUtil(dbh => $colorDbh);
+        $colorDbh->disconnect();
+    }
+    return $colorUtil;
+}
+
+
+
+
+package DummyColor;
+
+sub new {
+    my $class = shift;
+
+    my $self = {};
+    bless $self, $class;
+
+    return $self;
+}
+
+
+sub getColorForPfam {
+    my $self = shift;
+    return "";
 }
 
 
