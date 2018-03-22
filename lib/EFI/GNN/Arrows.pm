@@ -159,6 +159,7 @@ sub getCreateAttributeTableSql {
     $cols .= "\n                        , cluster_num INTEGER";
     $cols .= "\n                        , organism VARCHAR(2000)";
     $cols .= "\n                        , is_bound INTEGER"; # 0 - not encountering any contig boundary; 1 - left; 2 - right; 3 - both
+    $cols .= "\n                        , evalue REAL";
 
     my $sql = "CREATE TABLE $EFI::GNN::Arrows::AttributesTable ($cols)";
     push @statements, $sql;
@@ -254,7 +255,8 @@ sub getInsertStatement {
     my $organismCol = exists $attr->{organism} ? ",organism" : "";
     my $isBoundCol = exists $attr->{is_bound} ? ",is_bound" : "";
     my $orderCol = exists $attr->{sort_order} ? ",sort_order" : "";
-    my $addlCols = $strainCol . $clusterNumCol . $geneKeyCol . $organismCol . $isBoundCol . $orderCol;
+    my $evalueCol = exists $attr->{evalue} ? ",evalue" : "";
+    my $addlCols = $strainCol . $clusterNumCol . $geneKeyCol . $organismCol . $isBoundCol . $orderCol . $evalueCol;
 
     # If the family field is a fusion of multiple pfams, we get the color for each pfam in the fusion
     # as well as a color for the fusion.
@@ -283,6 +285,7 @@ sub getInsertStatement {
     $sql .= "," . $dbh->quote($attr->{organism}) if exists $attr->{organism};
     $sql .= "," . $dbh->quote($attr->{is_bound}) if exists $attr->{is_bound};
     $sql .= "," . $dbh->quote($attr->{sort_order}) if exists $attr->{sort_order};
+    $sql .= "," . $dbh->quote($attr->{evalue}) if exists $attr->{evalue};
     $sql .= ")";
 
     return $sql;

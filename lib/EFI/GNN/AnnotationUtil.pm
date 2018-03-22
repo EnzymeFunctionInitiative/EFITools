@@ -34,7 +34,7 @@ sub getAnnotations {
 
     my @pfams = split '-', $pfams;
 
-    $sql = "select short_name from pfam_info where pfam in ('" . join("','", @pfams) . "')";
+    $sql = "select short_name from family_info where family in ('" . join("','", @pfams) . "')";
 
     $sth = $self->{dbh}->prepare($sql);
     $sth->execute;

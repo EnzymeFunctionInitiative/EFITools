@@ -402,6 +402,10 @@ sub new {
         $self->{output_base_dirpath} = $args{output_base_dirpath};
     }
 
+    if (exists $args{abort_script_on_action_fail}) {
+        $self->{abort_script_on_action_fail} = $args{abort_script_on_action_fail};
+    }
+
     return $self;
 }
 
@@ -422,6 +426,7 @@ sub getBuilder {
     $b->workingDirectory($self->{default_working_dir}) if exists $self->{default_working_dir} and -d $self->{default_working_dir};
     $b->outputBaseFilepath($self->{output_base_filepath}) if exists $self->{output_base_filepath} and length $self->{output_base_filepath};
     $b->outputBaseDirpath($self->{output_base_dirpath}) if exists $self->{output_base_dirpath} and length $self->{output_base_dirpath};
+    $b->setScriptAbortOnError($self->{abort_script_on_action_fail}) if exists $self->{abort_script_on_action_fail};
 
     return $b;
 }
