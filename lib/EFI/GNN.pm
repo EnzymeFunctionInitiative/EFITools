@@ -42,7 +42,7 @@ sub getPfamNames{
     my @pfam_long=();
 
     foreach my $tmp (split('-',$pfamNumbers)){
-        my $sth=$self->{dbh}->prepare("select * from pfam_info where pfam='$tmp';");
+        my $sth=$self->{dbh}->prepare("select * from family_info where family='$tmp';");
         $sth->execute;
         $pfam_info=$sth->fetchrow_hashref;
         my $shorttemp=$pfam_info->{short_name};
