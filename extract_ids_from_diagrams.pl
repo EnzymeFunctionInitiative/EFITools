@@ -11,11 +11,12 @@ use DBI;
 use Getopt::Long;
 use EFI::GNN::Arrows;
 
-my ($inputFile, $outputDir, $metaFile);
+my ($inputFile, $outputDir, $metaFile, $window);
 my $result = GetOptions(
     "diagram-file=s"        => \$inputFile,
     "output-dir=s"          => \$outputDir,
     "metadata-file=s"       => \$metaFile,
+    "window=i"              => \$window,
 );
 
 my $usage = <<USAGE;
@@ -25,11 +26,14 @@ $0 -diagram-file INPUT_FILE -output-dir OUTPUT_FILE -metadata-file METADATA_FILE
     -output-dir         path to directory to store FASTA files in
     -metadata-file      name of the file to store metadata for the BGC clusters (for BiG-SCAPE)
                         (one file per cluster in each cluster dir)
+    -window             number of genes to collect around each query gene
 
 USAGE
 
 die "$usage" if not -f $inputFile or not $outputDir;
 
+
+$window = 1000 if not defined $window or $window < 1;
 
 
 exportIdInfo($inputFile, $outputDir, $metaFile);
@@ -90,16 +94,20 @@ sub exportIdInfo {
             $sth->execute();
     
             my $outputCenter = 0;
+            my $queryNum = $data->{position};
     
             my @idList;
             my $count = 0;
     
             while (my $row = $sth->fetchrow_hashref()) {
                 my $num = $row->{num};
+                # Exclude anything outside the requested gene window around the query gene.
+                next if $num < ($queryNum - $window) or $num > ($queryNum + $window); 
+
                 # Insert the main query/cluster ID into the middle of the neighbors where it belongs.
-                if (not $outputCenter and $data->{position} < $num) {
+                if (not $outputCenter and $queryNum < $num) {
                     $outputCenter = 1;
-                    my $queryHdr = join(":", "${id}_ORF$data->{position}", "gid", $data->{gene_id}, "pid", $id,
+                    my $queryHdr = join(":", "${id}_ORF$queryNum", "gid", $data->{gene_id}, "pid", $id,
                                               "loc", $data->{start}, $data->{stop}, "strand", $data->{direction});
                     push @idList, join("\t", $id, $queryHdr);
                     $count++;

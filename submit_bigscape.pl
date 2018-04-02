@@ -15,12 +15,14 @@ use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm);
 
 
-my ($diagramFile, $dryRun, $scheduler, $queue, $bigscapeDir, $clusterInfoFile, $updatedDiagram, $configFile);
+my ($diagramFile, $dryRun, $scheduler, $queue, $bigscapeDir, $clusterInfoFile, $updatedDiagram,
+    $bigscapeWindow, $configFile);
 my $result = GetOptions(
     "diagram-file=s"            => \$diagramFile,
     "updated-diagram-file=s"    => \$updatedDiagram,
     "cluster-info-file=s"       => \$clusterInfoFile,
     "bigscape-dir=s"            => \$bigscapeDir,
+    "window=i"                  => \$bigscapeWindow,
     "dryrun"                    => \$dryRun,
     "scheduler=s"               => \$scheduler,
     "queue=s"                   => \$queue,
@@ -38,6 +40,8 @@ usage: $0 -diagram-file <filename> [-bigscape-dir <directory>] [-updated-diagram
                             to the name of the diagram file with '.bigscape' appended
     -cluster-info-file      path to the output file containing the info on the BiG-SCAPE clans;
                             defaults to the name of the diagram file with '.cluster-info' appended
+    -window                 the number of genes on either side of the query gene to include in the
+                            analysis (must be smaller than the window size in the original diagram)
 
     -config                 path to config file (if not provided, assumed from environment)
     -scheduler              scheduler type (default to torque, but also can be slurm)
@@ -94,6 +98,7 @@ my $jobCompletedFile = "$bigscapeDir/job.completed";
 my $jobErrorFile = "$bigscapeDir/job.error";
 my $logDir = "$bigscapeDir/log";
 my $metaFile = "cluster.metadata";
+my $bigscapeWindowArg = (defined $bigscapeWindow and $bigscapeWindow > 0) ? "-window $bigscapeWindow" : "";
 
 mkdir $bigscapeDir if not -d $bigscapeDir;
 mkdir $logDir if not -d $logDir;
@@ -116,7 +121,7 @@ $B->addAction("rm -f $errorFile");
 $B->addAction("touch $errorFile");
 $B->addAction("module load $efiGnnMod");
 $B->addAction("module load $dbMod");
-$B->addAction("$toolpath/extract_ids_from_diagrams.pl -diagram-file $diagramFile -metadata-file $metaFile -output-dir $outputDir");
+$B->addAction("$toolpath/extract_ids_from_diagrams.pl -diagram-file $diagramFile -metadata-file $metaFile -output-dir $outputDir $bigscapeWindowArg");
 $B->addAction("source /home/n-z/noberg/miniconda2/bin/activate /home/n-z/noberg/miniconda2/envs/bigscape");
 $B->addAction("date");
 $B->addAction("for dirName in \$( ls $outputDir ); do");
