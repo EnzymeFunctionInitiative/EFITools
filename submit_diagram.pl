@@ -132,6 +132,7 @@ my $jobId;
 # This job simply unzips the file.
 if ($diagramZipFile) {
     $jobType = "unzip";
+    $B->resource(1, 1, "5gb");
     $B->addAction("$toolpath/unzip_file.pl -in $diagramZipFile -out $outputFile -out-ext sqlite 2> $errorFile");
     addBashErrorCheck($B, 1, $outputFile);
 }
@@ -150,6 +151,7 @@ elsif ($blastSeq) {
     print QUERY $blastSeq;
     close QUERY;
 
+    $B->resource(1, 1, "70gb");
     $B->addAction("module load $blastMod");
     $B->addAction("blastall -p blastp -i $seqFile -d $blastDb -m 8 -e $evalue -b $maxNumSeq -o $blastOutFile");
     #$B->addAction("grep -v '#' $blastOutFile | cut -f 2,11,12 | sort -k3,3nr | cut -d'|' -f2 > $blastIdListFile");
@@ -162,6 +164,7 @@ elsif ($blastSeq) {
 elsif ($idFile) {
     $jobType = "ID_LOOKUP" if not $jobType;
 
+    $B->resource(1, 1, "10gb");
     $B->addAction("create_diagram_db.pl -id-file $idFile -db-file $outputFile -job-type $jobType $titleArg -nb-size $nbSize -do-id-mapping");
 
     addBashErrorCheck($B, 0, $outputFile);
@@ -172,6 +175,7 @@ elsif ($fastaFile) {
 
     my $tempIdFile = "$outputFile.temp-ids";
 
+    $B->resource(1, 1, "10gb");
     $B->addAction("extract_ids_from_fasta.pl -fasta-file $fastaFile -output-file $tempIdFile");
     $B->addAction("create_diagram_db.pl -id-file $tempIdFile -db-file $outputFile -job-type $jobType $titleArg -nb-size $nbSize -do-id-mapping");
     $B->addAction("rm $tempIdFile");
