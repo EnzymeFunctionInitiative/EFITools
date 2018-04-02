@@ -114,7 +114,7 @@ if ($clusterFile) {
             my $sortOrder = $line->[3];
             my $uniqueId = join("-", $clusterId, $clanId, $famId, $sortOrder);
             my @values = ($uniqueId, $clusterId, $line->[0], $clanId, $famId, $sortOrder);
-            push @values, $colorUtil->getColorForPfam($clanId) if $colorUtil;
+            push @values, $colorUtil->getColorForPfam("$clusterId$clanId") if $colorUtil;
             print CLUSTER join("\t", @values), "\n";
         }
     }
