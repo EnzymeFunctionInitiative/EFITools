@@ -23,10 +23,10 @@ sub usesSlurm {
 
 sub getSchedulerType {
     my ($scheduler) = @_;
-    if ((defined($scheduler) and $scheduler eq "slurm") or (not defined($scheduler) and usesSlurm())) {
-        return "slurm";
-    } else {
+    if (defined($scheduler) and $scheduler eq "torque") {
         return "torque";
+    } else {
+        return "slurm";
     }
 }
 
