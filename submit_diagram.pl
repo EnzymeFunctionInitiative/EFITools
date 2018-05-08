@@ -16,7 +16,7 @@ use EFI::Util qw(usesSlurm);
 
 
 my ($diagramZipFile, $blastSeq, $evalue, $maxNumSeq, $outputFile, $scheduler, $queue, $dryRun,
-    $legacy, $title, $nbSize, $idFile, $jobType, $fastaFile);
+    $legacy, $title, $nbSize, $idFile, $jobType, $fastaFile, $jobId);
 my $result = GetOptions(
     "zip-file=s"            => \$diagramZipFile,
 
@@ -32,6 +32,7 @@ my $result = GetOptions(
     "title=s"               => \$title,
     "job-type=s"            => \$jobType,
 
+    "job-id=s"              => \$jobId,
     "scheduler=s"           => \$scheduler,
     "queue=s"               => \$queue,
     "dryrun"                => \$dryRun,
@@ -98,6 +99,7 @@ $evalue = 5                                     if not $evalue;
 $maxNumSeq = 200                                if not $maxNumSeq;
 $title = ""                                     if not $title;
 $nbSize = 10                                    if not $nbSize;
+$jobId = ""                                     if not defined $jobId;
 
 if ($diagramZipFile and $diagramZipFile !~ /\.zip$/) {
     print "Not unzipping a file that doesn't end in zip ($diagramZipFile)\n";
@@ -109,6 +111,7 @@ if ($diagramZipFile and $diagramZipFile !~ /\.zip$/) {
 my $errorFile = "$outputDir/error.message";
 my $jobCompletedFile = "$outputDir/job.completed";
 my $jobErrorFile = "$outputDir/job.error";
+my $jobNamePrefix = $jobId ? "${jobId}_" : "";
 
 
 my $schedType = "torque";
@@ -186,7 +189,10 @@ elsif ($fastaFile) {
 
 $jobType = lc $jobType;
 
-my $jobScript = "diagram_$jobType.sh";
+my $jobName = "${jobNamePrefix}diagram_$jobType";
+my $jobScript = "$jobName.sh";
+
+$B->jobName($jobName);
 $B->renderToFile($jobScript);
 $jobId = $SS->submit($jobScript);
 chomp $jobId;

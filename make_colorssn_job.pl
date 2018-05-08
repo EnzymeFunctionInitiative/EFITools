@@ -14,7 +14,7 @@ use EFI::Config;
 use EFI::GNN::Base;
 
 
-my ($ssnIn, $nbSize, $ssnOut, $cooc, $outputDir, $scheduler, $dryRun, $queue, $mapDirName, $mapFileName);
+my ($ssnIn, $nbSize, $ssnOut, $cooc, $outputDir, $scheduler, $dryRun, $queue, $mapDirName, $mapFileName, $jobId);
 my $result = GetOptions(
     "ssn-in=s"          => \$ssnIn,
     "ssn-out=s"         => \$ssnOut,
@@ -22,6 +22,7 @@ my $result = GetOptions(
     "scheduler=s"       => \$scheduler,
     "dry-run"           => \$dryRun,
     "queue=s"           => \$queue,
+    "job-id=s"          => \$jobId,
     "map-dir-name=s"    => \$mapDirName,
     "map-file-name=s"   => \$mapFileName,
 #    "nb-size=s"         => \$nbSize,
@@ -83,6 +84,10 @@ if ($ssnInZip =~ /\.zip$/i) {
 }
 
 
+$jobId = "" unless defined $jobId;
+my $jobNamePrefix = $jobId ? "${jobId}_" : "";
+
+
 my $outputPath = $ENV{PWD} . "/$outputDir";
 mkdir $outputPath or die "Unable to create output directory $outputPath: $!" if not -d $outputPath ;
 my $clusterDataPath = "$outputPath/$mapDirName";
@@ -131,7 +136,9 @@ $B->addAction("$gntPath/cluster_gnn.pl -nb-size 10 -cooc 20 -ssnin $ssnIn -ssnou
 EFI::GNN::Base::addFileActions($B, $fileInfo);
 $B->addAction("touch $outputPath/1.out.completed");
 
-my $jobScript = "$outputPath/colorgnn.sh";
+my $jobName = "${jobNamePrefix}colorgnn";
+my $jobScript = "$outputPath/$jobName.sh";
+$B->jobName($jobName);
 $B->renderToFile($jobScript);
 
 my $jobId = $SS->submit($jobScript);

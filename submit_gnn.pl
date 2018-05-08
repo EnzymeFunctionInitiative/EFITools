@@ -38,6 +38,7 @@ $result = GetOptions(
     "scheduler=s"       => \$scheduler,
     "dry-run"           => \$dryRun,
     "queue=s"           => \$queue,
+    "job-id=s"          => \$jobId,
     "arrow-file=s"      => \$arrowDataFile,
     "cooc-table=s"      => \$coocTableFile,
     "hub-count-file=s"  => \$hubCountFile,
@@ -123,6 +124,7 @@ print "fasta-zip is $fastaZip\n";
 print "none-dir is $noneDir\n";
 print "none-zip is $noneZip\n";
 print "arrow-dir is $arrowDataFile\n";
+print "job-id is $jobId\n" if defined $jobId;
 
 unless($n>0){
     die "-n $n must be an integer greater than zero\n$usage";
@@ -144,6 +146,7 @@ $idOutputFile = "$outputDir/$idOutputFile"  unless $idOutputFile =~ /^\//;
 $noneDir = "$outputDir/$noneDir"            unless $noneDir =~ /^\//;
 $noneZip = "$outputDir/$noneZip"            unless $noneZip =~ /^\//;
 $queue = "efi"                              unless $queue =~ /\w/;
+$jobId = ""                                 unless defined $jobId;
 
 
 if($incfrac!~/^\d+$/){
@@ -172,6 +175,7 @@ my $allFastaFile = "$fastaDir/all.fasta";
 (my $arrowZip = $arrowDataFile) =~ s/\.sqlite/.zip/i if $arrowDataFile;
 my $singletonsFastaFile = "$fastaDir/singletons.fasta";
 
+my $jobNamePrefix = $jobId ? "${jobId}_" : "";
 
 mkdir $fastaDir or die "Unable to create output fasta data path $fastaDir: $!" if not -d $fastaDir;
 
@@ -242,6 +246,7 @@ $B->addAction("cd \$BLASTDB");
 $B->addAction("formatdb -i $allFastaFile -n database -p T -o T");
 $B->addAction("\n\n$toolpath/save_version.pl > $outputDir/gnn.completed");
 
+$B->jobName("${jobNamePrefix}submit_gnn");
 $B->renderToFile("submit_gnn.sh");
 my $gnnjob = $SS->submit("submit_gnn.sh");
 chomp $gnnjob;

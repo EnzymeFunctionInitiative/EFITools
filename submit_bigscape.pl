@@ -16,7 +16,7 @@ use EFI::Util qw(usesSlurm);
 
 
 my ($diagramFile, $dryRun, $scheduler, $queue, $bigscapeDir, $clusterInfoFile, $updatedDiagram,
-    $bigscapeWindow, $configFile);
+    $bigscapeWindow, $configFile, $jobId);
 my $result = GetOptions(
     "diagram-file=s"            => \$diagramFile,
     "updated-diagram-file=s"    => \$updatedDiagram,
@@ -26,6 +26,7 @@ my $result = GetOptions(
     "dryrun"                    => \$dryRun,
     "scheduler=s"               => \$scheduler,
     "queue=s"                   => \$queue,
+    "job-id=s"                  => \$jobId,
     "config=s"                  => \$configFile,
 );
 
@@ -68,6 +69,7 @@ if ((not defined $configFile or not -f $configFile) and not exists $ENV{EFICONFI
 die "$usage" if not -f $diagramFile;
 
 $queue = "efi"                                  unless $queue =~ /\w/;
+$jobId = ""                                     unless defined $jobId;
 
 
 my $toolpath = $ENV{"EFIGNN"};
@@ -109,6 +111,9 @@ $schedType = "slurm" if (defined($scheduler) and $scheduler eq "slurm") or (not 
 my %schedArgs = (type => $schedType, queue => $queue, resource => [1, 24, "50GB"], dryrun => $dryRun);
 $schedArgs{output_base_dirpath} = $logDir;
 
+
+my $jobNamePrefix = $jobId ? "${jobId}_" : "";
+
 my $SS = new EFI::SchedulerApi(%schedArgs);
 
 
@@ -143,7 +148,9 @@ $B->addAction("date");
 my $jobId;
 
 
-my $jobScript = "bigscape.sh";
+my $jobName = "${jobNamePrefix}bigscape";
+my $jobScript = "jobName.sh";
+$B->jobName($jobName);
 $B->renderToFile($jobScript);
 $jobId = $SS->submit($jobScript);
 chomp $jobId;
