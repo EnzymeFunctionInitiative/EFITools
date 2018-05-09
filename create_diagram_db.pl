@@ -255,6 +255,8 @@ sub getInputIds {
             if ($idLine =~ m/\|/) {
                 ($id, $evalue) = split(m/\|/, $idLine);
                 $evalues{$id} = $evalue;
+            } else {
+                $id = $idLine;
             }
             push @ids, $id;
         }
