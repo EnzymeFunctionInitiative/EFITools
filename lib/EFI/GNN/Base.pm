@@ -379,13 +379,17 @@ sub saveNodeToClusterMap {
     my $clusterNum = $numbermatch->{$clusterId};
     $clusterNum = "none" if not $clusterNum;
 
+    my $openMode = ">>";
     if (not exists $self->{cluster_fh}->{$clusterNum}) {
-        open($self->{cluster_fh}->{$clusterNum}, ">" . $self->{id_dir} . "/cluster_UniProt_IDs_$clusterNum.txt");
+        $openMode = ">";
     }
+    open($self->{cluster_fh}->{$clusterNum}, $openMode . $self->{id_dir} . "/cluster_UniProt_IDs_$clusterNum.txt");
 
     foreach my $nodeId (uniq @{ $supernodes->{$clusterId} }) {
         $self->{cluster_fh}->{$clusterNum}->print("$nodeId\n");
     }
+
+    $self->{cluster_fh}->{$clusterNum}->close();
 }
 
 
