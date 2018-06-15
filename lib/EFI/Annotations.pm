@@ -2,6 +2,7 @@
 package EFI::Annotations;
 
 use strict;
+use constant UNIREF_ONLY => 1;
 
 our $Version = 2;
 
@@ -208,18 +209,31 @@ sub get_attribute_type {
 sub is_expandable_attr {
     my $self = shift;
     my $attr = shift;
+    my $flag = shift;
+
+    $flag = 0 if not defined $flag;
+    $flag = $flag == flag_uniref_only();
 
     $self->{anno} = get_annotation_data() if not exists $self->{anno};
 
-    return (
-        $attr eq "ACC"              or $attr eq $self->{anno}->{"ACC"}->{display}               or 
-        $attr eq "ACC_CDHIT"        or $attr eq $self->{anno}->{"ACC_CDHIT"}->{display}         or 
+    my $result = 0;
+    if (not $flag) {
+        $result = (
+            $attr eq "ACC"              or $attr eq $self->{anno}->{"ACC"}->{display}               or 
+            $attr eq "ACC_CDHIT"        or $attr eq $self->{anno}->{"ACC_CDHIT"}->{display}
+        );
+    }
+    $result = $result or (
         $attr eq "UniRef50_IDs"     or $attr eq $self->{anno}->{"UniRef50_IDs"}->{display}      or 
         $attr eq "UniRef90_IDs"     or $attr eq $self->{anno}->{"UniRef90_IDs"}->{display}      or 
         $attr eq "UniRef100_IDs"    or $attr eq $self->{anno}->{"UniRef100_IDs"}->{display}     
     );
+    return $result;
 }
 
+sub flag_uniref_only {
+    return UNIREF_ONLY;
+}
 
 1;
 

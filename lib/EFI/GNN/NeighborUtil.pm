@@ -34,15 +34,16 @@ sub findNeighbors {
     my $numneighbors = 0;
 
     my $isCircSql = "select * from ena where AC='$ac' order by TYPE limit 1";
+    warn $isCircSql;
     $sth = $self->{dbh}->prepare($isCircSql);
     $sth->execute;
 
-    if (not $sth->rows) {
+    my $row = $sth->fetchrow_hashref;
+    if (not defined $row or not $row) {
         print $warning_fh "$ac\tnomatch\n";
         return \%pfam, 1, -1, $genomeId;
     }
 
-    my $row = $sth->fetchrow_hashref;
     $genomeId = $row->{ID};
 
     if ($self->{use_new_neighbor_method}) {
@@ -52,7 +53,11 @@ sub findNeighbors {
             my $sql = "select *, max(NUM) as MAX_NUM from ena where ID in (select ID from ena where AC='$ac' and TYPE=0 order by ID) group by ID order by TYPE, MAX_NUM desc limit 1";
             my $sth = $self->{dbh}->prepare($sql);
             $sth->execute;
-            $genomeId = $sth->fetchrow_hashref->{ID};
+            my $frow = $sth->fetchrow_hashref;
+            if (not defined $frow or not $frow) {
+                die "Unable to execute query $sql";
+            }
+            $genomeId = $frow->{ID};
         } else {
             my $sql = <<SQL;
 select
