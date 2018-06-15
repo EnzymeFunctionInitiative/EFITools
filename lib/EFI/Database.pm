@@ -161,6 +161,7 @@ sub getHandle {
     $connStr .= ";mysql_local_infile=1" if $self->{load_infile};
 
     my $dbh = DBI->connect($connStr, $self->{db}->{user}, $self->{db}->{password});
+    $dbh->{mysql_auto_reconnect} = 1;
 
     return $dbh;
 }

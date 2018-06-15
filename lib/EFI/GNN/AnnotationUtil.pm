@@ -36,6 +36,11 @@ sub getAnnotations {
 
     $sql = "select short_name from family_info where family in ('" . join("','", @pfams) . "')";
 
+    if (not $self->{dbh}->ping()) {
+        warn "Database disconnected at " . scalar localtime;
+        $self->{dbh} = $self->{dbh}->clone() or die "Cannot reconnect to database.";
+    }
+
     $sth = $self->{dbh}->prepare($sql);
     $sth->execute;
 

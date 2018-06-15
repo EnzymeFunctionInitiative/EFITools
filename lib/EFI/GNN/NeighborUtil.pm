@@ -33,8 +33,12 @@ sub findNeighbors {
     my $numqable = 0;
     my $numneighbors = 0;
 
+    if (not $self->{dbh}->ping()) {
+        warn "Database disconnected at " . scalar localtime;
+        $self->{dbh} = $self->{dbh}->clone() or die "Cannot reconnect to database.";
+    }
+
     my $isCircSql = "select * from ena where AC='$ac' order by TYPE limit 1";
-    warn $isCircSql;
     $sth = $self->{dbh}->prepare($isCircSql);
     $sth->execute;
 
