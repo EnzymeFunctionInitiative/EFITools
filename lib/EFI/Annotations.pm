@@ -4,6 +4,15 @@ package EFI::Annotations;
 use strict;
 use constant UNIREF_ONLY => 1;
 
+# Use these rather than the ones in EFI::Config
+use constant FIELD_SEQ_SRC_KEY => "Sequence_Source";
+use constant FIELD_SEQ_SRC_VALUE_BOTH => "FAMILY+USER";
+use constant FIELD_SEQ_SRC_VALUE_FASTA => "USER";
+use constant FIELD_SEQ_SRC_VALUE_FAMILY => "FAMILY";
+use constant FIELD_SEQ_SRC_VALUE_INPUT => "INPUT";
+use constant FIELD_SEQ_SRC_VALUE_BLASTHIT => "BLASTHIT";
+use constant FIELD_SEQ_SRC_VALUE_BLASTHIT_FAMILY => "FAMILY+BLASTHIT";
+
 our $Version = 2;
 
 
