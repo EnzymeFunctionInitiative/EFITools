@@ -232,11 +232,11 @@ sub is_expandable_attr {
             $attr eq "ACC_CDHIT"        or $attr eq $self->{anno}->{"ACC_CDHIT"}->{display}
         );
     }
-    $result = $result or (
+    $result = ($result or (
         $attr eq "UniRef50_IDs"     or $attr eq $self->{anno}->{"UniRef50_IDs"}->{display}      or 
         $attr eq "UniRef90_IDs"     or $attr eq $self->{anno}->{"UniRef90_IDs"}->{display}      or 
         $attr eq "UniRef100_IDs"    or $attr eq $self->{anno}->{"UniRef100_IDs"}->{display}     
-    );
+    ));
     return $result;
 }
 
