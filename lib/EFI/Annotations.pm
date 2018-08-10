@@ -12,6 +12,8 @@ use constant FIELD_SEQ_SRC_VALUE_FAMILY => "FAMILY";
 use constant FIELD_SEQ_SRC_VALUE_INPUT => "INPUT";
 use constant FIELD_SEQ_SRC_VALUE_BLASTHIT => "BLASTHIT";
 use constant FIELD_SEQ_SRC_VALUE_BLASTHIT_FAMILY => "FAMILY+BLASTHIT";
+use constant FIELD_SEQ_KEY => "Sequence";
+use constant FIELD_ID_ACC => "ACC";
 
 our $Version = 2;
 
@@ -153,6 +155,7 @@ sub get_annotation_data {
     $annoData{"UniRef100_Cluster_Size"} = {order => $idx++, display => "UniRef100 Cluster Size"};
     $annoData{"ACC_CDHIT"}              = {order => $idx++, display => "CD-HIT IDs"};
     $annoData{"ACC_CDHIT_COUNT"}        = {order => $idx++, display => "CD-HIT Cluster Size"};
+    $annoData{FIELD_SEQ_KEY}            = {order => $idx++, display => "Sequence"};
 
     return \%annoData;
 }
@@ -228,7 +231,7 @@ sub is_expandable_attr {
     my $result = 0;
     if (not $flag) {
         $result = (
-            $attr eq "ACC"              or $attr eq $self->{anno}->{"ACC"}->{display}               or 
+            $attr eq FIELD_ID_ACC       or $attr eq $self->{anno}->{"ACC"}->{display}               or 
             $attr eq "ACC_CDHIT"        or $attr eq $self->{anno}->{"ACC_CDHIT"}->{display}
         );
     }

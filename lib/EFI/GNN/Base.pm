@@ -267,6 +267,15 @@ sub writeColorSsnNodes {
 
     my %nodeCount;
 
+    my $numField = "Cluster Number";
+    my $singletonField = "Singleton Number";
+    my $colorField = "node.fillColor";
+    my $countField = "Cluster Sequence Count";
+    my $badNum = 999999;
+    my $singleNum = 0;
+
+    my %skipFields = ($numField => 1, $colorField => 1, $countField => 1, $singletonField => 1);
+
     foreach my $node (@{$nodes}){
         my $nodeId = $node->getAttribute('label');
         my $clusterId = $constellations->{$nodeId};
@@ -284,7 +293,14 @@ sub writeColorSsnNodes {
             my $color = "";
             $color = $self->getColor($clusterNum) if $nodeCount{$clusterNum} > 1;
             #$color = $self->{colors}->{$clusterNum} if $nodeCount{$clusterNum} > 1;
-            my $clusterNumAttr = $nodeCount{$clusterNum} > 1 ? $clusterNum : 999999;
+            my $isSingleton = $nodeCount{$clusterNum} < 2;
+            my $clusterNumAttr = $clusterNum;
+            my $fieldName = $numField;
+            if ($isSingleton) {
+                $singleNum++;
+                $clusterNumAttr = $singleNum;
+                $fieldName = $singletonField;
+            }
 
             my $savedAttrs = 0;
 
@@ -297,41 +313,45 @@ sub writeColorSsnNodes {
                     my $attrType = $attribute->getAttribute('type');
                     my $attrName = $attribute->getAttribute('name');
                     if ($attrName eq "Organism") { #TODO: need to make this a shared constant
-                        writeGnnField($writer, 'Cluster Number', 'integer', $clusterNumAttr) if $clusterNumAttr != 999999;
-                        writeGnnField($writer, 'Cluster Sequence Count', 'integer', $nodeCount{$clusterNum});
-                        writeGnnField($writer, 'node.fillColor', 'string', $color);
+                        writeGnnField($writer, $fieldName, 'integer', $clusterNumAttr);
+                        writeGnnField($writer, $countField, 'integer', $nodeCount{$clusterNum});
+                        writeGnnField($writer, $colorField, 'string', $color);
                         if (not $self->{color_only}) {
                             $self->saveGnnAttributes($writer, $gnnData, $node);
                         }
-                        $saveAttrs = 1;
+                        $savedAttrs = 1;
                     }
 
-                    if($attrType eq 'list'){
-                        $writer->startTag('att', 'type' => $attrType, 'name' => $attrName);
-                        foreach $listelement ($attribute->getElementsByTagName('att')){
-                            $writer->emptyTag('att', 'type' => $listelement->getAttribute('type'),
-                                              'name' => $listelement->getAttribute('name'),
-                                              'value' => $listelement->getAttribute('value'));
+                    if (not exists $skipFields{$attrName}) {
+                        if ($attrType eq 'list') {
+                            $writer->startTag('att', 'type' => $attrType, 'name' => $attrName);
+                            foreach $listelement ($attribute->getElementsByTagName('att')){
+                                $writer->emptyTag('att', 'type' => $listelement->getAttribute('type'),
+                                                  'name' => $listelement->getAttribute('name'),
+                                                  'value' => $listelement->getAttribute('value'));
+                            }
+                            $writer->endTag;
+                        } elsif ($attrName eq 'interaction') {
+                            #do nothing
+                            #this tag causes problems and it is not needed, so we do not include it
+                        } else {
+                            if (defined $attribute->getAttribute('value')) {
+                                $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName,
+                                                  'value' => $attribute->getAttribute('value'));
+                            } else {
+                                $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName);
+                            }
                         }
-                        $writer->endTag;
-                    }elsif($attrName eq 'interaction'){
-                        #do nothing
-                        #this tag causes problems and it is not needed, so we do not include it
-                    }else{
-                        if(defined $attribute->getAttribute('value')){
-                            $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName,
-                                              'value' => $attribute->getAttribute('value'));
-                        }else{
-                            $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName);
-                        }
+                        #} else {
+                        #} elprint "Skipping $attrName for $nodeId because we're rewriting it\n";
                     }
                 }
             }
 
             if (not $savedAttrs) {
-                writeGnnField($writer, 'Cluster Number', 'integer', $clusterNumAttr) if $clusterNumAttr != 999999;
-                writeGnnField($writer, 'Cluster Sequence Count', 'integer', $nodeCount{$clusterNum});
-                writeGnnField($writer, 'node.fillColor', 'string', $color);
+                writeGnnField($writer, $fieldName, 'integer', $clusterNumAttr);
+                writeGnnField($writer, $countField, 'integer', $nodeCount{$clusterNum});
+                writeGnnField($writer, $colorField, 'string', $color);
                 if (not $self->{color_only}) {
                     $self->saveGnnAttributes($writer, $gnnData, $node);
                 }
@@ -553,6 +573,7 @@ sub addFileActions {
     my $fastaTool = "$info->{fasta_tool_path} -node-dir $info->{node_data_path} -out-dir $info->{fasta_data_path} -config $info->{config_file}";
     $fastaTool .= " -all $info->{all_fasta_file}" if $info->{all_fasta_file};
     $fastaTool .= " -singletons $info->{singletons_file}" if $info->{singletons_file};
+    $fastaTool .= " -input-sequences $info->{input_seqs_file}" if $info->{input_seqs_file};
     $B->addAction($fastaTool);
     $B->addAction("cat $info->{node_data_path}/cluster_UniProt_IDs* > $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
     $B->addAction("sort $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted > $info->{node_data_path}/cluster_All_UniProt_IDs.txt");
