@@ -99,6 +99,7 @@ my $fastaDataPath = "$clusterDataPath/fasta";
 mkdir $fastaDataPath or die "Unable to create output fasta data path $fastaDataPath: $!" if not -d $fastaDataPath;
 my $allFastaFile = "$fastaDataPath/all.fasta";
 my $singletonsFastaFile = "$fastaDataPath/singletons.fasta";
+my $inputSeqsFile = "$clusterDataPath/sequences.fasta";
 
 my $nodeDataZip = "$outputPath/${ssnName}_UniProt_IDs.zip";
 my $fastaZip = "$outputPath/${ssnName}_FASTA.zip";
@@ -121,6 +122,7 @@ my $fileInfo = {
     tool_path => $gntPath,
     all_fasta_file => $allFastaFile,
     singletons_file => $singletonsFastaFile,
+    input_seqs_file => $inputSeqsFile,
 };
 
 
