@@ -18,7 +18,7 @@ use EFI::Config;
 use EFI::GNN::Base;
 
 
-my ($ssnIn, $nbSize, $warningFile, $gnn, $ssnOut, $cooc, $stats, $pfamHubFile, $pfamDir, $pfamDirZip);
+my ($ssnIn, $nbSize, $warningFile, $gnn, $ssnOut, $cooc, $stats, $pfamHubFile, $pfamDir, $pfamDirZip, $allPfamDir, $allPfamDirZip);
 my ($idDir, $idZip, $idOutputFile, $fastaDir, $fastaZip, $noneDir, $noneZip, $dontUseNewNeighborMethod);
 my ($scheduler, $dryRun, $queue, $gnnOnly, $noSubmit, $jobId, $arrowDataFile, $coocTableFile);
 my ($hubCountFile, $configFile);
@@ -33,6 +33,8 @@ my $result = GetOptions(
     "pfam=s"            => \$pfamHubFile,
     "pfam-dir=s"        => \$pfamDir,
     "pfam-zip=s"        => \$pfamDirZip, # only used for GNT calls, non batch
+    "all-pfam-dir=s"    => \$allPfamDir,
+    "all-pfam-zip=s"    => \$allPfamDirZip, # only used for GNT calls, non batch
     "id-dir=s"          => \$idDir,
     "id-zip=s"          => \$idZip, # only used for GNT calls, non batch
     "id-out=s"          => \$idOutputFile,
@@ -67,6 +69,8 @@ usage: $0
     -id-zip             path to a file to zip all of the output lists
     -pfam-dir           path to directory to output PFAM cluster data (one file/list per cluster number)
     -pfam-zip           path to a file to output zip file for PFAM cluster data
+    -all-pfam-dir       path to directory to output PFAM cluster data (one file/list per cluster number), for all Pfams regardless of cooccurrence threshold
+    -all-pfam-zip       path to a file to output zip file for PFAM cluster data, for all Pfams regardless of cooccurrence threshold
     -fasta-dir          path a directory output FASTA files
     -fasta-zip          path to a file to create compressed all FASTA files
     -id-out             path to a file to save the ID, cluster #, cluster color
@@ -126,6 +130,9 @@ $stats = "$defaultDir/${inputFileBase}_stats.txt"                           if n
 
 if ($fullGntRun) {
     $pfamDir = "$defaultDir/pfam-data"                                      if not $pfamDir;
+    $pfamDir = "$defaultDir/pfam-data"                                      if not $pfamDir;
+    $allPfamDir = "$defaultDir/all-pfam-data"                               if not $allPfamDir;
+    $allPfamDir = "$defaultDir/all-pfam-data"                               if not $allPfamDir;
     $pfamDirZip = "$defaultDir/${inputFileBase}_pfam_mapping.zip"           if not $pfamDirZip;
     $idDir = "$defaultDir/cluster-data"                                     if not $idDir;
     $idZip = "$defaultDir/${inputFileBase}_UniProt_IDs.zip"                 if not $idZip;
@@ -147,6 +154,8 @@ if ($fullGntRun) {
 } else {
     $pfamDir = "" if not defined $pfamDir;
     $pfamDirZip = "" if not defined $pfamDirZip;
+    $allPfamDir = "" if not defined $allPfamDir;
+    $allPfamDirZip = "" if not defined $allPfamDirZip;
     $idDir = "" if not defined $idDir;
     $idZip = "" if not defined $idZip;
     $idOutputFile = "" if not defined $idOutputFile;
@@ -169,6 +178,8 @@ print "distance is $nbSize\n";
 print "pfam is $pfamHubFile\n";
 print "pfam-dir is $pfamDir\n";
 print "pfam-zip is $pfamDirZip\n";
+print "all-pfam-dir is $allPfamDir\n";
+print "all-pfam-zip is $allPfamDirZip\n";
 print "id-dir is $idDir\n";
 print "id-zip is $idZip\n";
 print "id-out is $idOutputFile\n";
@@ -193,7 +204,9 @@ $stats = "$outputDir/$stats"                unless $stats =~ /^\//;
 $pfamHubFile = "$outputDir/$pfamHubFile"    unless $pfamHubFile =~ /^\//;
 if ($fullGntRun) {
     $pfamDir = "$outputDir/$pfamDir"            unless $pfamDir =~ /^\//;
-    $pfamDirZip = "$outputDir/$pfamDirZip"            unless $pfamDirZip =~ /^\//;
+    $pfamDirZip = "$outputDir/$pfamDirZip"      unless $pfamDirZip =~ /^\//;
+    $allPfamDir = "$outputDir/$allPfamDir"      unless $allPfamDir =~ /^\//;
+    $allPfamDirZip = "$outputDir/$allPfamDirZip" unless $allPfamDirZip =~ /^\//;
     $idDir = "$outputDir/$idDir"                unless $idDir =~ /^\//;
     $idZip = "$outputDir/$idZip"                unless $idZip =~ /^\//;
     $idOutputFile = "$outputDir/$idOutputFile"  unless $idOutputFile =~ /^\//;
@@ -248,6 +261,7 @@ my $cmdString = "$toolpath/cluster_gnn.pl " .
 if ($fullGntRun) {
     $cmdString .= 
         "-pfam-dir \"$pfamDir\" " .
+        "-all-pfam-dir \"$allPfamDir\" " .
         "-id-dir \"$idDir\" " .
         "-id-out \"$idOutputFile\" " .
         "-none-dir \"$noneDir\" ";
@@ -272,6 +286,8 @@ my $info = {
     pfamhubfile_zip => $pfamHubFileZip,
     pfam_dir => $pfamDir,
     pfam_zip => $pfamDirZip,
+    all_pfam_dir => $allPfamDir,
+    all_pfam_zip => $allPfamDirZip,
     none_dir => $noneDir,
     none_zip => $noneZip,
     all_fasta_file => $allFastaFile,

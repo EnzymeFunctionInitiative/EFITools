@@ -27,8 +27,12 @@ sub new {
     $self->{anno_util} = $annoUtil;
     $self->{no_pfam_fh} = {};
     $self->{use_new_neighbor_method} = exists $args{use_nnm} ? $args{use_nnm} : 1;
-    $self->{pfam_dir} = $args{pfam_dir} if exists $args{pfam_dir} and -d $args{pfam_dir};
+    $self->{pfam_dir} = $args{pfam_dir} if exists $args{pfam_dir} and -d $args{pfam_dir}; # only Pfams within cooccurrence threshold
+    $self->{all_pfam_dir} = $args{all_pfam_dir} if exists $args{all_pfam_dir} and -d $args{all_pfam_dir}; # all Pfams, regardless of cooccurrence
     
+    $self->{pfam_dir} = "" if not exists $self->{pfam_dir};
+    $self->{all_pfam_dir} = "" if not exists $self->{all_pfam_dir};
+
     return bless($self, $class);
 }
 
@@ -271,6 +275,9 @@ sub getClusterHubData {
         }
     }
 
+    use Data::Dumper;
+    print Dumper(\%clusterNodes);
+
     return \%clusterNodes, \%withneighbors, \%noMatches, \%noNeighbors, \%genomeIds, \%noneFamily, \%accessionData;
 }
 
@@ -443,6 +450,9 @@ sub writePfamHubGnn {
 
     $writer->startTag('graph', 'label' => $self->{title} . " Pfam GNN", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
 
+    my $allPfamThresholdCooc = 0;
+    my $allPfamAnyCooc = 1;
+
     foreach my $pfam (@pfamHubs){
         (my $pfam_short, my $pfam_long)= $self->getPfamNames($pfam);
         my $spokecount=0;
@@ -464,8 +474,9 @@ sub writePfamHubGnn {
         if($spokecount>0){
             print "Building hub $pfam\n";
             $self->writePfamHub($writer,$pfam, $pfam_short, $pfam_long, \@hubPdb, \@clusters, $clusterNodes,$supernodes,$withneighbors, $numbermatch);
-            $self->writePfamQueryData($pfam, \@clusters, $clusterNodes, $supernodes, $numbermatch);
+            $self->writePfamQueryData($pfam, \@clusters, $clusterNodes, $supernodes, $numbermatch, $allPfamThresholdCooc);
         }
+        $self->writePfamQueryData($pfam, \@clusters, $clusterNodes, $supernodes, $numbermatch, $allPfamAnyCooc);
     }
 
     $writer->endTag();
@@ -582,16 +593,21 @@ sub writePfamQueryData {
     my $clusterNodes = shift;
     my $supernodes = shift;
     my $numbermatch = shift;
+    my $allPfamAnyCooc = shift;
 
-    return if not $self->{pfam_dir} or not -d $self->{pfam_dir};
+    $allPfamAnyCooc = 0 if not defined $allPfamAnyCooc;
+
+    my $pfamDir = $allPfamAnyCooc ? $self->{all_pfam_dir} : $self->{pfam_dir};
+
+    return if not $pfamDir or not -d $pfamDir;
 
     if (not exists $self->{all_pfam_fh}) {
-        open($self->{all_pfam_fh}, ">" . $self->{pfam_dir} . "/ALL_PFAM.txt");
+        open($self->{all_pfam_fh}, ">" . $pfamDir . "/ALL_PFAM.txt");
         $self->{all_pfam_fh}->print(join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #",
                                                "SSN Query Cluster Color", "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n");
     }
 
-    open(PFAMFH, ">" . $self->{pfam_dir} . "/pfam_neighbors_$pfam.txt") or die "Help " . $self->{pfam_dir} . "/pfam_nodes_$pfam.txt: $!";
+    open(PFAMFH, ">" . $pfamDir . "/pfam_neighbors_$pfam.txt") or die "Help " . $pfamDir . "/pfam_nodes_$pfam.txt: $!";
 
     print PFAMFH join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #", "SSN Query Cluster Color",
                             "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n";

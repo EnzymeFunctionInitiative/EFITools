@@ -45,7 +45,7 @@ use EFI::GNN::ColorUtil;
 
 my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $cooccurrence, $stats, $pfamhubfile, $configFile,
     $pfamDir, $idDir, $noneDir, $idOutputFile, $arrowDataFile, $printPrettyJson, $dontUseNewNeighborMethod,
-    $pfamCoocTable, $hubCountFile);
+    $pfamCoocTable, $hubCountFile, $allPfamDir);
 
 my $result = GetOptions(
     "ssnin=s"           => \$ssnin,
@@ -58,6 +58,7 @@ my $result = GetOptions(
     "pfam=s"            => \$pfamhubfile,
     "config=s"          => \$configFile,
     "pfam-dir=s"        => \$pfamDir,
+    "all-pfam-dir=s"    => \$allPfamDir, # all Pfams, not just those within user-specified cooccurrence threshold
     "id-dir=s"          => \$idDir,
     "none-dir=s"        => \$noneDir,
     "id-out=s"          => \$idOutputFile,
@@ -80,6 +81,7 @@ usage: $0 -ssnin <filename> -n <positive integer> -nomatch <filename> -gnn <file
     -pfam               file to output PFAM hub GNN to
     -id-dir             path to directory to output lists of IDs (one file/list per cluster number)
     -pfam-dir           path to directory to output PFAM cluster data (one file/list per cluster number)
+    -all-pfam-dir       path to directory to output all PFAM cluster data (one file/list per cluster number), regardless of cooccurrence threshold
     -id-out             path to a file to save the ID, cluster #, cluster color
     -arrow-file         path to a file to save the neighbor data necessary to draw arrows
     -cooc-table         path to a file to save the pfam/cooccurrence table data to
@@ -128,6 +130,7 @@ my $db = new EFI::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
 
 mkdir $pfamDir  or die "Unable to create $pfamDir: $!"  if $pfamDir and not -d $pfamDir;
+mkdir $allPfamDir  or die "Unable to create $allPfamDir: $!"  if $allPfamDir and not -d $allPfamDir;
 mkdir $idDir    or die "Unable to create $idDir: $!"    if $idDir and not -d $idDir;
 mkdir $noneDir  or die "Unable to create $noneDir: $!"  if $noneDir and not -d $noneDir;
 
@@ -135,6 +138,7 @@ mkdir $noneDir  or die "Unable to create $noneDir: $!"  if $noneDir and not -d $
 my $colorUtil = new EFI::GNN::ColorUtil(dbh => $dbh);
 my %gnnArgs = (dbh => $dbh, incfrac => $cooccurrence, use_nnm => $useNewNeighborMethod, color_only => $colorOnly);
 $gnnArgs{pfam_dir} = $pfamDir if $pfamDir and -d $pfamDir;
+$gnnArgs{all_pfam_dir} = $allPfamDir if $allPfamDir and -d $allPfamDir;
 $gnnArgs{id_dir} = $idDir if $idDir and -d $idDir;
 $gnnArgs{color_util} = $colorUtil;
 

@@ -108,7 +108,7 @@ if ($diagramZipFile and $diagramZipFile !~ /\.zip$/) {
 
 (my $diagramDbFile = $diagramZipFile) =~ s/\.zip$/.sqlite/g;
 
-my $errorFile = "$outputDir/error.message";
+my $stderrFile = "$outputDir/stderr.log";
 my $jobCompletedFile = "$outputDir/job.completed";
 my $jobErrorFile = "$outputDir/job.error";
 my $jobNamePrefix = $jobId ? "${jobId}_" : "";
@@ -123,8 +123,8 @@ my $titleArg = $title ? "-title \"$title\"" : "";
 
 
 my $B = $SS->getBuilder();
-$B->addAction("rm -f $errorFile");
-$B->addAction("touch $errorFile");
+$B->addAction("rm -f $stderrFile");
+$B->addAction("touch $stderrFile");
 $B->addAction("module load $efiGnnMod");
 $B->addAction("module load $dbMod");
 
@@ -136,7 +136,7 @@ my $jobId;
 if ($diagramZipFile) {
     $jobType = "unzip";
     $B->resource(1, 1, "5gb");
-    $B->addAction("$toolpath/unzip_file.pl -in $diagramZipFile -out $outputFile -out-ext sqlite 2> $errorFile");
+    $B->addAction("$toolpath/unzip_file.pl -in $diagramZipFile -out $outputFile -out-ext sqlite 2> $stderrFile");
     addBashErrorCheck($B, 1, $outputFile);
 }
 
@@ -161,7 +161,7 @@ elsif ($blastSeq) {
     $B->addAction("grep -v '#' $blastOutFile | cut -f 2,11,12 | sort -k3,3nr | sed 's/[\t ]\\{1,\\}/|/g' | cut -d'|' -f2,4 > $blastIdListFile");
     $B->addAction("create_diagram_db.pl -id-file $blastIdListFile -db-file $outputFile -blast-seq-file $seqFile -job-type $jobType $titleArg -nb-size $nbSize");
 
-    addBashErrorCheck($B, 0, $outputFile);
+    addBashErrorCheck($B, 1, $outputFile);
 }
 
 elsif ($idFile) {
