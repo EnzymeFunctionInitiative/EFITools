@@ -585,6 +585,7 @@ sub addFileActions {
     $B->addAction("zip -j $info->{gnn_zip} $info->{gnn}") if $info->{gnn} and $info->{gnn_zip};
     $B->addAction("zip -j $info->{pfamhubfile_zip} $info->{pfamhubfile}") if $info->{pfamhubfile_zip} and $info->{pfamhubfile};
     $B->addAction("zip -j -r $info->{pfam_zip} $info->{pfam_dir}") if $info->{pfam_zip} and $info->{pfam_dir};
+    $B->addAction("zip -j -r $info->{all_pfam_zip} $info->{all_pfam_dir}") if $info->{all_pfam_zip} and $info->{all_pfam_dir};
     $B->addAction("zip -j -r $info->{none_zip} $info->{none_dir}") if $info->{none_zip} and $info->{none_dir};
     $B->addAction("zip -j $info->{arrow_zip} $info->{arrow_file}") if $info->{arrow_zip} and $info->{arrow_file};
 }
