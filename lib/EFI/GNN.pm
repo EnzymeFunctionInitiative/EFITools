@@ -454,10 +454,11 @@ sub writePfamHubGnn {
     my $allPfamAnyCooc = 1;
 
     foreach my $pfam (@pfamHubs){
-        (my $pfam_short, my $pfam_long)= $self->getPfamNames($pfam);
-        my $spokecount=0;
-        my @hubPdb=();
-        my @clusters=();
+        my ($pfam_short, $pfam_long) = $self->getPfamNames($pfam);
+        my $spokecount = 0;
+        my @hubPdb;
+        my @clusters;
+        my @allClusters;
         foreach my $cluster (keys %{$clusterNodes}){
             if(exists ${$clusterNodes}{$cluster}{$pfam}){
                 my $numQueryable = scalar(@{$withneighbors->{$cluster}});
@@ -469,6 +470,7 @@ sub writePfamHubGnn {
                     $self->writeClusterEdge($writer, $pfam, $cluster, $numbermatch);
                     $spokecount++;
                 }
+                push @allClusters, $cluster;
             }
         }
         if($spokecount>0){
@@ -476,7 +478,7 @@ sub writePfamHubGnn {
             $self->writePfamHub($writer,$pfam, $pfam_short, $pfam_long, \@hubPdb, \@clusters, $clusterNodes,$supernodes,$withneighbors, $numbermatch);
             $self->writePfamQueryData($pfam, \@clusters, $clusterNodes, $supernodes, $numbermatch, $allPfamThresholdCooc);
         }
-        $self->writePfamQueryData($pfam, \@clusters, $clusterNodes, $supernodes, $numbermatch, $allPfamAnyCooc);
+        $self->writePfamQueryData($pfam, \@allClusters, $clusterNodes, $supernodes, $numbermatch, $allPfamAnyCooc);
     }
 
     $writer->endTag();
@@ -601,11 +603,23 @@ sub writePfamQueryData {
 
     return if not $pfamDir or not -d $pfamDir;
 
-    if (not exists $self->{all_pfam_fh}) {
-        open($self->{all_pfam_fh}, ">" . $pfamDir . "/ALL_PFAM.txt");
-        $self->{all_pfam_fh}->print(join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #",
+    my $allFh;
+    if ($allPfamAnyCooc) {
+        if (not exists $self->{all_pfam_fh_any}) {
+            open($self->{all_pfam_fh_any}, ">" . $pfamDir . "/ALL_PFAM.txt");
+            $self->{all_pfam_fh_any}->print(join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #",
+                                                   "SSN Query Cluster Color", "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n");
+        }
+        $allFh = $self->{all_pfam_fh_any};
+    } else {
+        if (not exists $self->{all_pfam_fh}) {
+            open($self->{all_pfam_fh}, ">" . $pfamDir . "/ALL_PFAM.txt");
+            $self->{all_pfam_fh}->print(join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #",
                                                "SSN Query Cluster Color", "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n");
+        }
+        $allFh = $self->{all_pfam_fh};
     }
+
 
     open(PFAMFH, ">" . $pfamDir . "/pfam_neighbors_$pfam.txt") or die "Help " . $pfamDir . "/pfam_nodes_$pfam.txt: $!";
 
@@ -628,7 +642,7 @@ sub writePfamQueryData {
                                   $data->{direction},
                            ) . "\n";
             print PFAMFH $line;
-            $self->{all_pfam_fh}->print($line);
+            $allFh->print($line);
         }
     }
 
@@ -658,6 +672,7 @@ sub finish {
     my $self = shift;
 
     close($self->{all_pfam_fh}) if exists $self->{all_pfam_fh};
+    close($self->{all_pfam_fh_any}) if exists $self->{all_pfam_fh_any};
 }
 
 
