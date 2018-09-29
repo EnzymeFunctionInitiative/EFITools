@@ -275,9 +275,6 @@ sub getClusterHubData {
         }
     }
 
-    use Data::Dumper;
-    print Dumper(\%clusterNodes);
-
     return \%clusterNodes, \%withneighbors, \%noMatches, \%noNeighbors, \%genomeIds, \%noneFamily, \%accessionData;
 }
 
