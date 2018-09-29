@@ -46,7 +46,7 @@ sub getAnnotations {
 
     my $rows = $sth->fetchall_arrayref;
 
-    my $pfamDesc = join("-", map { $_->[0] } @$rows);
+    my $pfamDesc = join(";", map { $_->[0] } @$rows);
 
     $annoStatus = $annoStatus eq "Reviewed" ? "SwissProt" : "TrEMBL";
 

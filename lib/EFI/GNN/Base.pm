@@ -210,7 +210,9 @@ sub numberClusters {
     my $simplenumber=1;
     my @numberOrder;
 
-    foreach my $clusterNode (sort { my $c = $#{$supernodes->{$b}} <=> $#{$supernodes->{$a}};
+    foreach my $clusterNode (sort { my $bs = scalar uniq @{$supernodes->{$b}};
+                                    my $as = scalar uniq @{$supernodes->{$a}};
+                                    my $c = $bs <=> $as;
                                     $c = $a <=> $b if not $c; # handle equals case
                                     $c } keys %$supernodes){
         $simplenumber = $clusterNode if $useExistingNumber;
@@ -283,7 +285,7 @@ sub writeColorSsnNodes {
 
         # In a previous step, we included singletons (historically they were excluded).
         unless($clusterNum eq ""){
-            $nodeCount{$clusterNum} = scalar @{ $supernodes->{$clusterId} } if not exists $nodeCount{$clusterNum};
+            $nodeCount{$clusterNum} = scalar uniq @{ $supernodes->{$clusterId} } if not exists $nodeCount{$clusterNum};
 
             $self->saveNodeToClusterMap($clusterId, $numbermatch, $supernodes, $gnnData) if $nodeCount{$clusterNum} > 1;
 
