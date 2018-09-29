@@ -36,7 +36,8 @@ sub build_taxid_query_string {
 
 sub build_query_string {
     my $accession = shift;
-    return build_query_string_base("accession", $accession);
+    my $unirefVersion = shift;
+    return build_query_string_base("accession", $accession, $unirefVersion);
 }
 
 
@@ -44,12 +45,34 @@ sub build_query_string_base {
     my $column = shift;
     my $id = shift;
 
+    my @ids = ($id);
+    if (ref $id eq "ARRAY") {
+        @ids = @$id;
+    }
+
+    my $idQuoted = "";
+    if (scalar @ids > 1) {
+        $idQuoted = "in (" . join(",", map { "'$_'" } @ids) . ")";
+    } else {
+        $idQuoted = "= '" . $ids[0] . "'";
+    }
+
     my $sql = "";
     if ($Version == 1) {
-        $sql = "select * from annotations where $column = '$id'";
+        $sql = "select * from annotations where $column $idQuoted";
     } else {
-        $sql = "select * from annotations as A left join taxonomy as T on A.Taxonomy_ID = T.Taxonomy_ID where A.$column = '$id'";
+        $sql = "select * from annotations as A left join taxonomy as T on A.Taxonomy_ID = T.Taxonomy_ID where A.$column $idQuoted";
     }
+
+    return $sql;
+}
+
+
+sub build_uniref_id_query_string {
+    my $seed = shift;
+    my $unirefVersion = shift;
+
+    my $sql = "select accession as ID from uniref where uniref${unirefVersion}_seed = '$seed'";
 
     return $sql;
 }
@@ -61,50 +84,69 @@ sub build_id_mapping_query_string {
     return $sql;
 }
 
+my $AnnoRowSep = "^";
 
 sub build_annotations {
     my $row = shift;
     my $ncbiIds = shift;
 
-    my $status = "TrEMBL";
-    $status = "SwissProt" if lc $row->{STATUS} eq "reviewed";
+    my @rows = ($row);
+    if (ref $row eq "ARRAY") {
+        @rows = @$row;
+    }
 
-    my $tab = $row->{"accession"} . 
+    my @statusValues;
+    foreach my $row (@rows) {
+        my $status = "TrEMBL";
+        $status = "SwissProt" if lc $row->{STATUS} eq "reviewed";
+        push @statusValues, $status;
+    }
+    my $status = join($AnnoRowSep, @statusValues);
+
+    my $tab = $rows[0]->{"accession"} .  # first row is the primary ID (UniRef seed sequence)
         "\n\tSTATUS\t" . $status . 
-        "\n\tSequence_Length\t" . $row->{"Sequence_Length"} . 
-        "\n\tTaxonomy_ID\t" . $row->{"Taxonomy_ID"} . 
-        "\n\tP01_gDNA\t" . $row->{"GDNA"} . 
-        "\n\tDescription\t" . $row->{"Description"} . 
-        "\n\tSwissprot_Description\t" . $row->{"SwissProt_Description"} . 
-        "\n\tOrganism\t" . $row->{"Organism"} . 
-        "\n\tGN\t" . $row->{"GN"} . 
-        "\n\tPFAM\t" . $row->{"PFAM"} . 
-        "\n\tPDB\t" . $row->{"pdb"} . 
-        "\n\tIPRO\t" . $row->{"IPRO"} . 
-        "\n\tGO\t" . $row->{"GO"} .
-        "\n\tKEGG\t" . $row->{"KEGG"} .
-        "\n\tSTRING\t" . $row->{"STRING"} .
-        "\n\tBRENDA\t" . $row->{"BRENDA"} .
-        "\n\tPATRIC\t" . $row->{"PATRIC"} .
-        "\n\tHMP_Body_Site\t" . $row->{"HMP_Body_Site"} . 
-        "\n\tHMP_Oxygen\t" . $row->{"HMP_Oxygen"} . 
-        "\n\tEC\t" . $row->{"EC"} . 
-        "\n\tSuperkingdom\t" . $row->{"Domain"};
-    $tab .= "\n\tKingdom\t" . $row->{"Kingdom"} if $Version > 1;
+        "\n\tSequence_Length\t" . merge_anno_rows(\@rows, "Sequence_Length") . 
+        "\n\tTaxonomy_ID\t" . merge_anno_rows(\@rows, "Taxonomy_ID") . 
+        "\n\tP01_gDNA\t" . merge_anno_rows(\@rows, "GDNA") . 
+        "\n\tDescription\t" . merge_anno_rows(\@rows, "Description") . 
+        "\n\tSwissprot_Description\t" . merge_anno_rows(\@rows, "SwissProt_Description") . 
+        "\n\tOrganism\t" . merge_anno_rows(\@rows, "Organism") . 
+        "\n\tGN\t" . merge_anno_rows(\@rows, "GN") . 
+        "\n\tPFAM\t" . merge_anno_rows(\@rows, "PFAM") . 
+        "\n\tPDB\t" . merge_anno_rows(\@rows, "pdb") . 
+        "\n\tIPRO\t" . merge_anno_rows(\@rows, "IPRO") . 
+        "\n\tGO\t" . merge_anno_rows(\@rows, "GO") .
+        "\n\tKEGG\t" . merge_anno_rows(\@rows, "KEGG") .
+        "\n\tSTRING\t" . merge_anno_rows(\@rows, "STRING") .
+        "\n\tBRENDA\t" . merge_anno_rows(\@rows, "BRENDA") .
+        "\n\tPATRIC\t" . merge_anno_rows(\@rows, "PATRIC") .
+        "\n\tHMP_Body_Site\t" . merge_anno_rows(\@rows, "HMP_Body_Site") .
+        "\n\tHMP_Oxygen\t" . merge_anno_rows(\@rows, "HMP_Oxygen") .
+        "\n\tEC\t" . merge_anno_rows(\@rows, "EC") .
+        "\n\tSuperkingdom\t" . merge_anno_rows(\@rows, "Domain");
+    $tab .= "\n\tKingdom\t" . merge_anno_rows(\@rows, "Kingdom") if $Version > 1;
     $tab .=
-        "\n\tPhylum\t" . $row->{"Phylum"} . 
-        "\n\tClass\t" . $row->{"Class"} . 
-        "\n\tOrder\t" . $row->{"TaxOrder"} . 
-        "\n\tFamily\t" . $row->{"Family"} . 
-        "\n\tGenus\t" . $row->{"Genus"} . 
-        "\n\tSpecies\t" . $row->{"Species"} . 
-        "\n\tCAZY\t" . $row->{"Cazy"};
+        "\n\tPhylum\t" . merge_anno_rows(\@rows, "Phylum") .
+        "\n\tClass\t" . merge_anno_rows(\@rows, "Class") .
+        "\n\tOrder\t" . merge_anno_rows(\@rows, "TaxOrder") .
+        "\n\tFamily\t" . merge_anno_rows(\@rows, "Family") .
+        "\n\tGenus\t" . merge_anno_rows(\@rows, "Genus") .
+        "\n\tSpecies\t" . merge_anno_rows(\@rows, "Species") .
+        "\n\tCAZY\t" . merge_anno_rows(\@rows, "Cazy");
     $tab .= "\n\tNCBI_IDs\t" . join(",", @$ncbiIds) if ($ncbiIds);
 #    $tab .= "\n\tUniRef50\t" . $row->{"UniRef50_Cluster"} if $row->{"UniRef50_Cluster"};
 #    $tab .= "\n\tUniRef90\t" . $row->{"UniRef90_Cluster"} if $row->{"UniRef90_Cluster"};
     $tab .= "\n";
 
     return $tab;
+}
+
+sub merge_anno_rows {
+    my $rows = shift;
+    my $field = shift;
+
+    my $value = join($AnnoRowSep, map { $_->{$field} } @$rows);
+    return $value;
 }
 
 
