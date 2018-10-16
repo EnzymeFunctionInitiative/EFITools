@@ -87,8 +87,15 @@ sub build_id_mapping_query_string {
 my $AnnoRowSep = "^";
 
 sub build_annotations {
+    my $accession = shift;
     my $row = shift;
     my $ncbiIds = shift;
+
+    if (ref $accession eq "HASH" and not defined $ncbiIds) {
+        $ncbiIds = $row;
+        $row = $accession;
+        $accession = $row->{accession};
+    }
 
     my @rows = ($row);
     if (ref $row eq "ARRAY") {
@@ -103,7 +110,7 @@ sub build_annotations {
     }
     my $status = join($AnnoRowSep, @statusValues);
 
-    my $tab = $rows[0]->{"accession"} .  # first row is the primary ID (UniRef seed sequence)
+    my $tab = $accession .
         "\n\tSTATUS\t" . $status . 
         "\n\tSequence_Length\t" . merge_anno_rows(\@rows, "Sequence_Length") . 
         "\n\tTaxonomy_ID\t" . merge_anno_rows(\@rows, "Taxonomy_ID") . 

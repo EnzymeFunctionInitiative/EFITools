@@ -110,7 +110,7 @@ sub getNodes{
                 foreach $accessionlist (@accessionlists){
                     #make sure all accessions within the node are included in the gnn network
                     my $attrAcc = $accessionlist->getAttribute('value');
-                    print "Expanded $nodehead into $attrAcc\n";
+                    print "Expanded $nodehead into $attrAcc\n" if $self->{debug};
                     push @{$nodehash{$nodehead}}, $attrAcc if $nodehead ne $attrAcc;
                     $nodeMap{$nodehead} = $node;
                 }
@@ -188,11 +188,13 @@ sub getClusters{
     if ($includeSingletons) {
         # Look at each node in the network.  If we haven't processed it above (i.e. it doesn't have any edges attached)
         # then we add a new supernode and add any represented nodes (if it is a repnode).
-        foreach my $nodeName (keys %$nodenames) {
-            if (not exists $constellations{$nodeName}) {
-                $supernodes{$newnode} = $nodehash->{$nodeName}; # nodehash contains an array of nodes, since it may be a repnode
-                $singletons{$newnode} = $nodeName;
-                $constellations{$nodeName} = $newnode;
+        foreach my $nodeId (keys %$nodenames) {
+            my $nodeLabel = $nodenames->{$nodeId};
+            if (not exists $constellations{$nodeLabel}) {
+                print "Adding singleton $nodeLabel from $nodeId\n" if $self->{debug};
+                $supernodes{$newnode} = $nodehash->{$nodeLabel}; # nodehash contains an array of nodes, since it may be a repnode
+                $singletons{$newnode} = $nodeLabel;
+                $constellations{$nodeLabel} = $newnode;
                 $newnode++;
             }
         }
@@ -216,7 +218,7 @@ sub numberClusters {
                                     $c = $a <=> $b if not $c; # handle equals case
                                     $c } keys %$supernodes){
         $simplenumber = $clusterNode if $useExistingNumber;
-        print "Supernode $clusterNode, ".scalar @{$supernodes->{$clusterNode}}." original accessions, simplenumber $simplenumber\n";
+        print "Supernode $clusterNode, ".scalar @{$supernodes->{$clusterNode}}." original accessions, simplenumber $simplenumber\n" if $self->{debug};
         $numbermatch{$clusterNode}=$simplenumber;
         push @numberOrder, $clusterNode;
         $simplenumber++;
@@ -361,7 +363,7 @@ sub writeColorSsnNodes {
 
             $writer->endTag(  );
         } else {
-            print "Node $nodeId was found in any of the clusters we built today\n";
+            print "Node $nodeId was not found in any of the clusters we built today\n";
         }
     }
 }
@@ -577,7 +579,11 @@ sub addFileActions {
     $fastaTool .= " -singletons $info->{singletons_file}" if $info->{singletons_file};
     $fastaTool .= " -input-sequences $info->{input_seqs_file}" if $info->{input_seqs_file};
     $B->addAction($fastaTool);
-    $B->addAction("cat $info->{node_data_path}/cluster_UniProt_IDs* > $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
+    if (exists $info->{cat_tool_path}) {
+        $B->addAction("$info->{cat_tool_path} -input-file-pattern \"$info->{node_data_path}/cluster_UniProt_IDs*\" -output-file $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
+    } else {
+        $B->addAction("cat $info->{node_data_path}/cluster_UniProt_IDs* > $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
+    }
     $B->addAction("sort $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted > $info->{node_data_path}/cluster_All_UniProt_IDs.txt");
     $B->addAction("rm $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
 
