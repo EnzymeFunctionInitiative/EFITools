@@ -116,6 +116,7 @@ my $fileInfo = {
     fasta_data_path => $fastaDataPath,
     fasta_zip => $fastaZip,
     fasta_tool_path => "$gntPath/get_fasta.pl",
+    cat_tool_path => "$gntPath/cat_files.pl",
     ssn_out => "$outputPath/$ssnOut",
     ssn_out_zip => "$outputPath/$ssnOutZip",
     config_file => $configFile,

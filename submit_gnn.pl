@@ -280,6 +280,7 @@ my $info = {
     ssn_out_zip => $ssnOutZip,
     config_file => $configFile,
     fasta_tool_path => "$toolpath/get_fasta.pl",
+    cat_tool_path => "$toolpath/cat_files.pl",
     gnn => $gnn,
     gnn_zip => $gnnZip,
     pfamhubfile => $pfamHubFile,

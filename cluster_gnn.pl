@@ -104,15 +104,17 @@ unless(-s $ssnin){
     die "-ssnin $ssnin does not exist or has a zero size\n$usage";
 }
 
-unless($neighborhoodSize>0){
+my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile) ? 1 : 0;
+
+if (not $colorOnly and (not defined $neighborhoodSize or $neighborhoodSize < 1)) {
     die "-nb-size $neighborhoodSize must be an integer greater than zero\n$usage";
 }
 
 
-if($cooccurrence=~/^\d+$/){
-    $cooccurrence=$cooccurrence/100;
-}else{
-    if(defined $cooccurrence){
+if ($cooccurrence =~ /^\d+$/) {
+    $cooccurrence = $cooccurrence / 100;
+} else {
+    if (not $colorOnly and defined $cooccurrence) {
         die "incfrac must be an integer\n";
     }
     $cooccurrence=0.20;  
@@ -122,8 +124,6 @@ my $useNewNeighborMethod = 0;
 if (not defined $dontUseNewNeighborMethod) {
     $useNewNeighborMethod = 1;
 }
-
-my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile) ? 1 : 0;
 
 
 my $db = new EFI::Database(config_file_path => $configFile);
