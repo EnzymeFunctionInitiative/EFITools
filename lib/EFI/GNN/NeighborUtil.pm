@@ -44,7 +44,7 @@ sub findNeighbors {
 
     my $row = $sth->fetchrow_hashref;
     if (not defined $row or not $row) {
-        print $warning_fh "$ac\tnomatch\n";
+        print $warning_fh "$ac\tnomatch\n" if $warning_fh;
         return \%pfam, 1, -1, $genomeId;
     }
 
@@ -102,12 +102,13 @@ SQL
 
     print "Using $genomeId as genome ID\n"                                              if $debug;
 
+    # The pfam column actually contains INTERPRO and Pfam values, not just Pfam.
     my $selSql = "select * from ena where ID = '$genomeId' and AC = '$ac' limit 1;";
     print "$selSql\n"                                                                   if $debug;
     $sth=$self->{dbh}->prepare($selSql);
     $sth->execute;
 
-    my $row = $sth->fetchrow_hashref;
+    $row = $sth->fetchrow_hashref;
     if($row->{DIRECTION}==0){
         $origdirection='complement';
     }elsif($row->{DIRECTION}==1){
@@ -168,7 +169,7 @@ SQL
         push @{$pfam{'withneighbors'}{$origtmp}}, $ac;
     }else{
         $noNeighbors = 1;
-        print $warning_fh "$ac\tnoneighbor\n";
+        print $warning_fh "$ac\tnoneighbor\n" if $warning_fh;
     }
 
     my $isBound = ($low < 1 ? 1 : 0);
@@ -229,7 +230,7 @@ SQL
             }
 
             push @{$accessionData->{$ac}->{neighbors}}, {accession => $neighbor->{AC}, num => int($neighbor->{NUM}),
-                family => $tmp, id => $neighbor->{ID},
+                family => $tmp, id => $neighbor->{ID}, distance => $distance, # include distance here in addition to num, because the num is hard to compute in rare circular DNA cases
                 rel_start => $relNbStart, rel_stop => $relNbStop, start => $nbStart, stop => $nbStop,
                 #strain => $neighbor->{strain},
                 direction => $direction, type => $type, seq_len => $nbSeqLenBp};
