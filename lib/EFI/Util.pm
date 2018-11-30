@@ -38,7 +38,7 @@ sub getLmod {
     my ($out, $err) = capture {
         `source /etc/profile; module -t avail`;
     };
-    my @py2 = grep m{$pattern}, (split m/[\n\r]+/gs, $err);
+    my @py2 = grep m{$pattern}, (split m/[\n\r]+/s, $err);
 
     return scalar @py2 ? $py2[0] : $default;
 }
