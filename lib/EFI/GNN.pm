@@ -7,8 +7,14 @@ BEGIN {
 
 package EFI::GNN;
 
+use constant PFAM_THRESHOLD => 0;
+use constant PFAM_ANY => 1;
+use constant PFAM_SPLIT => 2;
+use constant PFAM_ANY_SPLIT => 4;
+use constant MAX_NB_SIZE => 20;
+
 use List::MoreUtils qw{apply uniq any};
-use List::Util qw(sum);
+use List::Util qw(sum max);
 use Array::Utils qw(:all);
 
 use base qw(EFI::GNN::Base);
@@ -29,9 +35,13 @@ sub new {
     $self->{use_new_neighbor_method} = exists $args{use_nnm} ? $args{use_nnm} : 1;
     $self->{pfam_dir} = $args{pfam_dir} if exists $args{pfam_dir} and -d $args{pfam_dir}; # only Pfams within cooccurrence threshold
     $self->{all_pfam_dir} = $args{all_pfam_dir} if exists $args{all_pfam_dir} and -d $args{all_pfam_dir}; # all Pfams, regardless of cooccurrence
+    $self->{split_pfam_dir} = $args{split_pfam_dir} if exists $args{split_pfam_dir} and -d $args{split_pfam_dir}; # all Pfams, regardless of cooccurrence
+    $self->{all_split_pfam_dir} = $args{all_split_pfam_dir} if exists $args{all_split_pfam_dir} and -d $args{all_split_pfam_dir}; # all Pfams, regardless of cooccurrence
     
     $self->{pfam_dir} = "" if not exists $self->{pfam_dir};
     $self->{all_pfam_dir} = "" if not exists $self->{all_pfam_dir};
+    $self->{split_pfam_dir} = "" if not exists $self->{split_pfam_dir};
+    $self->{all_split_pfam_dir} = "" if not exists $self->{all_split_pfam_dir};
 
     return bless($self, $class);
 }
@@ -121,11 +131,12 @@ sub writePfamSpoke{
     my @cluster=@{shift @_};
     my %info=%{shift @_};
 
-    my @tmparray=();
-    my $shape='';
+    my @tmparray;
+    my $shape = '';
+    my $nodeSize = max(1, int(sprintf("%.2f",int(scalar(uniq @{$info{'orig'}})/scalar(@cluster)*100)/100)*100));
 
     (my $pfam_short, my $pfam_long)= $self->getPfamNames($pfam);
-    (my $shape, my $pdbinfo)= $self->getPdbInfo(\@{$info{'neighlist'}});
+    ($shape, my $pdbinfo)= $self->getPdbInfo(\@{$info{'neighlist'}});
     $gnnwriter->startTag('node', 'id' => "$clusternumber:$pfam", 'label' => "$pfam_short");
     writeGnnField($gnnwriter, 'SSN Cluster Number', 'integer', $clusternumber);
     writeGnnField($gnnwriter, 'Pfam', 'string', $pfam);
@@ -149,7 +160,7 @@ sub writePfamSpoke{
     writeGnnListField($gnnwriter, 'Hub Co-occurrence and Ratio', 'string', []);
     writeGnnField($gnnwriter, 'node.fillColor','string', '#EEEEEE');
     writeGnnField($gnnwriter, 'node.shape', 'string', $shape);
-    writeGnnField($gnnwriter, 'node.size', 'string', int(sprintf("%.2f",int(scalar(uniq @{$info{'orig'}})/scalar(@cluster)*100)/100)*100));
+    writeGnnField($gnnwriter, 'node.size', 'string', $nodeSize);
     $gnnwriter->endTag;
 
     return \@tmparray;
@@ -194,23 +205,6 @@ sub writePfamEdge{
     $gnnwriter->endTag();
 }
 
-sub combineArraysAddPfam{
-    my %info=%{shift @_};
-    my $subkey=shift @_;
-    my @cluster=@{shift @_};
-    my $clusterNumber=shift @_;
-
-    my @tmparray=();
-
-    foreach my $key (keys %info){
-        if( int(scalar(uniq @{$info{$key}{'orig'}})/scalar(@cluster)*100)/100>=$self->{incfrac}){
-            push @tmparray, map "$clusterNumber:$key:$_", @{$info{$key}{$subkey}};
-        }
-    } 
-
-    return @tmparray;
-}
-
 sub getClusterHubData {
     my $self = shift;
     my $supernodes = shift;
@@ -220,13 +214,14 @@ sub getClusterHubData {
     my $supernodeOrder = shift;
     my $numberMatch = shift;
 
-    my %withneighbors=();
-    my %clusterNodes=();
+    my %withNeighbors;
+    my %clusterNodes;
     my %noNeighbors;
     my %noMatches;
     my %genomeIds;
     my %noneFamily;
     my %accessionData;
+    my ($allNbAccessionData, $allPfamData) = ({}, {}, {});
 
     # This is used to retain the order of the nodes in the xgmml file when we write the arrow sqlite database.
     my $sortKey = 0;
@@ -243,39 +238,128 @@ sub getClusterHubData {
             $genomeIds{$accession} = $genomeId;
             $noMatches{$accession} = $localNoMatch;
             
+            # Find the maximum window so we can filter later.
+            $allNbAccessionData->{$accession}->{neighbors} = [];
+            my $allNeighborData;
+            if ($neighborhoodSize != MAX_NB_SIZE) {
+                ($allNeighborData) = $nbFind->findNeighbors($accession, MAX_NB_SIZE, undef, $useCircTest, {}, $allNbAccessionData);
+            } else {
+                $allNeighborData = $pfamsearch;
+            }
+            $allPfamData->{$accession} = $allNeighborData;
+            
+            my @accDataStructs = \%accessionData;
+            if ($neighborhoodSize != MAX_NB_SIZE) {
+                push @accDataStructs, $allNbAccessionData;
+            }
+            
             my ($organism, $taxId, $annoStatus, $desc, $familyDesc) = $self->getAnnotations($accession, $accessionData{$accession}->{attributes}->{family});
-            $accessionData{$accession}->{attributes}->{sort_order} = $sortKey++;
-            $accessionData{$accession}->{attributes}->{organism} = $organism;
-            $accessionData{$accession}->{attributes}->{taxon_id} = $taxId;
-            $accessionData{$accession}->{attributes}->{anno_status} = $annoStatus;
-            $accessionData{$accession}->{attributes}->{desc} = $desc;
-            $accessionData{$accession}->{attributes}->{family_desc} = $familyDesc;
-            $accessionData{$accession}->{attributes}->{cluster_num} = exists $numberMatch->{$clusterNode} ? $numberMatch->{$clusterNode} : "";
+            for (my $idx = 0; $idx < scalar @accDataStructs; $idx++) {
+                my $accStruct = $accDataStructs[$idx];
 
-            foreach my $nbObj (@{ $accessionData{$accession}->{neighbors} }) {
-                my ($nbOrganism, $nbTaxId, $nbAnnoStatus, $nbDesc, $nbFamilyDesc) =
-                    $self->getAnnotations($nbObj->{accession}, $nbObj->{family});
-                $nbObj->{taxon_id} = $nbTaxId;
-                $nbObj->{anno_status} = $nbAnnoStatus;
-                $nbObj->{desc} = $nbDesc;
-                $nbObj->{family_desc} = $nbFamilyDesc;
+                $accStruct->{$accession}->{attributes}->{sort_order} = $sortKey++;
+                $accStruct->{$accession}->{attributes}->{organism} = $organism;
+                $accStruct->{$accession}->{attributes}->{taxon_id} = $taxId;
+                $accStruct->{$accession}->{attributes}->{anno_status} = $annoStatus;
+                $accStruct->{$accession}->{attributes}->{desc} = $desc;
+                $accStruct->{$accession}->{attributes}->{family_desc} = $familyDesc;
+                $accStruct->{$accession}->{attributes}->{cluster_num} = exists $numberMatch->{$clusterNode} ? $numberMatch->{$clusterNode} : "";
+                foreach my $nbObj (@{ $accStruct->{$accession}->{neighbors} }) {
+                    my ($nbOrganism, $nbTaxId, $nbAnnoStatus, $nbDesc, $nbFamilyDesc) =
+                        $self->getAnnotations($nbObj->{accession}, $nbObj->{family});
+                    $nbObj->{taxon_id} = $nbTaxId;
+                    $nbObj->{anno_status} = $nbAnnoStatus;
+                    $nbObj->{desc} = $nbDesc;
+                    $nbObj->{family_desc} = $nbFamilyDesc;
+                }
             }
 
-            foreach my $pfamNumber (sort {$a <=> $b} keys %{${$pfamsearch}{'neigh'}}){
-                push @{$clusterNodes{$clusterNode}{$pfamNumber}{'orig'}}, @{${$pfamsearch}{'orig'}{$pfamNumber}};
-                push @{$clusterNodes{$clusterNode}{$pfamNumber}{'dist'}}, @{${$pfamsearch}{'dist'}{$pfamNumber}};
-                push @{$clusterNodes{$clusterNode}{$pfamNumber}{'stats'}}, @{${$pfamsearch}{'stats'}{$pfamNumber}};
-                push @{$clusterNodes{$clusterNode}{$pfamNumber}{'neigh'}}, @{${$pfamsearch}{'neigh'}{$pfamNumber}};
-                push @{$clusterNodes{$clusterNode}{$pfamNumber}{'neighlist'}}, @{${$pfamsearch}{'neighlist'}{$pfamNumber}};
-                push @{$clusterNodes{$clusterNode}{$pfamNumber}{'data'}}, @{${$pfamsearch}{'data'}{$pfamNumber}};
+            foreach my $pfamNumber (sort {$a <=> $b} keys %{$pfamsearch->{neigh}}){
+                push @{$clusterNodes{$clusterNode}{$pfamNumber}{orig}}, @{$pfamsearch->{orig}{$pfamNumber}};
+                push @{$clusterNodes{$clusterNode}{$pfamNumber}{dist}}, @{$pfamsearch->{dist}{$pfamNumber}};
+                push @{$clusterNodes{$clusterNode}{$pfamNumber}{stats}}, @{$pfamsearch->{stats}{$pfamNumber}};
+                push @{$clusterNodes{$clusterNode}{$pfamNumber}{neigh}}, @{$pfamsearch->{neigh}{$pfamNumber}};
+                push @{$clusterNodes{$clusterNode}{$pfamNumber}{neighlist}}, @{$pfamsearch->{neighlist}{$pfamNumber}};
+                push @{$clusterNodes{$clusterNode}{$pfamNumber}{data}}, @{$pfamsearch->{data}{$pfamNumber}};
             }
-            foreach my $pfamNumber (sort {$a <=> $b} keys %{${$pfamsearch}{'withneighbors'}}){
-                push @{$withneighbors{$clusterNode}}, @{${$pfamsearch}{'withneighbors'}{$pfamNumber}};
+            foreach my $pfamNumber (sort {$a <=> $b} keys %{$pfamsearch->{withneighbors}}){
+                push @{$withNeighbors{$clusterNode}}, @{$pfamsearch->{withneighbors}{$pfamNumber}};
             }
         }
     }
 
-    return \%clusterNodes, \%withneighbors, \%noMatches, \%noNeighbors, \%genomeIds, \%noneFamily, \%accessionData;
+    if ($neighborhoodSize == MAX_NB_SIZE) {
+        $allNbAccessionData = \%accessionData;
+    }
+
+    return \%clusterNodes, \%withNeighbors, \%noMatches, \%noNeighbors, \%genomeIds, \%noneFamily, \%accessionData,
+        $allNbAccessionData, $allPfamData;
+}
+
+
+sub filterClusterHubData {
+    my $self = shift;
+    my $data = shift;
+    my $supernodes = shift;
+    my $nbSize = shift @_; # neighborhood size
+    my $supernodeOrder = shift;
+
+    my $withNeighbors = {};
+    my $clusterNodes = {};
+    my $accessionData = {};
+    my $noNeighbors = {};
+    my $noMatches = {};
+    my $genomeIds = {};
+    my $noneFamily = {};
+
+    foreach my $clusterNode (@{ $supernodeOrder }) {
+        foreach my $accession (uniq @{$supernodes->{$clusterNode}}){
+            $accessionData->{$accession}->{attributes} = $data->{accessionData}->{$accession}->{attributes};
+            $noNeighbors->{$accession} = $data->{noNeighborMap}->{$accession};
+            $noMatches->{$accession} = $data->{noMatchMap}->{$accession};
+            $genomeIds->{$accession} = $data->{genomeIds}->{$accession};
+
+            foreach my $nb (@{$data->{accessionData}->{$accession}->{neighbors}}) {
+                if ($nbSize >= abs($nb->{distance})) {
+                    push @{$accessionData->{$accession}->{neighbors}}, $nb;
+                    if (exists $data->{noneFamily}->{$clusterNode}->{$nb->{accession}}) {
+                        $noneFamily->{$clusterNode}->{$nb->{accession}} = $data->{noneFamily}->{$clusterNode}->{$nb->{accession}};
+                    }
+                }
+            }
+
+            my $pfamsearch = $data->{allPfamData}->{$accession};
+            foreach my $pfamNumber (sort {$a <=> $b} keys %{$pfamsearch->{neigh}}) {
+                my (@orig, @dist, @stats, @neigh, @neighlist, @data);
+                for (my $i = 0; $i < scalar @{$pfamsearch->{data}->{$pfamNumber}}; $i++) {
+                    if ($nbSize >= abs($pfamsearch->{data}->{$pfamNumber}->[$i]->{distance})) {
+                        push @orig, @{$pfamsearch->{orig}->{$pfamNumber}};
+                        push @dist, $pfamsearch->{dist}->{$pfamNumber}->[$i];
+                        push @stats, $pfamsearch->{stats}->{$pfamNumber}->[$i];
+                        push @neigh, $pfamsearch->{neigh}->{$pfamNumber}->[$i];
+                        push @neighlist, $pfamsearch->{neighlist}->{$pfamNumber}->[$i];
+                        push @data, $pfamsearch->{data}->{$pfamNumber}->[$i];
+                    }
+                }
+
+                if (scalar @data) {
+                    push @{$clusterNodes->{$clusterNode}->{$pfamNumber}->{orig}}, uniq @orig;
+                    push @{$clusterNodes->{$clusterNode}->{$pfamNumber}->{dist}}, @dist;
+                    push @{$clusterNodes->{$clusterNode}->{$pfamNumber}->{stats}}, @stats;
+                    push @{$clusterNodes->{$clusterNode}->{$pfamNumber}->{neigh}}, @neigh;
+                    push @{$clusterNodes->{$clusterNode}->{$pfamNumber}->{neighlist}}, @neighlist;
+                    push @{$clusterNodes->{$clusterNode}->{$pfamNumber}->{data}}, @data;
+                }
+            }
+    
+            foreach my $pfamNumber (sort {$a <=> $b} keys %{$pfamsearch->{withneighbors}}){
+                push @{$withNeighbors->{$clusterNode}}, @{$pfamsearch->{withneighbors}->{$pfamNumber}};
+            }
+
+        }
+    }
+
+    return $clusterNodes, $withNeighbors, $noMatches, $noNeighbors, $genomeIds, $noneFamily, $accessionData;
 }
 
 
@@ -331,17 +415,17 @@ sub writeClusterHubGnn{
         my $numQueryableSsns = scalar @{ $withneighbors->{$cluster} };
         my $totalSsns = scalar @{ $supernodes->{$cluster} };
         if (exists $singletons->{$cluster}) {
-            print "excluding hub node $cluster, simplenumber " . $numbermathc->{$cluster} . " because it's a singleton hub\n";
+            print "excluding hub node $cluster, simplenumber " . $numbermatch->{$cluster} . " because it's a singleton hub\n" if $self->{debug};
             next;
         }
         if ($numQueryableSsns < 2) {
-            print "excluding hub node $cluster, simplenumber " . $numbermatch->{$cluster} . " because it only has 1 queryable ssn.\n";
+            print "excluding hub node $cluster, simplenumber " . $numbermatch->{$cluster} . " because it only has 1 queryable ssn.\n" if $self->{debug};
             next;
         }
 
-        print "building hub node $cluster, simplenumber ".$numbermatch->{$cluster}."\n";
+        print "building hub node $cluster, simplenumber ".$numbermatch->{$cluster}."\n" if $self->{debug};
         my @pdbinfo=();
-        foreach my $pfam (keys %{$clusterNodes->{$cluster}}){
+        foreach my $pfam (sort keys %{$clusterNodes->{$cluster}}){
             my $numNeighbors = scalar(@{$withneighbors->{$cluster}});
             my $numNodes = scalar(uniq @{$clusterNodes->{$cluster}{$pfam}{'orig'}});
             #if ($numNeighbors == 1) {
@@ -413,25 +497,31 @@ sub saveGnnAttributes {
         my @hasNeighbors;
         my @hasMatch;
         my @genomeId;
+        my @nbFams;
 
         foreach my $accIdAttr (@accIdAttrs) {
             my $accId = $accIdAttr->getAttribute('value');
             push @hasNeighbors, $gnnData->{noNeighborMap}->{$accId} == 1 ? "false" : $gnnData->{noNeighborMap}->{$accId} == -1 ? "n/a" : "true";
             push @hasMatch, $gnnData->{noMatchMap}->{$accId} ? "false" : "true";
             push @genomeId, $gnnData->{genomeIds}->{$accId};
+            my $nbFams = join(",", uniq sort grep {$_ ne "none"} map { split m/-/, $_->{family} } @{$gnnData->{accessionData}->{$accIdAttr}->{neighbors}});
+            push @nbFams, $nbFams;
         }
 
         writeGnnListField($writer, 'Present in ENA Database?', 'string', \@hasMatch, 0);
         writeGnnListField($writer, 'Genome Neighbors in ENA Database?', 'string', \@hasNeighbors, 0);
         writeGnnListField($writer, 'ENA Database Genome ID', 'string', \@genomeId, 0);
+        writeGnnListField($writer, 'Neighbor Families', 'string', \@nbFams);
     } else {
         my $nodeId = $node->getAttribute('label');
         my $hasNeighbors = $gnnData->{noNeighborMap}->{$nodeId} == 1 ? "false" : $gnnData->{noNeighborMap}->{$nodeId} == -1 ? "n/a" : "true";
         my $genomeId = $gnnData->{genomeIds}->{$nodeId};
         my $hasMatch = $gnnData->{noMatchMap}->{$nodeId} ? "false" : "true";
+        my $nbFams = join(",", uniq sort grep {$_ ne "none"} map { split m/-/, $_->{family} } @{$gnnData->{accessionData}->{$nodeId}->{neighbors}});
         writeGnnField($writer, 'Present in ENA Database?', 'string', $hasMatch);
         writeGnnField($writer, 'Genome Neighbors in ENA Database?', 'string', $hasNeighbors);
         writeGnnField($writer, 'ENA Database Genome ID', 'string', $genomeId);
+        writeGnnField($writer, 'Neighbor Families', 'string', $nbFams);
     }
 }
 
@@ -447,16 +537,13 @@ sub writePfamHubGnn {
 
     $writer->startTag('graph', 'label' => $self->{title} . " Pfam GNN", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
 
-    my $allPfamThresholdCooc = 0;
-    my $allPfamAnyCooc = 1;
-
     foreach my $pfam (@pfamHubs){
         my ($pfam_short, $pfam_long) = $self->getPfamNames($pfam);
         my $spokecount = 0;
         my @hubPdb;
         my @clusters;
         my @allClusters;
-        foreach my $cluster (keys %{$clusterNodes}){
+        foreach my $cluster (sort keys %{$clusterNodes}){
             if(exists ${$clusterNodes}{$cluster}{$pfam}){
                 my $numQueryable = scalar(@{$withneighbors->{$cluster}});
                 my $numWithNeighbors = scalar(uniq(@{${$clusterNodes}{$cluster}{$pfam}{'orig'}}));
@@ -471,11 +558,13 @@ sub writePfamHubGnn {
             }
         }
         if($spokecount>0){
-            print "Building hub $pfam\n";
+            print "Building hub $pfam\n" if $self->{debug};
             $self->writePfamHub($writer,$pfam, $pfam_short, $pfam_long, \@hubPdb, \@clusters, $clusterNodes,$supernodes,$withneighbors, $numbermatch);
-            $self->writePfamQueryData($pfam, \@clusters, $clusterNodes, $supernodes, $numbermatch, $allPfamThresholdCooc);
+            $self->writePfamQueryData($pfam, \@clusters, $clusterNodes, $supernodes, $numbermatch, PFAM_THRESHOLD);
+            $self->writePfamQueryData($pfam, \@clusters, $clusterNodes, $supernodes, $numbermatch, PFAM_SPLIT);
         }
-        $self->writePfamQueryData($pfam, \@allClusters, $clusterNodes, $supernodes, $numbermatch, $allPfamAnyCooc);
+        $self->writePfamQueryData($pfam, \@allClusters, $clusterNodes, $supernodes, $numbermatch, PFAM_ANY);
+        $self->writePfamQueryData($pfam, \@allClusters, $clusterNodes, $supernodes, $numbermatch, PFAM_ANY_SPLIT);
     }
 
     $writer->endTag();
@@ -498,10 +587,11 @@ sub writeClusterSpoke{
     my $color = $self->getColor($numbermatch->{$cluster});
     my $clusterNum = $numbermatch->{$cluster};
 
-    my $avgDist=sprintf("%.2f", int(sum(@{${$clusterNodes}{$cluster}{$pfam}{'stats'}})/scalar(@{${$clusterNodes}{$cluster}{$pfam}{'stats'}})*100)/100);
-    my $medDist=sprintf("%.2f",int(median(@{${$clusterNodes}{$cluster}{$pfam}{'stats'}})*100)/100);
-    my $coOcc=(int(scalar( uniq (@{${$clusterNodes}{$cluster}{$pfam}{'orig'}}))/scalar(@{$withneighbors->{$cluster}})*100)/100);
-    my $coOccRat=scalar( uniq (@{${$clusterNodes}{$cluster}{$pfam}{'orig'}}))."/".scalar(@{$withneighbors->{$cluster}});
+    my $avgDist = sprintf("%.2f", int(sum(@{${$clusterNodes}{$cluster}{$pfam}{'stats'}})/scalar(@{${$clusterNodes}{$cluster}{$pfam}{'stats'}})*100)/100);
+    my $medDist = sprintf("%.2f",int(median(@{${$clusterNodes}{$cluster}{$pfam}{'stats'}})*100)/100);
+    my $coOcc = (int(scalar( uniq (@{${$clusterNodes}{$cluster}{$pfam}{'orig'}}))/scalar(@{$withneighbors->{$cluster}})*100)/100);
+    my $coOccRat = scalar( uniq (@{${$clusterNodes}{$cluster}{$pfam}{'orig'}}))."/".scalar(@{$withneighbors->{$cluster}});
+    my $nodeSize = max(1, $coOcc*100);
 
     my @tmparray=map "$_:".${$pdbinfo}{(split(":",$_))[1]}, @{${$clusterNodes}{$cluster}{$pfam}{'neigh'}};
 
@@ -525,7 +615,7 @@ sub writeClusterSpoke{
     writeGnnListField($writer, 'Hub Co-occurrence and Ratio', 'string', []);
     writeGnnField($writer, 'node.fillColor','string', $color);
     writeGnnField($writer, 'node.shape', 'string', $shape);
-    writeGnnField($writer, 'node.size', 'string',$coOcc*100);
+    writeGnnField($writer, 'node.size', 'string', $nodeSize);
     
     $writer->endTag();
     
@@ -592,22 +682,39 @@ sub writePfamQueryData {
     my $clusterNodes = shift;
     my $supernodes = shift;
     my $numbermatch = shift;
-    my $allPfamAnyCooc = shift;
+    my $fileTypeFlag = shift;
 
-    $allPfamAnyCooc = 0 if not defined $allPfamAnyCooc;
+    $fileTypeFlag = 0 if not defined $fileTypeFlag;
 
-    my $pfamDir = $allPfamAnyCooc ? $self->{all_pfam_dir} : $self->{pfam_dir};
+    my $pfamDir = $self->{pfam_dir};
+    $pfamDir = $self->{all_pfam_dir} if $fileTypeFlag == PFAM_ANY;
+    $pfamDir = $self->{split_pfam_dir} if $fileTypeFlag == PFAM_SPLIT;
+    $pfamDir = $self->{all_split_pfam_dir} if $fileTypeFlag == PFAM_ANY_SPLIT;
 
     return if not $pfamDir or not -d $pfamDir;
 
     my $allFh;
-    if ($allPfamAnyCooc) {
+    if ($fileTypeFlag == PFAM_ANY) {
         if (not exists $self->{all_pfam_fh_any}) {
             open($self->{all_pfam_fh_any}, ">" . $pfamDir . "/ALL_PFAM.txt");
             $self->{all_pfam_fh_any}->print(join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #",
                                                    "SSN Query Cluster Color", "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n");
         }
         $allFh = $self->{all_pfam_fh_any};
+    } elsif ($fileTypeFlag == PFAM_SPLIT) {
+        if (not exists $self->{all_pfam_fh_split}) {
+            open($self->{all_pfam_fh_split}, ">" . $pfamDir . "/ALL_PFAM.txt");
+            $self->{all_pfam_fh_split}->print(join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #",
+                                               "SSN Query Cluster Color", "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n");
+        }
+        $allFh = $self->{all_pfam_fh_split};
+    } elsif ($fileTypeFlag == PFAM_ANY_SPLIT) {
+        if (not exists $self->{all_pfam_fh_any_split}) {
+            open($self->{all_pfam_fh_any_split}, ">" . $pfamDir . "/ALL_PFAM.txt");
+            $self->{all_pfam_fh_any_split}->print(join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #",
+                                               "SSN Query Cluster Color", "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n");
+        }
+        $allFh = $self->{all_pfam_fh_any_split};
     } else {
         if (not exists $self->{all_pfam_fh}) {
             open($self->{all_pfam_fh}, ">" . $pfamDir . "/ALL_PFAM.txt");
@@ -618,32 +725,46 @@ sub writePfamQueryData {
     }
 
 
-    open(PFAMFH, ">" . $pfamDir . "/pfam_neighbors_$pfam.txt") or die "Help " . $pfamDir . "/pfam_nodes_$pfam.txt: $!";
-
-    print PFAMFH join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #", "SSN Query Cluster Color",
-                            "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n";
-
-    foreach my $clusterId (@$clustersInPfam) {
-        #my $color = $self->{colors}->{$numbermatch->{$clusterId}};
-        my $color = $self->getColor($numbermatch->{$clusterId});
-        my $clusterNum = $numbermatch->{$clusterId};
-        $clusterNum = "none" if not $clusterNum;
-
-        foreach my $data (@{ $clusterNodes->{$clusterId}->{$pfam}->{data} }) {
-            my $line = join("\t", $data->{query_id},
-                                  $data->{neighbor_id},
-                                  $pfam,
-                                  $clusterNum,
-                                  $color,
-                                  sprintf("%02d", $data->{distance}),
-                                  $data->{direction},
-                           ) . "\n";
-            print PFAMFH $line;
-            $allFh->print($line);
-        }
+    my @pfams = ($pfam);
+    my $origPfam = $pfam;
+    if ($fileTypeFlag == PFAM_SPLIT or $fileTypeFlag == PFAM_ANY_SPLIT) {
+        @pfams = split(m/\-/, $pfam);
     }
 
-    close(PFAMFH);
+    foreach my $pfam (@pfams) {
+        my $outFile = $pfamDir . "/pfam_neighbors_$pfam.txt";
+        my $fileExists = -f $outFile;
+
+        my $mode = ($fileTypeFlag == PFAM_SPLIT or $fileTypeFlag == PFAM_ANY_SPLIT) ? ">>" : ">";
+        open(PFAMFH, $mode, $outFile) or die "Unable to write to PFAM $outFile: $!";
+    
+        if (not $fileExists) {
+            print PFAMFH join("\t", "Query ID", "Neighbor ID", "Neighbor Pfam", "SSN Query Cluster #", "SSN Query Cluster Color",
+                                    "Query-Neighbor Distance", "Query-Neighbor Directions"), "\n";
+        }
+    
+        foreach my $clusterId (@$clustersInPfam) {
+            #my $color = $self->{colors}->{$numbermatch->{$clusterId}};
+            my $color = $self->getColor($numbermatch->{$clusterId});
+            my $clusterNum = $numbermatch->{$clusterId};
+            $clusterNum = "none" if not $clusterNum;
+    
+            foreach my $data (@{ $clusterNodes->{$clusterId}->{$origPfam}->{data} }) {
+                my $line = join("\t", $data->{query_id},
+                                      $data->{neighbor_id},
+                                      $origPfam,
+                                      $clusterNum,
+                                      $color,
+                                      sprintf("%02d", $data->{distance}),
+                                      $data->{direction},
+                               ) . "\n";
+                print PFAMFH $line;
+                $allFh->print($line);
+            }
+        }
+    
+        close(PFAMFH);
+    }
 }
 
 sub writePfamNoneClusters {
@@ -665,11 +786,91 @@ sub writePfamNoneClusters {
     }
 }
 
+sub writeSsnStats {
+    my $self = shift;
+    my $supernodes = shift;
+    my $constellations = shift;
+    my $numbermatch = shift;
+    my $spDesc = shift; # swissprot description
+    my $statsFile = shift;
+    my $sizeFile = shift;
+    my $spClustersDescFile = shift;
+    my $spSinglesDescFile = shift;
+
+    my %clusterSizes;
+    my $numMetanodes = scalar keys %$constellations;
+    my $numAccessions = 0;
+    my $numClusters = 0;
+    my $numSingles = 0;
+    foreach my $clusterId (keys %$supernodes) {
+        my $count = scalar @{$supernodes->{$clusterId}};
+        $numAccessions += $count;
+        $numSingles++ if $count == 1;
+        $numClusters++ if $count > 1;
+
+        if ($count > 1) {
+            my $clusterNum = $numbermatch->{$clusterId};
+            $clusterSizes{$clusterNum} = $count;
+        }
+    }
+
+    my $seqSrc = exists $self->{has_uniref} ? $self->{has_uniref} : "UniProt";
+
+    open STATS, ">", $statsFile or die "Unable to open stats file $statsFile for writing: $!";
+
+    print STATS "Number of SSN clusters\t$numClusters\n";
+    print STATS "Number of SSN singletons\t$numSingles\n";
+    print STATS "SSN sequence source\t$seqSrc\n";
+    print STATS "Number of SSN (meta)nodes\t$numMetanodes\n";
+    print STATS "Number of accession IDs in SSN\t$numAccessions\n";
+
+    close STATS;
+
+
+    open SIZE, ">", $sizeFile or die "Unable to open size file $sizeFile for writing: $!";
+
+    foreach my $clusterNum (sort {$a <=> $b} keys %clusterSizes) {
+        print SIZE "$clusterNum\t$clusterSizes{$clusterNum}\n";
+    }
+
+    close SIZE;
+
+
+    open SPCLDESC, ">", $spClustersDescFile or die "Unable to open swissprot desc file $spClustersDescFile for writing: $!";
+    open SPSGDESC, ">", $spSinglesDescFile or die "Unable to open swissprot desc file $spSinglesDescFile for writing: $!";
+
+    print SPCLDESC join("\t", "Cluster Number", "Metanode UniProt ID", "SwissProt Annotations"), "\n";
+    print SPSGDESC join("\t", "Singleton Number", "UniProt ID", "SwissProt Annotations"), "\n";
+
+    my @metaIds = sort
+        {
+            my $res = $numbermatch->{$constellations->{$a}} <=> $numbermatch->{$constellations->{$b}};
+            $res = $a cmp $b if not $res;
+            return $res;
+        } keys %$constellations;
+    foreach my $id (@metaIds) {
+        if (exists $spDesc->{$id}) {
+            my $clId = $constellations->{$id};
+            my $fh = scalar @{$supernodes->{$clId}} > 1 ? \*SPCLDESC : \*SPSGDESC;
+
+            my @desc = grep !m/^NA$/, map { split(m/,/) } @{$spDesc->{$id}};
+            if (scalar @desc) {
+                my $clNum = $numbermatch->{$clId};
+                $fh->print(join("\t", $clNum, $id, join(",", @desc)), "\n");
+            }
+        }
+    }
+
+    close SPCLDESC;
+    close SPSGDESC;
+}
+
 sub finish {
     my $self = shift;
 
     close($self->{all_pfam_fh}) if exists $self->{all_pfam_fh};
     close($self->{all_pfam_fh_any}) if exists $self->{all_pfam_fh_any};
+    close($self->{all_pfam_fh_split}) if exists $self->{all_pfam_fh_split};
 }
 
 
