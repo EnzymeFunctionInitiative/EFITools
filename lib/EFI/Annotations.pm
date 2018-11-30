@@ -14,6 +14,7 @@ use constant FIELD_SEQ_SRC_VALUE_BLASTHIT => "BLASTHIT";
 use constant FIELD_SEQ_SRC_VALUE_BLASTHIT_FAMILY => "FAMILY+BLASTHIT";
 use constant FIELD_SEQ_KEY => "Sequence";
 use constant FIELD_ID_ACC => "ACC";
+use constant FIELD_SWISSPROT_DESC => "Swissprot Description";
 
 our $Version = 2;
 
@@ -86,6 +87,7 @@ sub build_id_mapping_query_string {
 
 my $AnnoRowSep = "^";
 
+# $row is a row (as hashref) from the annotation table in the database.
 sub build_annotations {
     my $accession = shift;
     my $row = shift;
@@ -121,6 +123,9 @@ sub build_annotations {
         "\n\tGN\t" . merge_anno_rows(\@rows, "GN") . 
         "\n\tPFAM\t" . merge_anno_rows(\@rows, "PFAM") . 
         "\n\tPDB\t" . merge_anno_rows(\@rows, "pdb") . 
+        "\n\tIPRO_DOM\t" . merge_anno_rows(\@rows, "IPRO_DOM") . 
+        "\n\tIPRO_FAM\t" . merge_anno_rows(\@rows, "IPRO_FAM") . 
+        "\n\tIPRO_SUP\t" . merge_anno_rows(\@rows, "IPRO_SUP") . 
         "\n\tIPRO\t" . merge_anno_rows(\@rows, "IPRO") . 
         "\n\tGO\t" . merge_anno_rows(\@rows, "GO") .
         "\n\tKEGG\t" . merge_anno_rows(\@rows, "KEGG") .
@@ -186,7 +191,10 @@ sub get_annotation_data {
     $annoData{"EC"}                     = {order => $idx++, display => "EC"};
     $annoData{"PFAM"}                   = {order => $idx++, display => "PFAM"};
     $annoData{"PDB"}                    = {order => $idx++, display => "PDB"};
-    $annoData{"IPRO"}                   = {order => $idx++, display => "IPRO"};
+    $annoData{"IPRO_DOM"}               = {order => $idx++, display => "InterPro (Domain)"};
+    $annoData{"IPRO_FAM"}               = {order => $idx++, display => "InterPro (Family)"};
+    $annoData{"IPRO_SUP"}               = {order => $idx++, display => "InterPro (Homologous Superfamily)"};
+    $annoData{"IPRO"}                   = {order => $idx++, display => "InterPro (Other)"};
     $annoData{"BRENDA"}                 = {order => $idx++, display => "BRENDA ID"};
     $annoData{"CAZY"}                   = {order => $idx++, display => "CAZY Name"};
     $annoData{"GO"}                     = {order => $idx++, display => "GO Term"};
@@ -296,5 +304,30 @@ sub flag_uniref_only {
     return UNIREF_ONLY;
 }
 
+# Returns the SwissProt description, if any, from an XML node in an SSN.
+sub get_swissprot_description {
+    my $xmlNode = shift;
+
+    my $spStatus = "";
+
+    my @annotations = $xmlNode->findnodes("./*");
+    foreach my $annotation (@annotations) {
+        my $attrName = $annotation->getAttribute("name");
+        if ($attrName eq FIELD_SWISSPROT_DESC) {
+            my $attrType = $annotation->getAttribute("type");
+
+            if ($attrType and $attrType eq "list") {
+                $spStatus = get_swissprot_description($annotation);
+            } else {
+                my $val = $annotation->getAttribute("value");
+                $spStatus = $val if $val and length $val > 3; # Skip NA and N/A
+            }
+
+            last if $spStatus;
+        }
+    }
+
+    return $spStatus;
+}
 1;
 
