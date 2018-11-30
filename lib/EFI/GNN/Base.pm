@@ -30,8 +30,10 @@ sub new {
 #    $self->{num_colors} = scalar keys %{$self->{colors}};
 #    $self->{pfam_color_counter} = 1;
 #    $self->{pfam_colors} = {};
-    $self->{id_dir} = ($args{id_dir} and -d $args{id_dir}) ? $args{id_dir} : "";
-    $self->{cluster_fh} = {};
+#    $self->{uniprot_id_dir} = ($args{uniprot_id_dir} and -d $args{uniprot_id_dir}) ? $args{uniprot_id_dir} : "";
+#    $self->{uniref50_id_dir} = ($args{uniref50_id_dir} and -d $args{uniref50_id_dir}) ? $args{uniref50_id_dir} : "";
+#    $self->{uniref90_id_dir} = ($args{uniref90_id_dir} and -d $args{uniref90_id_dir}) ? $args{uniref90_id_dir} : "";
+#    $self->{cluster_fh} = {};
     $self->{color_only} = exists $args{color_only} ? $args{color_only} : 0;
     $self->{anno} = EFI::Annotations::get_annotation_data();
 
@@ -40,8 +42,8 @@ sub new {
 
 
 sub getNodesAndEdges{
-    my $self = shift @_;
-    my $reader=shift @_;
+    my $self = shift;
+    my $reader = shift;
 
     my @nodes=();
     my @edges=();
@@ -85,12 +87,14 @@ sub getNodesAndEdges{
 }
 
 sub getNodes{
-    my $self = shift @_;
-    my $nodes = shift @_;
+    my $self = shift;
+    my $nodes = shift;
 
-    my %nodehash;
-    my %nodenames;
-    my %nodeMap;
+    my %metanodeMap;
+    my %nodenames; 
+    my %nodeMap; # Maps metanodes to nodes
+    my %swissprotDesc;
+    my %clusterNumMap;
 
     my $efi = new EFI::Annotations;
 
@@ -102,32 +106,43 @@ sub getNodes{
         #for efiest generated networks the key is the accession and it equals an accession, no harm, no foul
         $nodenames{$node->getAttribute('id')}=$nodehead;
         my @annotations=$node->findnodes('./*');
-        push @{$nodehash{$nodehead}}, $nodehead;
+        push @{$metanodeMap{$nodehead}}, $nodehead;
         $nodeMap{$nodehead} = $node;
         foreach $annotation (@annotations){
-            if($efi->is_expandable_attr($annotation->getAttribute('name'))){
+            my $attrName = $annotation->getAttribute('name');
+            if($efi->is_expandable_attr($attrName)){
                 my @accessionlists=$annotation->findnodes('./*');
                 foreach $accessionlist (@accessionlists){
                     #make sure all accessions within the node are included in the gnn network
                     my $attrAcc = $accessionlist->getAttribute('value');
                     print "Expanded $nodehead into $attrAcc\n" if $self->{debug};
-                    push @{$nodehash{$nodehead}}, $attrAcc if $nodehead ne $attrAcc;
-                    $nodeMap{$nodehead} = $node;
+                    push @{$metanodeMap{$nodehead}}, $attrAcc if $nodehead ne $attrAcc;
                 }
+            } elsif ($attrName =~ m/UniRef(\d+)/) {
+                $self->{has_uniref} = "UniRef$1";
+            } elsif ($attrName eq EFI::Annotations::FIELD_SWISSPROT_DESC) {
+                my @childList = $annotation->findnodes('./*');
+                foreach my $child (@childList) {
+                    my $val = $child->getAttribute('value');
+                    push(@{$swissprotDesc{$nodehead}}, $val);
+                }
+            } elsif ($attrName eq "Cluster Number" or $attrName eq "Singleton Number") {
+                my $clusterNum = $annotation->getAttribute("value");
+                $clusterNumMap{$nodehead} = $clusterNum;
             }
         }
     }
 
-    return \%nodehash, \%nodenames, \%nodeMap;
+    return \%metanodeMap, \%nodenames, \%nodeMap, \%swissprotDesc, \%clusterNumMap;
 }
 
 sub getClusters{
-    my $self = shift @_;
-    my $nodehash = shift @_;
-    my $nodenames = shift @_;
-    my $edges = shift @_;
-    my $nodemap = shift @_; # Deprecated, don't use
-    my $includeSingletons = shift @_;
+    my $self = shift;
+    my $metanodeMap = shift;
+    my $nodenames = shift;
+    my $edges = shift;
+    my $nodemap = shift; # Deprecated, don't use
+    my $includeSingletons = shift;
 
     my %constellations=();
     my %supernodes=();
@@ -139,15 +154,19 @@ sub getClusters{
         my $edgeTarget = $edge->getAttribute('target');
         my $nodeSource = $nodenames->{$edgeSource};
         my $nodeTarget = $nodenames->{$edgeTarget};
+#        print "$nodeSource -> $nodeTarget\n";
 
         #if source exists, add target to source sc
         if(exists $constellations{$nodeSource}){
+#            print "E1";
             #if target also already existed, add target data to source 
             if(exists $constellations{$nodeTarget}){
+#                print "E2";
                 #check if source and target are in the same constellation, if they are, do nothing, if not,
                 # add change target sc to source and add target accessions to source accessions.
                 # this is to handle the case that we've built two sub-constellations that are actually part
                 # of a bigger constellation.
+#            print "\t$constellations{$nodeSource}=$constellations{$nodeTarget}";
                 unless($constellations{$nodeTarget} eq $constellations{$nodeSource}){
                     #add accessions from target supernode to source supernode
                     push @{$supernodes{$constellations{$nodeSource}}}, @{$supernodes{$constellations{$nodeTarget}}};
@@ -162,54 +181,72 @@ sub getClusters{
                     }
                 }
             }else{
+#                print "N2";
                 #target does not exist, add it to source
                 #change cluster number
                 $constellations{$nodeTarget}=$constellations{$nodeSource};
+#            print "\t$constellations{$nodeSource}=$constellations{$nodeTarget}";
                 #add accessions
-                push @{$supernodes{$constellations{$nodeSource}}}, @{$nodehash->{$nodeTarget}};
+                push @{$supernodes{$constellations{$nodeSource}}}, @{$metanodeMap->{$nodeTarget}};
             }
         }elsif(exists $constellations{$nodeTarget}){
+#            print "N1E2";
             #target exists, add source to target sc
             #change cluster number
             $constellations{$nodeSource}=$constellations{$nodeTarget};
+#            print "\t$constellations{$nodeSource}=$constellations{$nodeTarget}";
+#            print "\t" . join(",", @{$metanodeMap->{$nodeSource}});
             #add accessions
-            push @{$supernodes{$constellations{$nodeTarget}}}, @{$nodehash->{$nodeSource}};
+            push @{$supernodes{$constellations{$nodeTarget}}}, @{$metanodeMap->{$nodeSource}};
         }else{
+#            print "N1N2";
             #neither exists, add both to same sc, and add accessions to supernode
             $constellations{$nodeSource}=$newnode;
             $constellations{$nodeTarget}=$newnode;
-            push @{$supernodes{$newnode}}, @{$nodehash->{$nodeSource}};
-            push @{$supernodes{$newnode}}, @{$nodehash->{$nodeTarget}};
+#            print "\t$constellations{$nodeSource}=$constellations{$nodeTarget}";
+            push @{$supernodes{$newnode}}, @{$metanodeMap->{$nodeSource}};
+            push @{$supernodes{$newnode}}, @{$metanodeMap->{$nodeTarget}};
             #increment for next sc node
             $newnode++;
         }
+#        print "\n";
     }
 
     if ($includeSingletons) {
         # Look at each node in the network.  If we haven't processed it above (i.e. it doesn't have any edges attached)
         # then we add a new supernode and add any represented nodes (if it is a repnode).
-        foreach my $nodeId (keys %$nodenames) {
+        foreach my $nodeId (sort keys %$nodenames) {
             my $nodeLabel = $nodenames->{$nodeId};
             if (not exists $constellations{$nodeLabel}) {
                 print "Adding singleton $nodeLabel from $nodeId\n" if $self->{debug};
-                $supernodes{$newnode} = $nodehash->{$nodeLabel}; # nodehash contains an array of nodes, since it may be a repnode
+                $supernodes{$newnode} = $metanodeMap->{$nodeLabel}; # metanodeMap contains an array of nodes, since it may be a repnode
                 $singletons{$newnode} = $nodeLabel;
                 $constellations{$nodeLabel} = $newnode;
                 $newnode++;
             }
         }
     }
+#    use Data::Dumper;
+#    foreach my $id (sort {$a<=>$b} keys %supernodes) {
+#        print Dumper({$id => $supernodes{$id}});
+#    }
+#    foreach my $id (sort keys %constellations) {
+#        print "$id=$constellations{$id}\n";
+#    }
+##    print Dumper(\%supernodes);
+#    die;
 
     return \%supernodes, \%constellations, \%singletons;
 }
 
 sub numberClusters {
-    my $self = shift @_;
-    my $supernodes = shift @_;
-    my $useExistingNumber = shift @_;
+    my $self = shift;
+    my $supernodes = shift;
+    my $useExistingNumber = shift;
+    my $clusterNumbers = shift;
 
-    my %numbermatch=();
-    my $simplenumber=1;
+    my %numbermatch;
+    my $simpleNumber = 1;
     my @numberOrder;
 
     foreach my $clusterNode (sort { my $bs = scalar uniq @{$supernodes->{$b}};
@@ -217,38 +254,49 @@ sub numberClusters {
                                     my $c = $bs <=> $as;
                                     $c = $a <=> $b if not $c; # handle equals case
                                     $c } keys %$supernodes){
-        $simplenumber = $clusterNode if $useExistingNumber;
-        print "Supernode $clusterNode, ".scalar @{$supernodes->{$clusterNode}}." original accessions, simplenumber $simplenumber\n" if $self->{debug};
-        $numbermatch{$clusterNode}=$simplenumber;
+        my $clusterSize = scalar @{$supernodes->{$clusterNode}};
+        my $existingPhrase = "";
+        my $clusterNum = $simpleNumber;
+        if ($useExistingNumber) {
+            my @ids = @{$supernodes->{$clusterNode}};
+            if (scalar @ids) {
+                $clusterNum = $clusterNumbers->{$ids[0]};
+                $existingPhrase = "(keeping existing cluster number)";
+            }
+        }
+
+        print "Supernode $clusterNode, $clusterSize original accessions, simplenumber $simpleNumber $existingPhrase\n";
+
+        $numbermatch{$clusterNode} = $simpleNumber;
         push @numberOrder, $clusterNode;
-        $simplenumber++;
+        $simpleNumber++;
     }
 
     return \%numbermatch, \@numberOrder;
 }
 
 sub hasExistingNumber {
-    my $self = shift @_;
-    my $nodes = shift @_;
+    my $self = shift;
+    my $clusterNum = shift;
 
-    my $node = $nodes->[0];
-
-    return 0;
+    return scalar keys %$clusterNum;
 }
 
 sub writeColorSsn {
-    my $self = shift @_;
-    my $nodes = shift @_;
-    my $edges = shift @_;
-    my $writer = shift @_;
-    my $numbermatch = shift @_;
-    my $constellations = shift @_;
-    my $nodenames = shift @_;
-    my $supernodes = shift @_;
-    my $gnnData = shift @_;
+    my $self = shift;
+    my $nodes = shift;
+    my $edges = shift;
+    my $writer = shift;
+    my $numbermatch = shift;
+    my $constellations = shift;
+    my $nodenames = shift;
+    my $supernodes = shift;
+    my $gnnData = shift;
+    my $metanodeMap = shift;
+    my $accessionData = shift;
 
     $writer->startTag('graph', 'label' => $self->{title} . " colorized", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
-    $self->writeColorSsnNodes($nodes, $writer, $numbermatch, $constellations, $supernodes, $gnnData);
+    $self->writeColorSsnNodes($nodes, $writer, $numbermatch, $constellations, $supernodes, $gnnData, $metanodeMap, $accessionData);
     $self->writeColorSsnEdges($edges, $writer, $nodenames);
     $writer->endTag(); 
 }
@@ -261,13 +309,15 @@ sub saveGnnAttributes {
 }
 
 sub writeColorSsnNodes {
-    my $self = shift @_;
-    my $nodes=shift @_;
-    my $writer=shift @_;
-    my $numbermatch=shift @_;
-    my $constellations=shift @_;
-    my $supernodes = shift @_;
-    my $gnnData = shift @_;
+    my $self = shift;
+    my $nodes = shift;
+    my $writer = shift;
+    my $numbermatch = shift;
+    my $constellations = shift;
+    my $supernodes = shift;
+    my $gnnData = shift;
+    my $metanodeMap = shift;
+    my $accessionData = shift;
 
     my %nodeCount;
 
@@ -275,10 +325,14 @@ sub writeColorSsnNodes {
     my $singletonField = "Singleton Number";
     my $colorField = "node.fillColor";
     my $countField = "Cluster Sequence Count";
+    my $nbFamField = "Neighbor Families";
     my $badNum = 999999;
     my $singleNum = 0;
 
-    my %skipFields = ($numField => 1, $colorField => 1, $countField => 1, $singletonField => 1);
+    my %skipFields = ($numField => 1, $colorField => 1, $countField => 1, $singletonField => 1, $nbFamField => 1);
+    $skipFields{"Present in ENA Database?"} = 1;
+    $skipFields{"Genome Neighbors in ENA Database?"} = 1;
+    $skipFields{"ENA Database Genome ID"} = 1;
 
     foreach my $node (@{$nodes}){
         my $nodeId = $node->getAttribute('label');
@@ -289,7 +343,8 @@ sub writeColorSsnNodes {
         unless($clusterNum eq ""){
             $nodeCount{$clusterNum} = scalar uniq @{ $supernodes->{$clusterId} } if not exists $nodeCount{$clusterNum};
 
-            $self->saveNodeToClusterMap($clusterId, $numbermatch, $supernodes, $gnnData) if $nodeCount{$clusterNum} > 1;
+            # This should be done in cluster_gnn.pl
+            #$self->saveNodeToClusterMap($clusterId, $numbermatch, $supernodes, $metanodeMap) if $nodeCount{$clusterNum} > 1;
 
             $writer->startTag('node', 'id' => $nodeId, 'label' => $nodeId);
 
@@ -369,10 +424,10 @@ sub writeColorSsnNodes {
 }
 
 sub writeColorSsnEdges {
-    my $self = shift @_;
-    my $edges=shift @_;
-    my $writer=shift @_;
-    my $nodenames=shift @_;
+    my $self = shift;
+    my $edges = shift;
+    my $writer = shift;
+    my $nodenames = shift;
 
     foreach $edge (@{$edges}){
         $writer->startTag('edge', 'id' => $edge->getAttribute('id'), 'label' => $edge->getAttribute('label'), 'source' => $nodenames->{$edge->getAttribute('source')}, 'target' => $nodenames->{$edge->getAttribute('target')});
@@ -389,40 +444,46 @@ sub writeColorSsnEdges {
 }
 
 
-sub saveNodeToClusterMap {
-    my $self = shift @_;
-    my $clusterId = shift @_;
-    my $numbermatch = shift @_;
-    my $supernodes = shift @_;
-    my $gnnData = shift @_;
-
-    return if not $self->{id_dir} or not -d $self->{id_dir} or exists $self->{cluster_map_processed}->{$clusterId};
-
-    $self->{cluster_map_processed}->{$clusterId} = 1;
-
-    my $clusterNum = $numbermatch->{$clusterId};
-    $clusterNum = "none" if not $clusterNum;
-
-    my $openMode = ">>";
-    if (not exists $self->{cluster_fh}->{$clusterNum}) {
-        $openMode = ">";
-    }
-    open($self->{cluster_fh}->{$clusterNum}, $openMode . $self->{id_dir} . "/cluster_UniProt_IDs_$clusterNum.txt");
-
-    foreach my $nodeId (uniq @{ $supernodes->{$clusterId} }) {
-        $self->{cluster_fh}->{$clusterNum}->print("$nodeId\n");
-    }
-
-    $self->{cluster_fh}->{$clusterNum}->close();
-}
+#sub saveNodeToClusterMap {
+#    my $self = shift;
+#    my $clusterId = shift;
+#    my $numbermatch = shift;
+#    my $supernodes = shift;
+#    my $metanodeMap = shift;
+#
+#    return if not $self->{id_dir} or not -d $self->{id_dir} or exists $self->{cluster_map_processed}->{$clusterId};
+#
+#    $self->{cluster_map_processed}->{$clusterId} = 1;
+#
+#    my $clusterNum = $numbermatch->{$clusterId};
+#    $clusterNum = "none" if not $clusterNum;
+#
+#    my $openMode = exists $self->{cluster_fh}->{$clusterNum} ? ">>" : ">";
+#
+#    open($self->{cluster_fh}->{$clusterNum}, $openMode, $self->{id_dir} . "/cluster_UniProt_IDs_$clusterNum.txt");
+#    foreach my $nodeId (uniq @{ $supernodes->{$clusterId} }) {
+#        $self->{cluster_fh}->{$clusterNum}->print("$nodeId\n");
+#    }
+#    $self->{cluster_fh}->{$clusterNum}->close();
+#    
+#    if (exists $self->{has_uniref} and $self->{has_uniref}) {
+#        open($self->{cluster_fh_ur}->{$clusterNum}, $openMode, $self->{id_dir} . "/cluster_" . $self->{has_uniref} . "_IDs_$clusterNum.txt");
+#        foreach my $nodeId (uniq @{ $supernodes->{$clusterId} }) {
+#            if (exists $metanodeMap->{$nodeId}) { # Only print metanodes
+#                $self->{cluster_fh_ur}->{$clusterNum}->print("$nodeId\n");
+#            }
+#        }
+#        $self->{cluster_fh_ur}->{$clusterNum}->close();
+#    }
+#}
 
 
 sub writeIdMapping {
-    my $self = shift @_;
-    my $idMapPath = shift @_;
-    my $numbermatch = shift @_;
-    my $constellations = shift @_;
-    my $supernodes = shift @_;
+    my $self = shift;
+    my $idMapPath = shift;
+    my $numbermatch = shift;
+    my $constellations = shift;
+    my $supernodes = shift;
 
     open IDMAP, ">$idMapPath";
 
@@ -447,22 +508,22 @@ sub writeIdMapping {
 }
 
 
-sub writeSingletons {
-    my $self = shift @_;
-    my $filePath = shift @_;
-    my $supernodes = shift @_;
-
-    open SINGLE, ">$filePath";
-
-    print SINGLE "UniProt ID\n";
-    foreach my $clusterId (sort keys %$supernodes) {
-        if (scalar @{ $supernodes->{$clusterId} } == 1) {
-            print SINGLE $supernodes->{$clusterId}->[0], "\n";
-        }
-    }
-
-    close SINGLE;
-}
+#sub writeSingletons {
+#    my $self = shift;
+#    my $filePath = shift;
+#    my $supernodes = shift;
+#
+#    open SINGLE, ">$filePath";
+#
+#    print SINGLE "UniProt ID\n";
+#    foreach my $clusterId (sort keys %$supernodes) {
+#        if (scalar @{ $supernodes->{$clusterId} } == 1) {
+#            print SINGLE $supernodes->{$clusterId}->[0], "\n";
+#        }
+#    }
+#
+#    close SINGLE;
+#}
 
 
 sub idmapsort {
@@ -475,23 +536,23 @@ sub idmapsort {
 }
 
 
-sub closeClusterMapFiles {
-    my $self = shift @_;
-
-    return if not $self->{id_dir} or not -d $self->{id_dir};
-
-    foreach my $key (keys %{ $self->{cluster_fh} }) {
-        close($self->{cluster_fh}->{$key});
-    }
-
-    foreach my $key (keys %{ $self->{no_pfam_fh} }) {
-        close($self->{no_pfam_fh}->{$key});
-    }
-}
+#sub closeClusterMapFiles {
+#    my $self = shift;
+#
+#    return if not $self->{id_dir} or not -d $self->{id_dir};
+#
+#    foreach my $key (keys %{ $self->{cluster_fh} }) {
+#        close($self->{cluster_fh}->{$key});
+#    }
+#
+#    foreach my $key (keys %{ $self->{no_pfam_fh} }) {
+#        close($self->{no_pfam_fh}->{$key});
+#    }
+#}
 
 
 #sub getColors {
-#    my $self = shift @_;
+#    my $self = shift;
 #
 #    my %colors=();
 #    my $sth=$self->{dbh}->prepare("select * from colors;");
@@ -533,10 +594,10 @@ sub median{
 }
 
 sub writeGnnField {
-    my $writer=shift @_;
-    my $name=shift @_;
-    my $type=shift @_;
-    my $value=shift @_;
+    my $writer = shift;
+    my $name = shift;
+    my $type = shift;
+    my $value = shift;
 
     unless($type eq 'string' or $type eq 'integer' or $type eq 'real'){
         die "Invalid GNN type $type\n";
@@ -546,11 +607,11 @@ sub writeGnnField {
 }
 
 sub writeGnnListField {
-    my $writer=shift @_;
-    my $name=shift @_;
-    my $type=shift @_;
-    my $valuesIn=shift @_;
-    my $toSortOrNot=shift @_;
+    my $writer = shift;
+    my $name = shift;
+    my $type = shift;
+    my $valuesIn = shift;
+    my $toSortOrNot = shift;
 
     unless($type eq 'string' or $type eq 'integer' or $type eq 'real'){
         die "Invalid GNN type $type\n";
@@ -574,28 +635,42 @@ sub addFileActions {
     my $B = shift; # This is an EFI::SchedulerApi::Builder object
     my $info = shift;
 
-    my $fastaTool = "$info->{fasta_tool_path} -node-dir $info->{node_data_path} -out-dir $info->{fasta_data_path} -config $info->{config_file}";
+    my $fastaTool = "$info->{fasta_tool_path} -node-dir $info->{uniprot_node_data_path} -out-dir $info->{fasta_data_path} -config $info->{config_file}";
     $fastaTool .= " -all $info->{all_fasta_file}" if $info->{all_fasta_file};
     $fastaTool .= " -singletons $info->{singletons_file}" if $info->{singletons_file};
     $fastaTool .= " -input-sequences $info->{input_seqs_file}" if $info->{input_seqs_file};
     $B->addAction($fastaTool);
     if (exists $info->{cat_tool_path}) {
-        $B->addAction("$info->{cat_tool_path} -input-file-pattern \"$info->{node_data_path}/cluster_UniProt_IDs*\" -output-file $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
+        $B->addAction("$info->{cat_tool_path} -input-file-pattern \"$info->{uniprot_node_data_path}/cluster_UniProt_IDs*\" -output-file $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
+        $B->addAction("$info->{cat_tool_path} -input-file-pattern \"$info->{uniref50_node_data_path}/cluster_UniRef50_IDs*\" -output-file $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt.unsorted");
+        $B->addAction("$info->{cat_tool_path} -input-file-pattern \"$info->{uniref90_node_data_path}/cluster_UniRef90_IDs*\" -output-file $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt.unsorted");
     } else {
-        $B->addAction("cat $info->{node_data_path}/cluster_UniProt_IDs* > $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
+        $B->addAction("cat $info->{uniprot_node_data_path}/cluster_UniProt_IDs* > $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
     }
-    $B->addAction("sort $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted > $info->{node_data_path}/cluster_All_UniProt_IDs.txt");
-    $B->addAction("rm $info->{node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
+    $B->addAction("sort $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted > $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt");
+    $B->addAction("rm $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
+    $B->addAction("if [[ -f $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt.unsorted ]]; then");
+    $B->addAction("    sort $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt.unsorted > $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt");
+    $B->addAction("    rm $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt.unsorted");
+    $B->addAction("fi");
+    $B->addAction("if [[ -f $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt.unsorted ]]; then");
+    $B->addAction("    sort $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt.unsorted > $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt");
+    $B->addAction("    rm $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt.unsorted");
+    $B->addAction("fi");
 
-    $B->addAction("zip -j $info->{ssn_out_zip} $info->{ssn_out}") if $info->{ssn_out} and $info->{ssn_out_zip};
-    $B->addAction("zip -j -r $info->{node_zip} $info->{node_data_path}") if $info->{node_zip} and $info->{node_data_path};
-    $B->addAction("zip -j -r $info->{fasta_zip} $info->{fasta_data_path}") if $info->{fasta_data_path} and $info->{fasta_zip};
-    $B->addAction("zip -j $info->{gnn_zip} $info->{gnn}") if $info->{gnn} and $info->{gnn_zip};
-    $B->addAction("zip -j $info->{pfamhubfile_zip} $info->{pfamhubfile}") if $info->{pfamhubfile_zip} and $info->{pfamhubfile};
-    $B->addAction("zip -j -r $info->{pfam_zip} $info->{pfam_dir}") if $info->{pfam_zip} and $info->{pfam_dir};
-    $B->addAction("zip -j -r $info->{all_pfam_zip} $info->{all_pfam_dir}") if $info->{all_pfam_zip} and $info->{all_pfam_dir};
-    $B->addAction("zip -j -r $info->{none_zip} $info->{none_dir}") if $info->{none_zip} and $info->{none_dir};
-    $B->addAction("zip -j $info->{arrow_zip} $info->{arrow_file}") if $info->{arrow_zip} and $info->{arrow_file};
+    $B->addAction("zip -jq $info->{ssn_out_zip} $info->{ssn_out}") if $info->{ssn_out} and $info->{ssn_out_zip};
+    $B->addAction("zip -jq -r $info->{uniprot_node_zip} $info->{uniprot_node_data_path}") if $info->{uniprot_node_zip} and $info->{uniprot_node_data_path};
+    $B->addAction("zip -jq -r $info->{uniref50_node_zip} $info->{uniref50_node_data_path}") if $info->{uniref50_node_zip} and $info->{uniref50_node_data_path};
+    $B->addAction("zip -jq -r $info->{uniref90_node_zip} $info->{uniref90_node_data_path}") if $info->{uniref90_node_zip} and $info->{uniref90_node_data_path};
+    $B->addAction("zip -jq -r $info->{fasta_zip} $info->{fasta_data_path}") if $info->{fasta_data_path} and $info->{fasta_zip};
+    $B->addAction("zip -jq $info->{gnn_zip} $info->{gnn}") if $info->{gnn} and $info->{gnn_zip};
+    $B->addAction("zip -jq $info->{pfamhubfile_zip} $info->{pfamhubfile}") if $info->{pfamhubfile_zip} and $info->{pfamhubfile};
+    $B->addAction("zip -jq -r $info->{pfam_zip} $info->{pfam_dir}") if $info->{pfam_zip} and $info->{pfam_dir};
+    $B->addAction("zip -jq -r $info->{all_pfam_zip} $info->{all_pfam_dir}") if $info->{all_pfam_zip} and $info->{all_pfam_dir};
+    $B->addAction("zip -jq -r $info->{split_pfam_zip} $info->{split_pfam_dir}") if $info->{split_pfam_zip} and $info->{split_pfam_dir};
+    $B->addAction("zip -jq -r $info->{all_split_pfam_zip} $info->{all_split_pfam_dir}") if $info->{all_split_pfam_zip} and $info->{all_split_pfam_dir};
+    $B->addAction("zip -jq -r $info->{none_zip} $info->{none_dir}") if $info->{none_zip} and $info->{none_dir};
+    $B->addAction("zip -jq $info->{arrow_zip} $info->{arrow_file}") if $info->{arrow_zip} and $info->{arrow_file};
 }
 
 sub getColor {
@@ -603,6 +678,16 @@ sub getColor {
     my $clusterNum = shift;
 
     return $self->{color_util}->getColorForCluster($clusterNum);
+}
+
+sub getSequenceSource {
+    my $self = shift;
+
+    if (exists $self->{has_uniref}) {
+        return $self->{has_uniref};
+    } else {
+        return "UniProt";
+    }
 }
 
 
