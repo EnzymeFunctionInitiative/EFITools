@@ -18,6 +18,7 @@ sub getAnnotations {
     my $self = shift;
     my $accession = shift;
     my $pfams = shift;
+    my $ipros = shift;
     
     my $sql = "select Organism,Taxonomy_ID,STATUS,Description from annotations where accession='$accession'";
 
@@ -33,8 +34,9 @@ sub getAnnotations {
     }
 
     my @pfams = split '-', $pfams;
+    my @ipros = split '-', $ipros;
 
-    $sql = "select short_name from family_info where family in ('" . join("','", @pfams) . "')";
+    $sql = "select family, short_name from family_info where family in ('" . join("','", @pfams, @ipros) . "')";
 
     if (not $self->{dbh}->ping()) {
         warn "Database disconnected at " . scalar localtime;
@@ -46,11 +48,12 @@ sub getAnnotations {
 
     my $rows = $sth->fetchall_arrayref;
 
-    my $pfamDesc = join(";", map { $_->[0] } @$rows);
+    my $pfamDesc = join(";", map { $_->[1] } grep {$_->[0] =~ m/^PF/} @$rows);
+    my $iproDesc = join(";", map { $_->[1] } grep {$_->[0] =~ m/^IPR/} @$rows);
 
     $annoStatus = $annoStatus eq "Reviewed" ? "SwissProt" : "TrEMBL";
 
-    return ($organism, $taxId, $annoStatus, $desc, $pfamDesc);
+    return ($organism, $taxId, $annoStatus, $desc, $pfamDesc, $iproDesc);
 }
 
 

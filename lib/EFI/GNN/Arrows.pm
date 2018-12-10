@@ -88,12 +88,14 @@ sub writeArrowData {
         $dbh->do($sql);
         my $geneKey = $dbh->last_insert_id(undef, undef, undef, undef);
         $families{$data->{$id}->{attributes}->{family}} = 1;
+        $families{$data->{$id}->{attributes}->{ipro_family}} = 1;
 
         foreach my $nb (sort { $a->{num} cmp $b->{num} } @{ $data->{$id}->{neighbors} }) {
             $nb->{gene_key} = $geneKey;
             $sql = $self->getInsertStatement($EFI::GNN::Arrows::NeighborsTable, $nb, $dbh);
             $dbh->do($sql);
             $families{$nb->{family}} = 1;
+            $families{$nb->{ipro_family}} = 1;
         }
     }
 
@@ -188,6 +190,7 @@ sub getAttributeColsSql {
                         id VARCHAR(20),
                         num INTEGER,
                         family VARCHAR(1800),
+                        ipro_family VARCHAR(1800),
                         start INTEGER,
                         stop INTEGER,
                         rel_start INTEGER,
@@ -199,6 +202,7 @@ sub getAttributeColsSql {
                         anno_status VARCHAR(255),
                         desc VARCHAR(255),
                         family_desc VARCHAR(255),
+                        ipro_family_desc VARCHAR(255),
                         color VARCHAR(255)
 SQL
     return $sql;
@@ -262,11 +266,12 @@ sub getInsertStatement {
     # as well as a color for the fusion.
     my $color = join(",", $self->{color_util}->getColorForPfam($attr->{family}));
 
-    my $sql = "INSERT INTO $table (accession, id, num, family, start, stop, rel_start, rel_stop, direction, type, seq_len, taxon_id, anno_status, desc, family_desc, color $addlCols) VALUES (";
+    my $sql = "INSERT INTO $table (accession, id, num, family, ipro_family, start, stop, rel_start, rel_stop, direction, type, seq_len, taxon_id, anno_status, desc, family_desc, ipro_family_desc, color $addlCols) VALUES (";
     $sql .= $dbh->quote($attr->{accession}) . ",";
     $sql .= $dbh->quote($attr->{id}) . ",";
     $sql .= $dbh->quote($attr->{num}) . ",";
     $sql .= $dbh->quote($attr->{family}) . ",";
+    $sql .= $dbh->quote($attr->{ipro_family}) . ",";
     $sql .= $dbh->quote($attr->{start}) . ",";
     $sql .= $dbh->quote($attr->{stop}) . ",";
     $sql .= $dbh->quote($attr->{rel_start}) . ",";
@@ -278,6 +283,7 @@ sub getInsertStatement {
     $sql .= $dbh->quote($attr->{anno_status}) . ",";
     $sql .= $dbh->quote($attr->{desc}) . ",";
     $sql .= $dbh->quote($attr->{family_desc}) . ",";
+    $sql .= $dbh->quote($attr->{ipro_family_desc}) . ",";
     $sql .= $dbh->quote($color);
     $sql .= "," . $dbh->quote($attr->{strain}) if exists $attr->{strain};
     $sql .= "," . $dbh->quote($attr->{cluster_num}) if exists $attr->{cluster_num};

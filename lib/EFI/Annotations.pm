@@ -18,6 +18,8 @@ use constant FIELD_SWISSPROT_DESC => "Swissprot Description";
 
 our $Version = 2;
 
+use List::MoreUtils qw{uniq} ;
+
 
 sub new {
     my ($class, %args) = @_;
@@ -62,7 +64,20 @@ sub build_query_string_base {
     if ($Version == 1) {
         $sql = "select * from annotations where $column $idQuoted";
     } else {
-        $sql = "select * from annotations as A left join taxonomy as T on A.Taxonomy_ID = T.Taxonomy_ID where A.$column $idQuoted";
+        $sql = <<SQL;
+select
+    A.*,
+    T.*,
+    group_concat(distinct P.id) as PFAM2,
+/*    group_concat(I.type) as IPRO2_type,*/
+    group_concat(I.id) as IPRO2
+from annotations as A
+left join taxonomy as T on A.Taxonomy_ID = T.Taxonomy_ID
+left join PFAM as P on A.accession = P.accession
+left join INTERPRO as I on A.accession = I.accession
+where A.$column $idQuoted
+group by A.accession
+SQL
     }
 
     return $sql;
@@ -121,12 +136,14 @@ sub build_annotations {
         "\n\tSwissprot_Description\t" . merge_anno_rows(\@rows, "SwissProt_Description") . 
         "\n\tOrganism\t" . merge_anno_rows(\@rows, "Organism") . 
         "\n\tGN\t" . merge_anno_rows(\@rows, "GN") . 
-        "\n\tPFAM\t" . merge_anno_rows(\@rows, "PFAM") . 
+#        "\n\tPFAM\t" . merge_anno_rows(\@rows, "PFAM") . 
+        "\n\tPFAM\t" . merge_anno_rows_uniq(\@rows, "PFAM2") . 
         "\n\tPDB\t" . merge_anno_rows(\@rows, "pdb") . 
-        "\n\tIPRO_DOM\t" . merge_anno_rows(\@rows, "IPRO_DOM") . 
-        "\n\tIPRO_FAM\t" . merge_anno_rows(\@rows, "IPRO_FAM") . 
-        "\n\tIPRO_SUP\t" . merge_anno_rows(\@rows, "IPRO_SUP") . 
-        "\n\tIPRO\t" . merge_anno_rows(\@rows, "IPRO") . 
+#        "\n\tIPRO_DOM\t" . merge_anno_rows(\@rows, "IPRO_DOM") . 
+#        "\n\tIPRO_FAM\t" . merge_anno_rows(\@rows, "IPRO_FAM") . 
+#        "\n\tIPRO_SUP\t" . merge_anno_rows(\@rows, "IPRO_SUP") . 
+#        "\n\tIPRO\t" . merge_anno_rows(\@rows, "IPRO") . 
+        "\n\tIPRO\t" . merge_anno_rows_uniq(\@rows, "IPRO2") . 
         "\n\tGO\t" . merge_anno_rows(\@rows, "GO") .
         "\n\tKEGG\t" . merge_anno_rows(\@rows, "KEGG") .
         "\n\tSTRING\t" . merge_anno_rows(\@rows, "STRING") .
@@ -158,6 +175,19 @@ sub merge_anno_rows {
     my $field = shift;
 
     my $value = join($AnnoRowSep, map { $_->{$field} } @$rows);
+    return $value;
+}
+
+
+sub merge_anno_rows_uniq {
+    my $rows = shift;
+    my $field = shift;
+
+    my $value = join($AnnoRowSep,
+        map {
+            my @parts = split m/,/, $_->{$field};
+            return join(",", uniq sort @parts);
+        } @$rows);
     return $value;
 }
 
