@@ -232,7 +232,7 @@ sub getClusterHubData {
         $noneFamily{$clusterNode} = {};
         foreach my $accession (uniq @{$supernodes->{$clusterNode}}){
             $accessionData{$accession}->{neighbors} = [];
-            my ($pfamsearch, $localNoMatch, $localNoNeighbors, $genomeId) =
+            my ($pfamsearch, $iprosearch, $localNoMatch, $localNoNeighbors, $genomeId) =
                 $nbFind->findNeighbors($accession, $neighborhoodSize, $warning_fh, $useCircTest, $noneFamily{$clusterNode}, \%accessionData);
             $noNeighbors{$accession} = $localNoNeighbors;
             $genomeIds{$accession} = $genomeId;
@@ -240,11 +240,9 @@ sub getClusterHubData {
             
             # Find the maximum window so we can filter later.
             $allNbAccessionData->{$accession}->{neighbors} = [];
-            my $allNeighborData;
+            my ($allNeighborData, $allIproNbData) = ($pfamsearch, $iprosearch);
             if ($neighborhoodSize != MAX_NB_SIZE) {
-                ($allNeighborData) = $nbFind->findNeighbors($accession, MAX_NB_SIZE, undef, $useCircTest, {}, $allNbAccessionData);
-            } else {
-                $allNeighborData = $pfamsearch;
+                ($allNeighborData, $allIproNbData) = $nbFind->findNeighbors($accession, MAX_NB_SIZE, undef, $useCircTest, {}, $allNbAccessionData);
             }
             $allPfamData->{$accession} = $allNeighborData;
             
@@ -253,7 +251,7 @@ sub getClusterHubData {
                 push @accDataStructs, $allNbAccessionData;
             }
             
-            my ($organism, $taxId, $annoStatus, $desc, $familyDesc) = $self->getAnnotations($accession, $accessionData{$accession}->{attributes}->{family});
+            my ($organism, $taxId, $annoStatus, $desc, $familyDesc, $iproFamilyDesc) = $self->getAnnotations($accession, $accessionData{$accession}->{attributes}->{family}, $accessionData{$accession}->{attributes}->{ipro_family});
             for (my $idx = 0; $idx < scalar @accDataStructs; $idx++) {
                 my $accStruct = $accDataStructs[$idx];
 
@@ -263,14 +261,16 @@ sub getClusterHubData {
                 $accStruct->{$accession}->{attributes}->{anno_status} = $annoStatus;
                 $accStruct->{$accession}->{attributes}->{desc} = $desc;
                 $accStruct->{$accession}->{attributes}->{family_desc} = $familyDesc;
+                $accStruct->{$accession}->{attributes}->{ipro_family_desc} = $iproFamilyDesc;
                 $accStruct->{$accession}->{attributes}->{cluster_num} = exists $numberMatch->{$clusterNode} ? $numberMatch->{$clusterNode} : "";
                 foreach my $nbObj (@{ $accStruct->{$accession}->{neighbors} }) {
-                    my ($nbOrganism, $nbTaxId, $nbAnnoStatus, $nbDesc, $nbFamilyDesc) =
-                        $self->getAnnotations($nbObj->{accession}, $nbObj->{family});
+                    my ($nbOrganism, $nbTaxId, $nbAnnoStatus, $nbDesc, $nbFamilyDesc, $nbIproFamilyDesc) =
+                        $self->getAnnotations($nbObj->{accession}, $nbObj->{family}, $nbObj->{ipro_family});
                     $nbObj->{taxon_id} = $nbTaxId;
                     $nbObj->{anno_status} = $nbAnnoStatus;
                     $nbObj->{desc} = $nbDesc;
                     $nbObj->{family_desc} = $nbFamilyDesc;
+                    $nbObj->{ipro_family_desc} = $nbIproFamilyDesc;
                 }
             }
 
@@ -367,8 +367,9 @@ sub getAnnotations {
     my $self = shift;
     my $accession = shift;
     my $pfams = shift;
+    my $ipros = shift;
 
-    return $self->{anno_util}->getAnnotations($accession, $pfams);
+    return $self->{anno_util}->getAnnotations($accession, $pfams, $ipros);
     
 #    my $sql = "select Organism,Taxonomy_ID,STATUS,Description from annotations where accession='$accession'";
 #
@@ -498,6 +499,7 @@ sub saveGnnAttributes {
         my @hasMatch;
         my @genomeId;
         my @nbFams;
+        my @nbIproFams;
 
         foreach my $accIdAttr (@accIdAttrs) {
             my $accId = $accIdAttr->getAttribute('value');
@@ -506,22 +508,27 @@ sub saveGnnAttributes {
             push @genomeId, $gnnData->{genomeIds}->{$accId};
             my $nbFams = join(",", uniq sort grep {$_ ne "none"} map { split m/-/, $_->{family} } @{$gnnData->{accessionData}->{$accIdAttr}->{neighbors}});
             push @nbFams, $nbFams;
+            $nbFams = join(",", uniq sort grep {$_ ne "none"} map { split m/-/, $_->{ipro_family} } @{$gnnData->{accessionData}->{$accIdAttr}->{neighbors}});
+            push @nbIproFams, $nbFams;
         }
 
         writeGnnListField($writer, 'Present in ENA Database?', 'string', \@hasMatch, 0);
         writeGnnListField($writer, 'Genome Neighbors in ENA Database?', 'string', \@hasNeighbors, 0);
         writeGnnListField($writer, 'ENA Database Genome ID', 'string', \@genomeId, 0);
-        writeGnnListField($writer, 'Neighbor Families', 'string', \@nbFams);
+        writeGnnListField($writer, 'Neighbor Pfam Families', 'string', \@nbFams, "");
+        writeGnnListField($writer, 'Neighbor InterPro Families', 'string', \@nbIproFams, "");
     } else {
         my $nodeId = $node->getAttribute('label');
         my $hasNeighbors = $gnnData->{noNeighborMap}->{$nodeId} == 1 ? "false" : $gnnData->{noNeighborMap}->{$nodeId} == -1 ? "n/a" : "true";
         my $genomeId = $gnnData->{genomeIds}->{$nodeId};
         my $hasMatch = $gnnData->{noMatchMap}->{$nodeId} ? "false" : "true";
-        my $nbFams = join(",", uniq sort grep {$_ ne "none"} map { split m/-/, $_->{family} } @{$gnnData->{accessionData}->{$nodeId}->{neighbors}});
+        my @nbFams = uniq sort grep {$_ ne "none"} map { split m/-/, $_->{family} } @{$gnnData->{accessionData}->{$nodeId}->{neighbors}};
+        my @nbIproFams = uniq sort grep {$_ ne "none"} map { split m/-/, $_->{ipro_family} } @{$gnnData->{accessionData}->{$nodeId}->{neighbors}};
         writeGnnField($writer, 'Present in ENA Database?', 'string', $hasMatch);
         writeGnnField($writer, 'Genome Neighbors in ENA Database?', 'string', $hasNeighbors);
         writeGnnField($writer, 'ENA Database Genome ID', 'string', $genomeId);
-        writeGnnField($writer, 'Neighbor Families', 'string', $nbFams);
+        writeGnnListField($writer, 'Neighbor Pfam Families', 'string', \@nbFams, "");
+        writeGnnListField($writer, 'Neighbor InterPro Families', 'string', \@nbIproFams, "");
     }
 }
 
@@ -563,6 +570,7 @@ sub writePfamHubGnn {
             $self->writePfamQueryData($pfam, \@clusters, $clusterNodes, $supernodes, $numbermatch, PFAM_THRESHOLD);
             $self->writePfamQueryData($pfam, \@clusters, $clusterNodes, $supernodes, $numbermatch, PFAM_SPLIT);
         }
+        print "WRITING $pfam\n";
         $self->writePfamQueryData($pfam, \@allClusters, $clusterNodes, $supernodes, $numbermatch, PFAM_ANY);
         $self->writePfamQueryData($pfam, \@allClusters, $clusterNodes, $supernodes, $numbermatch, PFAM_ANY_SPLIT);
     }

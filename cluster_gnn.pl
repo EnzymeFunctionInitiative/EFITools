@@ -302,6 +302,7 @@ if (not $colorOnly) {
     my $useCircTest = 1;
     timer("getClusterHubData");
     my ($clusterNodes, $withNeighbors, $noMatchMap, $noNeighborMap, $genomeIds, $noneFamily, $accessionData);
+    my ($allNbAccDataForArrows);
     if ($hasParent and -f $nbCacheFile) {
         print "USING PARENT NEIGHBOR DATA with $neighborhoodSize\n";
         my $data = retrieve($nbCacheFile);
@@ -314,6 +315,7 @@ if (not $colorOnly) {
         #$accessionData = $data->{accessionData};
         ($clusterNodes, $withNeighbors, $noMatchMap, $noNeighborMap, $genomeIds, $noneFamily, $accessionData) =
             $util->filterClusterHubData($data, $supernodes, $neighborhoodSize, $numberOrder);
+        $allNbAccDataForArrows = $accessionData;
     } else {
         my ($allNbAccessionData, $allPfamData);
         ($clusterNodes, $withNeighbors, $noMatchMap, $noNeighborMap, $genomeIds, $noneFamily, $accessionData, $allNbAccessionData, $allPfamData) =
@@ -326,6 +328,7 @@ if (not $colorOnly) {
         $data->{noneFamily} = $noneFamily;
         $data->{accessionData} = $allNbAccessionData;
         store($data, $nbCacheFile) if $nbCacheFile;
+        $allNbAccDataForArrows = $allNbAccessionData;
     }
     timer("getClusterHubData");
 
@@ -368,10 +371,11 @@ if (not $colorOnly) {
         my $arrowMeta = {
             cooccurrence => $cooccurrence,
             title => $jobName,
-            neighborhood_size => $neighborhoodSize,
+            #neighborhood_size => $neighborhoodSize,
+            neighborhood_size => EFI::GNN::MAX_NB_SIZE,
             type => "gnn"
         };
-        $arrowTool->writeArrowData($accessionData, $clusterCenters, $arrowDataFile, $arrowMeta);
+        $arrowTool->writeArrowData($allNbAccDataForArrows, $clusterCenters, $arrowDataFile, $arrowMeta);
     }
     timer("writeArrows");
 
