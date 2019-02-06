@@ -2,6 +2,7 @@
 package EFI::GNN::Arrows;
 
 use strict;
+use warnings;
 use DBI;
 
 our $AttributesTable = "attributes";
@@ -345,20 +346,19 @@ sub getInsertStatement {
 
 sub computeClusterCenters {
     my $self = shift;
-    my $supernodes = shift;
-    my $numbermatch = shift;
-    my $singletons = shift;
+    my $gnnUtil = shift;
     my $degrees = shift;
 
-    my %centers;
-    foreach my $clusterId (keys %$supernodes) {
-        my @nodes = @{ $supernodes->{$clusterId} };
-        my $clusterNum = $numbermatch->{$clusterId};
+    my @clusterNumbers = $gnnUtil->getClusterNumbers();
 
-        if (exists $singletons->{$clusterId} and scalar @nodes > 1) {
-            $centers{$clusterNum} = {degree => 1, id => $nodes[0]};
+    my %centers;
+    foreach my $clusterNum (@clusterNumbers) {
+        my $nodes = $gnnUtil->getAllIdsInCluster($clusterNum);
+
+        if ($gnnUtil->isSingleton($clusterNum) and scalar @$nodes > 1) {
+            $centers{$clusterNum} = {degree => 1, id => $nodes->[0]};
         } else {
-            foreach my $acc (@nodes) {
+            foreach my $acc (@$nodes) {
                 next if not exists $degrees->{$acc};
                 if (not exists $centers{$clusterNum} or $degrees->{$acc} > $centers{$clusterNum}->{degree}) {
                     $centers{$clusterNum} = {degree => $degrees->{$acc}, id => $acc};

@@ -71,7 +71,7 @@ sub getColorForCluster {
 
     my $index = $clusterNum;
     if (not exists $self->{colors}->{$clusterNum}) {
-        $index = $clusterNum % $self->{num_colors};
+        $index = $clusterNum % $self->{num_colors} + 1;
     }
 
     return $self->{colors}->{$index};

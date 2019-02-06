@@ -19,28 +19,11 @@ sub new {
 sub parseInterpro {
     my $self = shift;
     my $row = shift;
-    #my $parentRow = shift;
-
-#    my $acc = $parentRow->{AC};
-#
-#    my $colSql = "";
-#    #my $colSql = ",group_concat(INTERPRO.type) as ipro_type, group_concat(INTERPRO.parent) as ipro_parent", "group_concat(INTERPRO.is_leaf) as ipro_is_leaf"
-#    my $sql = "select group_concat(INTERPRO.id) as ipro_fam $colSql from INTERPRO where INTERPRO.accession = '$acc' group by INTERPRO.accession";
-#    print "IPSQL $sql\n";
-#    my $sth = $self->{dbh}->prepare($sql);
-#    $sth->execute;
-#
-#    my $row = $sth->fetchrow_hashref;
 
     return if not exists $row->{ipro_fam};
-#    if (not exists $row->{ipro_fam} or not exists $row->{ipro_type} or not exists $row->{ipro_parent} or not exists $row->{ipro_is_leaf}) {
-#        return ();
-#    }
 
     my @fams = split m/,/, $row->{ipro_fam};
-#    my @types = split m/,/, $row->{ipro_type};
-#    my @parents = split m/,/, $row->{ipro_parent};
-#    my @isLeafs = split m/,/, $row->{ipro_is_leaf};
+    my @types = split m/,/, $row->{ipro_type};
 
     my @info;
     my %u;
@@ -48,11 +31,11 @@ sub parseInterpro {
     for (my $i = 0; $i < scalar @fams; $i++) {
         next if exists $u{$fams[$i]};
         $u{$fams[$i]} = 1;
-#        my $info = {family => $fams[$i], type => $types[$i], parent => $parents[$i], is_leaf => $isLeafs[$i]};
-        my $info = {family => $fams[$i]};
-#        if ($info->{type} eq "Domain" or $info->{type} eq "Family" or $info->{type} eq "Homologous_superfamily") {
+        my $info = {family => $fams[$i], type => $types[$i]};
+        #TODO: remove hardcoded constants here
+        if ($info->{type} eq "Domain" or $info->{type} eq "Family" or $info->{type} eq "Homologous_superfamily") {
             push @info, $info;
-#        }
+        }
     }
 
     return @info;
@@ -148,17 +131,16 @@ SQL
 
     my $colSql = join(", ", 
             "ena.ID as ID", "ena.AC as AC", "ena.NUM as NUM", "ena.TYPE as TYPE", "ena.DIRECTION as DIRECTION", "ena.start as start", "ena.stop as stop",
-            #"ena.strain as strain",
             "annotations.organism as strain",
             "group_concat(PFAM.id) as pfam_fam",
-            "group_concat(INTERPRO.id) as ipro_fam",
-            #"group_concat(INTERPRO.type) as ipro_type",
-            #"group_concat(INTERPRO.parent) as ipro_parent", "group_concat(INTERPRO.is_leaf) as ipro_is_leaf"
+            "group_concat(I.id) as ipro_fam",
+            "group_concat(I.family_type) as ipro_type",
+            #"group_concat(I.parent) as ipro_parent", "group_concat(I.is_leaf) as ipro_is_leaf"
         );
     my $joinSql = join(" ",
             "left join annotations on ena.AC = annotations.accession",
             "left join PFAM on ena.AC = PFAM.accession",
-            "left join INTERPRO on ena.AC = INTERPRO.accession",
+            "left join INTERPRO as I on ena.AC = I.accession",
         );
 
     my $selSql = "select $colSql from ena $joinSql where ena.ID = '$genomeId' and AC = '$ac' group by ena.AC limit 1;";
@@ -236,16 +218,15 @@ SQL
 
     $pfam{'genome'}{$ac} = $id;
     $ipro{'genome'}{$ac} = $id;
-    $accessionData->{$ac}->{attributes} = {accession => $ac, num => $num, family => $queryPfam, id => $id,
+    $accessionData->{attributes} = {accession => $ac, num => $num, family => $queryPfam, id => $id,
        start => $acc_start, stop => $acc_stop, rel_start => 0, rel_stop => $acc_stop - $acc_start, 
        strain => $acc_strain, direction => $origdirection, is_bound => $isBound,
-       type => $acc_type, seq_len => $acc_seq_len, ipro_family => $queryIpro};
+       type => $acc_type, seq_len => $acc_seq_len, ipro_family => $queryIpro, ipro_info => \@ipInfo};
 
     while(my $neighbor=$neighbors->fetchrow_hashref){
         my $pfamFam = join('-', sort {$a <=> $b} uniq split(",",$neighbor->{pfam_fam}));
         @ipInfo = $self->parseInterpro($neighbor);
         my $iproFam = join('-', map { $_->{family} } @ipInfo);
-        #my $iproFam = join('-', sort {$a <=> $b} uniq split(",",$neighbor->{ipro_fam}));
         if ($pfamFam eq '') {
             $pfamFam = 'none';
             $noneFamily->{$neighbor->{AC}} = 1;
@@ -294,11 +275,11 @@ SQL
                 die "Direction of ".$neighbor->{AC}." does not appear to be normal (1) or complement(0)\n";
             }
 
-            push @{$accessionData->{$ac}->{neighbors}}, {accession => $neighbor->{AC}, num => int($neighbor->{NUM}),
+            push @{$accessionData->{neighbors}}, {accession => $neighbor->{AC}, num => int($neighbor->{NUM}),
                 family => $pfamFam, id => $neighbor->{ID}, distance => $distance, # include distance here in addition to num, because the num is hard to compute in rare circular DNA cases
                 rel_start => $relNbStart, rel_stop => $relNbStop, start => $nbStart, stop => $nbStop,
                 #strain => $neighbor->{strain},
-                direction => $direction, type => $type, seq_len => $nbSeqLenBp, ipro_family => $iproFam};
+                direction => $direction, type => $type, seq_len => $nbSeqLenBp, ipro_family => $iproFam, ipro_info => \@ipInfo};
             push @{$pfam{'neigh'}{$pfamFam}}, "$ac:".$neighbor->{AC};
             push @{$pfam{'neighlist'}{$pfamFam}}, $neighbor->{AC};
             push @{$pfam{'dist'}{$pfamFam}}, "$ac:$origdirection:".$neighbor->{AC}.":$direction:$distance";
