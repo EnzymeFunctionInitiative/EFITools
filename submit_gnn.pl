@@ -20,7 +20,7 @@ use EFI::GNN::Base;
 
 my ($ssnIn, $nbSize, $warningFile, $gnn, $ssnOut, $cooc, $stats, $pfamHubFile);
 my ($pfamDir, $pfamDirZip, $allPfamDir, $allPfamDirZip, $splitPfamDir, $splitPfamDirZip, $allSplitPfamDir, $allSplitPfamDirZip);
-my ($uniprotIdZip, $uniref50IdZip, $uniref90IdZip, $idOutputFile, $fastaDir, $fastaZip, $noneDir, $noneZip);
+my ($uniprotIdZip, $uniref50IdZip, $uniref90IdZip, $idOutputFile, $idOutputDomainFile, $fastaDir, $fastaZip, $noneDir, $noneZip);
 my ($dontUseNewNeighborMethod);
 my ($scheduler, $dryRun, $queue, $gnnOnly, $noSubmit, $jobId, $arrowDataFile, $coocTableFile);
 my ($hubCountFile, $clusterSizeFile, $swissprotClustersDescFile, $swissprotSinglesDescFile, $parentDir, $configFile);
@@ -50,6 +50,7 @@ my $result = GetOptions(
     "uniref50-id-zip=s"     => \$uniref50IdZip, # only used for GNT calls, non batch
     "uniref90-id-zip=s"     => \$uniref90IdZip, # only used for GNT calls, non batch
     "id-out=s"              => \$idOutputFile,
+    "id-out-domain=s"       => \$idOutputDomainFile,
     "fasta-dir=s"           => \$fastaDir,
     "fasta-zip=s"           => \$fastaZip,
     "none-dir=s"            => \$noneDir,
@@ -150,22 +151,23 @@ $swissprotSinglesDescFile = "$defaultDir/${inputFileBase}_swissprot_singles_desc
 
 
 if ($fullGntRun) {
-    $pfamDir = "$defaultDir/pfam-data"                                      if not $pfamDir;
-    $pfamDirZip = "$defaultDir/${inputFileBase}_pfam_mapping.zip"           if not $pfamDirZip;
-    $allPfamDir = "$defaultDir/all-pfam-data"                               if not $allPfamDir;
-    $allPfamDirZip = "$defaultDir/${inputFileBase}_all_pfam_mapping.zip"    if not $allPfamDirZip;
+    $pfamDir = "$defaultDir/pfam-data"                                              if not $pfamDir;
+    $pfamDirZip = "$defaultDir/${inputFileBase}_pfam_mapping.zip"                   if not $pfamDirZip;
+    $allPfamDir = "$defaultDir/all-pfam-data"                                       if not $allPfamDir;
+    $allPfamDirZip = "$defaultDir/${inputFileBase}_all_pfam_mapping.zip"            if not $allPfamDirZip;
     $splitPfamDir = "$defaultDir/split-pfam-data"                                   if not $splitPfamDir;
     $splitPfamDirZip = "$defaultDir/${inputFileBase}_split_pfam_mapping.zip"        if not $splitPfamDirZip;
     $allSplitPfamDir = "$defaultDir/all-split-pfam-data"                            if not $allSplitPfamDir;
     $allSplitPfamDirZip = "$defaultDir/${inputFileBase}_all_split_pfam_mapping.zip" if not $allSplitPfamDirZip;
-    $uniprotIdZip = "$defaultDir/${inputFileBase}_UniProt_IDs.zip"          if not $uniprotIdZip;
-    $uniref50IdZip = "$defaultDir/${inputFileBase}_UniRef50_IDs.zip"        if not $uniref50IdZip;
-    $uniref90IdZip = "$defaultDir/${inputFileBase}_UniRef90_IDs.zip"        if not $uniref90IdZip;
-    $idOutputFile = "$defaultDir/${inputFileBase}_mapping_table.txt"        if not $idOutputFile;
-    $fastaDir = "$defaultDir/fasta"                                         if not $fastaDir;
-    $fastaZip = "$defaultDir/${inputFileBase}_FASTA.zip"                    if not $fastaZip;
-    $noneDir = "$defaultDir/pfam-none"                                      if not $noneDir;
-    $noneZip = "$defaultDir/${inputFileBase}_no_pfam_neighbors.zip"         if not $noneZip;
+    $uniprotIdZip = "$defaultDir/${inputFileBase}_UniProt_IDs.zip"                  if not $uniprotIdZip;
+    $uniref50IdZip = "$defaultDir/${inputFileBase}_UniRef50_IDs.zip"                if not $uniref50IdZip;
+    $uniref90IdZip = "$defaultDir/${inputFileBase}_UniRef90_IDs.zip"                if not $uniref90IdZip;
+    $idOutputFile = "$defaultDir/${inputFileBase}_mapping_table.txt"                if not $idOutputFile;
+    $idOutputDomainFile = "$defaultDir/${inputFileBase}_mapping_table_domain.txt"   if not $idOutputDomainFile;
+    $fastaDir = "$defaultDir/fasta"                                                 if not $fastaDir;
+    $fastaZip = "$defaultDir/${inputFileBase}_FASTA.zip"                            if not $fastaZip;
+    $noneDir = "$defaultDir/pfam-none"                                              if not $noneDir;
+    $noneZip = "$defaultDir/${inputFileBase}_no_pfam_neighbors.zip"                 if not $noneZip;
 } else {
     $pfamDir = ""                                                           if not defined $pfamDir;
     $pfamDirZip = ""                                                        if not defined $pfamDirZip;
@@ -179,6 +181,7 @@ if ($fullGntRun) {
     $uniref50IdZip = ""                                                     if not defined $uniref50IdZip;
     $uniref90IdZip = ""                                                     if not defined $uniref90IdZip;
     $idOutputFile = ""                                                      if not defined $idOutputFile;
+    $idOutputDomainFile = ""                                                if not defined $idOutputDomainFile;
     $fastaDir = ""                                                          if not defined $fastaDir;
     $fastaZip = ""                                                          if not defined $fastaZip;
     $noneDir = ""                                                           if not defined $noneDir;
@@ -211,6 +214,7 @@ print "uniprot-id-zip is $uniprotIdZip\n";
 print "uniref50-id-zip is $uniref50IdZip\n";
 print "uniref90-id-zip is $uniref90IdZip\n";
 print "id-out is $idOutputFile\n";
+print "id-out-domain is $idOutputDomainFile\n";
 print "fasta-dir is $fastaDir\n";
 print "fasta-zip is $fastaZip\n";
 print "none-dir is $noneDir\n";
@@ -249,6 +253,7 @@ if ($fullGntRun) {
     $uniref50IdZip = "$outputDir/$uniref50IdZip"        unless $uniref50IdZip =~ /^\//;
     $uniref90IdZip = "$outputDir/$uniref90IdZip"        unless $uniref90IdZip =~ /^\//;
     $idOutputFile = "$outputDir/$idOutputFile"          unless $idOutputFile =~ /^\//;
+    $idOutputDomainFile = "$outputDir/$idOutputDomainFile"  unless $idOutputDomainFile =~ /^\//;
     $noneDir = "$outputDir/$noneDir"                    unless $noneDir =~ /^\//;
     $noneZip = "$outputDir/$noneZip"                    unless $noneZip =~ /^\//;
 }
@@ -314,6 +319,7 @@ if ($fullGntRun) {
         "-uniref50-id-dir $uniref50NodeDataPath " .
         "-uniref90-id-dir $uniref90NodeDataPath " .
         "-id-out \"$idOutputFile\" " .
+        "-id-out-domain \"$idOutputDomainFile\" " .
         "-none-dir \"$noneDir\" ";
     $cmdString .= " -arrow-file \"$arrowDataFile\"" if $arrowDataFile;
     $cmdString .= " -cooc-table \"$coocTableFile\"" if $coocTableFile;
@@ -357,6 +363,26 @@ my $info = {
 $info->{arrow_zip} = $arrowZip if $arrowZip;
 $info->{arrow_file} = $arrowDataFile if $arrowDataFile;
 
+my $fileSize = 0;
+if ($ssnInZip !~ m/\.zip/) { # If it's a .zip we can't predict apriori what the size will be.
+    my $hasUniref = `grep -m1 UniRef $ssnIn`;
+    # If the file is a UniRef network, we also can't predict the RAM reservation since it depends on the number of UniRef IDs.
+    # Unfortunately we can't check here how many nodes there are, since this script should return quickly and submit
+    # the hard work to the cluster.
+    if (not $hasUniref) { 
+        $fileSize = -s $ssnIn;
+    }
+}
+
+# Y = MX+B, M=emperically determined, B = safety factor; X = file size in MB; Y = RAM reservation in GB
+my $ramReservation = "150gb";
+if ($fileSize) {
+    my $ramPredictionM = 0.023;
+    my $ramSafety = 10;
+    $fileSize = $fileSize / 1024 / 1024; # MB
+    $ramReservation = $ramPredictionM * $fileSize + $ramSafety;
+    $ramReservation = int($ramReservation + 0.5);
+}
 
 my $schedType = "torque";
 $schedType = "slurm" if (defined($scheduler) and $scheduler eq "slurm") or (not defined($scheduler) and usesSlurm());
@@ -365,7 +391,7 @@ my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => 
 
 my $B = $SS->getBuilder();
 
-$B->resource(1, 1, "150gb");
+$B->resource(1, 1, "${ramReservation}gb");
 $B->addAction("source /etc/profile");
 $B->addAction("module load $efiDbMod");
 $B->addAction("module load $efiGnnMod");
@@ -374,9 +400,6 @@ $B->addAction("$toolpath/unzip_file.pl -in $ssnInZip -out $ssnIn") if $ssnInZip 
 $B->addAction($cmdString);
 if ($fullGntRun) {
     EFI::GNN::Base::addFileActions($B, $info);
-#    $B->addAction("\n\nmkdir \$BLASTDB");
-#    $B->addAction("cd \$BLASTDB");
-#    $B->addAction("formatdb -i $allFastaFile -n database -p T -o T");
 }
 $B->addAction("\n\n$toolpath/save_version.pl > $outputDir/gnn.completed");
 

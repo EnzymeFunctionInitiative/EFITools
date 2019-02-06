@@ -7,6 +7,7 @@ BEGIN {
 
 use Getopt::Long;
 use File::Slurp;
+use Scalar::Util qw(openhandle);
 use Capture::Tiny qw(:all);
 
 use EFI::Database;
@@ -64,9 +65,11 @@ if ($useAllFiles) {
     $globPattern = "$pattern*.txt";
 }
 
+my @files = sort file_sort glob("$nodeDir/$globPattern");
+
 open ALL, ">$allFastaFile";
 
-foreach my $file (sort file_sort glob("$nodeDir/$globPattern")) {
+foreach my $file (@files) {
     my $clusterNum = $file;
     my $fastaFileName = "";
     if (not $useAllFiles) {
@@ -77,12 +80,6 @@ foreach my $file (sort file_sort glob("$nodeDir/$globPattern")) {
         $fastaFileName = "$clusterNum.fasta";
     }
     
-    open FASTA, ">$fastaDir/$fastaFileName";
-    open NODES, $file;
-
-    my $hasLines = 1;
-    my $nodeCount = 0;
-
     my @ids;
     my %customHeaders;
     my @ids = map {
@@ -96,14 +93,26 @@ foreach my $file (sort file_sort glob("$nodeDir/$globPattern")) {
             $id;
         } read_file($file);
 
+    my $hasDomain = scalar grep m/:/, @ids;
+    my $domFh;
+    if ($hasDomain) {
+        my $domFastaFileName = "cluster_domain_$clusterNum.fasta";
+        open DOM_FASTA, ">$fastaDir/$domFastaFileName";
+        $domFh = \*DOM_FASTA;
+    }
+
+    open FASTA, ">$fastaDir/$fastaFileName";
+    open NODES, $file;
+
     print "Retrieving sequences for cluster $clusterNum...\n";
 
-    saveSequences($clusterNum, \*FASTA, \*ALL, \@ids, \%customHeaders);
+    saveSequences($clusterNum, \*FASTA, $domFh, \*ALL, \@ids, \%customHeaders);
 
     print "Done retrieving sequences!\n";
 
     close NODES;
     close FASTA;
+    close DOM_FASTA if $hasDomain;
 }
 
 close ALL;
@@ -133,23 +142,51 @@ sub file_sort {
 sub saveSequences {
     my $clusterNum = shift;
     my $outputFh = shift;
+    my $domOutputFh = shift;
     my $allFh = shift;
     my $idRef = shift;
     my $customHeaders = shift;
     
     my @ids = @{ $idRef }; # convert array ref to list
+    my $hasDomain = scalar grep m/:/, @ids;
 
     while (scalar @ids) {
-        my $batchLine = join(",", splice(@ids, 0, 1000));
+        my @rawBatchIds = splice(@ids, 0, 1000);
+        my @batchIds = map { my $a = $_; $a =~ s/:\d+:\d+$//; $a } @rawBatchIds;
+
+        my @domExt = map {
+                my @parts = split m/:/;
+                scalar @parts == 3 ? [$parts[1], $parts[2]] : [];
+            } @rawBatchIds;
+
+#        # If the IDs contain domain extent, then we switch to retrieving a single sequence at a time
+#        # specifying the domain extent to fastacmd.
+#        my @domainArgs;
+#        my $domainAcc = "";
+#        if ($hasDomain) {
+#            @batchIds = splice(@ids, 0, 1);
+#            my @parts = split(m/:/, $batchIds[0]);
+#            $batchIds[0] = $parts[0];
+#            if (scalar @parts > 2) {
+#                @domainArgs = ("-L", $parts[1].",".$parts[2]);
+#                $domainAcc = join(":", @parts);
+#            }
+#        } else {
+#            @batchIds = splice(@ids, 0, 1000);
+#        }
+
+        my $batchLine = join(",", @batchIds);
         my ($fastacmdOutput, $fastaErr) = capture {
-            system("fastacmd", "-d", "$blastDbPath/combined.fasta", "-s", $batchLine);
+            system("fastacmd", "-d", "$blastDbPath/combined.fasta", "-s", $batchLine, @domainArgs);
         };
+
         my @sequences = split /\n>/, $fastacmdOutput;
         $sequences[0] = substr($sequences[0], 1) if $#sequences >= 0 and substr($sequences[0], 0, 1) eq ">";
         foreach my $seq (@sequences) {
             if ($seq =~ s/^\w\w\|(\w{6,10})\|.*//) {
                 my $accession = $1;
                 my $customHeader = exists $customHeaders->{$accession} ? $customHeaders->{$accession} : "";
+                $accession = $domainAcc ? $domainAcc : $accession;
                 writeSequence($accession, $clusterNum, $outputFh, $allFh, $seq, $customHeader);
             }
         }

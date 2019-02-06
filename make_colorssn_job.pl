@@ -15,24 +15,25 @@ use EFI::GNN::Base;
 use EFI::JobConfig;
 
 
-my ($ssnIn, $nbSize, $ssnOut, $cooc, $outputDir, $scheduler, $dryRun, $queue, $mapDirName, $mapFileName, $jobId);
+my ($ssnIn, $nbSize, $ssnOut, $cooc, $outputDir, $scheduler, $dryRun, $queue, $mapDirName, $jobId);
 my ($statsFile, $clusterSizeFile, $swissprotClustersDescFile, $swissprotSinglesDescFile);
-my ($jobConfigFile);
+my ($jobConfigFile, $domainMapFileName, $mapFileName);
 my $result = GetOptions(
-    "ssn-in=s"              => \$ssnIn,
-    "ssn-out=s"             => \$ssnOut,
-    "out-dir=s"             => \$outputDir,
-    "scheduler=s"           => \$scheduler,
-    "dry-run"               => \$dryRun,
-    "queue=s"               => \$queue,
-    "job-id=s"              => \$jobId,
-    "map-dir-name=s"        => \$mapDirName,
-    "map-file-name=s"       => \$mapFileName,
-    "stats=s"               => \$statsFile,
-    "cluster-sizes=s"       => \$clusterSizeFile,
-    "sp-clusters-desc=s"    => \$swissprotClustersDescFile,
-    "sp-singletons-desc=s"  => \$swissprotSinglesDescFile,
-    "job-config=s"          => \$jobConfigFile,
+    "ssn-in=s"                  => \$ssnIn,
+    "ssn-out=s"                 => \$ssnOut,
+    "out-dir=s"                 => \$outputDir,
+    "scheduler=s"               => \$scheduler,
+    "dry-run"                   => \$dryRun,
+    "queue=s"                   => \$queue,
+    "job-id=s"                  => \$jobId,
+    "map-dir-name=s"            => \$mapDirName,
+    "map-file-name=s"           => \$mapFileName,
+    "domain-map-file-name=s"    => \$domainMapFileName,
+    "stats=s"                   => \$statsFile,
+    "cluster-sizes=s"           => \$clusterSizeFile,
+    "sp-clusters-desc=s"        => \$swissprotClustersDescFile,
+    "sp-singletons-desc=s"      => \$swissprotSinglesDescFile,
+    "job-config=s"              => \$jobConfigFile,
 );
 
 $usage=<<USAGE
@@ -93,6 +94,7 @@ if ($ssnInZip =~ /\.zip$/i) {
 
 $mapDirName                 = "cluster-data"                    if not $mapDirName;
 $mapFileName                = "mapping_table.txt"               if not $mapFileName;
+$domainMapFileName          = "domain_mapping_table.txt"        if not $domainMapFileName;
 $jobId                      = ""                                if not $jobId;
 $statsFile                  = "stats.txt"                       if not $statsFile;
 $clusterSizeFile            = "cluster_sizes.txt"               if not $clusterSizeFile;
@@ -124,6 +126,22 @@ mkdir $uniprotNodeDataPath      or die "Unable to create output node data path $
 mkdir $uniref50NodeDataPath     or die "Unable to create output node data path $uniref50NodeDataPath: $!"   if not -d $uniref50NodeDataPath;
 mkdir $uniref90NodeDataPath     or die "Unable to create output node data path $uniref90NodeDataPath: $!"   if not -d $uniref90NodeDataPath;
 mkdir $fastaDataPath            or die "Unable to create output fasta data path $fastaDataPath: $!"         if not -d $fastaDataPath;
+
+
+my $fileSize = 0;
+if ($ssnInZip !~ m/\.zip/) { # If it's a .zip we can't predict apriori what the size will be.
+    $fileSize = -s $ssnIn;
+}
+
+# Y = MX+B, M=emperically determined, B = safety factor; X = file size in MB; Y = RAM reservation in GB
+my $ramReservation = 150;
+if ($fileSize) {
+    my $ramPredictionM = 0.02;
+    my $ramSafety = 10;
+    $fileSize = $fileSize / 1024 / 1024; # MB
+    $ramReservation = $ramPredictionM * $fileSize + $ramSafety;
+    $ramReservation = int($ramReservation + 0.5);
+}
 
 my $schedType = "torque";
 $schedType = "slurm" if (defined($scheduler) and $scheduler eq "slurm") or (not defined($scheduler) and usesSlurm());
@@ -158,6 +176,7 @@ my $scriptArgs =
     "-uniref50-id-dir $uniref50NodeDataPath " .
     "-uniref90-id-dir $uniref90NodeDataPath " .
     "-id-out ${ssnName}_$mapFileName " .
+    "-id-out-domain ${ssnName}_$domainMapFileName " .
     "-config $configFile " .
     "-stats \"$statsFile\" " .
     "-cluster-sizes \"$clusterSizeFile\" " .
@@ -168,7 +187,7 @@ my $scriptArgs =
 
 my $B = $SS->getBuilder();
 
-$B->resource(1, 1, "150gb");
+$B->resource(1, 1, "${ramReservation}gb");
 $B->addAction("module load $dbModule");
 $B->addAction("module load $gntModule");
 $B->addAction("cd $outputPath");
