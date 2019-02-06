@@ -15,6 +15,8 @@ use constant FIELD_SEQ_SRC_VALUE_BLASTHIT_FAMILY => "FAMILY+BLASTHIT";
 use constant FIELD_SEQ_KEY => "Sequence";
 use constant FIELD_ID_ACC => "ACC";
 use constant FIELD_SWISSPROT_DESC => "Swissprot Description";
+use constant FIELD_TAXON_ID => "Taxonomy ID";
+use constant FIELD_SPECIES => "Species";
 
 our $Version = 2;
 
@@ -69,8 +71,8 @@ select
     A.*,
     T.*,
     group_concat(distinct P.id) as PFAM2,
-/*    group_concat(I.type) as IPRO2_type,*/
-    group_concat(I.id) as IPRO2
+    group_concat(I.family_type) as ipro_type,
+    group_concat(I.id) as ipro_fam
 from annotations as A
 left join taxonomy as T on A.Taxonomy_ID = T.Taxonomy_ID
 left join PFAM as P on A.accession = P.accession
@@ -127,6 +129,8 @@ sub build_annotations {
     }
     my $status = join($AnnoRowSep, @statusValues);
 
+    my ($iproDom, $iproFam, $iproSup, $iproOther) = parseInterpro(\@rows);
+
     my $tab = $accession .
         "\n\tSTATUS\t" . $status . 
         "\n\tSequence_Length\t" . merge_anno_rows(\@rows, "Sequence_Length") . 
@@ -136,14 +140,12 @@ sub build_annotations {
         "\n\tSwissprot_Description\t" . merge_anno_rows(\@rows, "SwissProt_Description") . 
         "\n\tOrganism\t" . merge_anno_rows(\@rows, "Organism") . 
         "\n\tGN\t" . merge_anno_rows(\@rows, "GN") . 
-#        "\n\tPFAM\t" . merge_anno_rows(\@rows, "PFAM") . 
         "\n\tPFAM\t" . merge_anno_rows_uniq(\@rows, "PFAM2") . 
         "\n\tPDB\t" . merge_anno_rows(\@rows, "pdb") . 
-#        "\n\tIPRO_DOM\t" . merge_anno_rows(\@rows, "IPRO_DOM") . 
-#        "\n\tIPRO_FAM\t" . merge_anno_rows(\@rows, "IPRO_FAM") . 
-#        "\n\tIPRO_SUP\t" . merge_anno_rows(\@rows, "IPRO_SUP") . 
-#        "\n\tIPRO\t" . merge_anno_rows(\@rows, "IPRO") . 
-        "\n\tIPRO\t" . merge_anno_rows_uniq(\@rows, "IPRO2") . 
+        "\n\tIPRO_DOM\t" . join($AnnoRowSep, @$iproDom) .
+        "\n\tIPRO_FAM\t" . join($AnnoRowSep, @$iproFam) .
+        "\n\tIPRO_SUP\t" . join($AnnoRowSep, @$iproSup) .
+        "\n\tIPRO\t" . join($AnnoRowSep, @$iproOther) .
         "\n\tGO\t" . merge_anno_rows(\@rows, "GO") .
         "\n\tKEGG\t" . merge_anno_rows(\@rows, "KEGG") .
         "\n\tSTRING\t" . merge_anno_rows(\@rows, "STRING") .
@@ -163,12 +165,47 @@ sub build_annotations {
         "\n\tSpecies\t" . merge_anno_rows(\@rows, "Species") .
         "\n\tCAZY\t" . merge_anno_rows(\@rows, "Cazy");
     $tab .= "\n\tNCBI_IDs\t" . join(",", @$ncbiIds) if ($ncbiIds);
-#    $tab .= "\n\tUniRef50\t" . $row->{"UniRef50_Cluster"} if $row->{"UniRef50_Cluster"};
-#    $tab .= "\n\tUniRef90\t" . $row->{"UniRef90_Cluster"} if $row->{"UniRef90_Cluster"};
+    # UniRef is added elsewhere
+    #$tab .= "\n\tUniRef50\t" . $row->{"UniRef50_Cluster"} if $row->{"UniRef50_Cluster"};
+    #$tab .= "\n\tUniRef90\t" . $row->{"UniRef90_Cluster"} if $row->{"UniRef90_Cluster"};
     $tab .= "\n";
 
     return $tab;
 }
+
+
+sub parseInterpro {
+    my $rows = shift;
+
+    my (@dom, @fam, @sup, @other);
+    my %u;
+
+    foreach my $row (@$rows) {
+        next if not exists $row->{ipro_fam};
+
+        my @fams = split m/,/, $row->{ipro_fam};
+        my @types = split m/,/, $row->{ipro_type};
+        #my @parents = split m/,/, $row->{ipro_parent};
+        #my @isLeafs = split m/,/, $row->{ipro_is_leaf};
+    
+        for (my $i = 0; $i < scalar @fams; $i++) {
+            next if exists $u{$fams[$i]};
+            $u{$fams[$i]} = 1;
+            
+            my $type = $types[$i];
+            my $fam = $fams[$i];
+    
+            #TODO: remove hardcoded constants here
+            push @dom, $fam if $type eq "Domain";
+            push @fam, $fam if $type eq "Family";
+            push @sup, $fam if $type eq "Homologous_superfamily";
+            push @other, $fam if $type ne "Domain" and $type ne "Family" and $type ne "Homologous_superfamily";
+        }
+    }
+
+    return \@dom, \@fam, \@sup, \@other;
+}
+
 
 sub merge_anno_rows {
     my $rows = shift;
@@ -203,10 +240,10 @@ sub get_annotation_data {
     $annoData{"Query_IDs"}              = {order => $idx++, display => "Query IDs"};
     $annoData{"Other_IDs"}              = {order => $idx++, display => "Other IDs"};
     $annoData{"Organism"}               = {order => $idx++, display => "Organism"};
-    $annoData{"Taxonomy_ID"}            = {order => $idx++, display => "Taxonomy ID"};
+    $annoData{"Taxonomy_ID"}            = {order => $idx++, display => FIELD_TAXON_ID};
     $annoData{"STATUS"}                 = {order => $idx++, display => "UniProt Annotation Status"};
     $annoData{"Description"}            = {order => $idx++, display => "Description"};
-    $annoData{"Swissprot_Description"}  = {order => $idx++, display => "Swissprot Description"};
+    $annoData{"Swissprot_Description"}  = {order => $idx++, display => FIELD_SWISSPROT_DESC};
     $annoData{"Sequence_Length"}        = {order => $idx++, display => "Sequence Length"};
     $annoData{"GN"}                     = {order => $idx++, display => "Gene Name"};
     $annoData{"NCBI_IDs"}               = {order => $idx++, display => "NCBI IDs"};
@@ -217,7 +254,7 @@ sub get_annotation_data {
     $annoData{"Order"}                  = {order => $idx++, display => "Order"};
     $annoData{"Family"}                 = {order => $idx++, display => "Family"};
     $annoData{"Genus"}                  = {order => $idx++, display => "Genus"};
-    $annoData{"Species"}                = {order => $idx++, display => "Species"};
+    $annoData{"Species"}                = {order => $idx++, display => FIELD_SPECIES};
     $annoData{"EC"}                     = {order => $idx++, display => "EC"};
     $annoData{"PFAM"}                   = {order => $idx++, display => "PFAM"};
     $annoData{"PDB"}                    = {order => $idx++, display => "PDB"};
