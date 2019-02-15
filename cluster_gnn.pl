@@ -53,7 +53,7 @@ my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $cooccurrence, $stat
     $pfamDir, $noneDir, $idOutputFile, $idOutputDomainFile, $arrowDataFile, $dontUseNewNeighborMethod,
     $uniprotIdDir, $uniref50IdDir, $uniref90IdDir,
     $pfamCoocTable, $hubCountFile, $allPfamDir, $splitPfamDir, $allSplitPfamDir, $clusterSizeFile, $swissprotClustersDescFile,
-    $swissprotSinglesDescFile, $parentDir, $renumberClusters, $disableCache, $skipIdMapping, $skipOrganism);
+    $swissprotSinglesDescFile, $parentDir, $renumberClusters, $disableCache, $skipIdMapping, $skipOrganism, $debug);
 
 my $result = GetOptions(
     "ssnin=s"               => \$ssnin,
@@ -77,7 +77,7 @@ my $result = GetOptions(
     "uniref90-id-dir=s"     => \$uniref90IdDir,
     "none-dir=s"            => \$noneDir,
     "id-out=s"              => \$idOutputFile,
-    "id-out-domain=s"       => \$idOutputDomainFile,
+    "id-out-domain=s"       => \$idOutputDomainFile, # if there is no domain info on the IDs, this isn't output even if the arg is present.
     "arrow-file=s"          => \$arrowDataFile,
     "cooc-table=s"          => \$pfamCoocTable,
     "hub-count-file=s"      => \$hubCountFile,
@@ -87,6 +87,7 @@ my $result = GetOptions(
     "disable-cache"         => \$disableCache,
     "skip-id-mapping"       => \$skipIdMapping,
     "skip-organism"         => \$skipOrganism,
+    "debug"                 => \$debug,
 );
 
 my $usage = <<USAGE
@@ -119,7 +120,12 @@ usage: $0 -ssnin <filename> -ssnout <filename> -gnn <filename> -pfam <filename>
                         cooccurrence threshold
     -split-pfam-dir     path to directory to output PFAM cluster data,
                         separated into one filer per PFAM not domain
-    -id-out             path to a file to save the ID, cluster #, cluster color
+    -id-out             path to a file to save the ID, cluster #, cluster color;
+                        IDs are without domain info, if any
+    -id-out-domain      path to a file to save the ID, cluster #, cluster color;
+                        IDs are with domain info, if present on the ID. If no
+                        nodes have domain info, then this file isn't output even
+                        if it's provided as an argument
     -arrow-file         path to a file to save the neighbor data necessary to
                         draw arrows
     -cooc-table         path to file to save the pfam/cooccurrence table data to
@@ -153,7 +159,9 @@ if (not $ssnin or not -s $ssnin){
     die "-ssnin $ssnin does not exist or has a zero size\n$usage";
 }
 
-my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile) ? 1 : 0;
+my $hasParent = $parentDir and -d $parentDir;
+
+my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile and not $hasParent) ? 1 : 0;
 $neighborhoodSize = 0 if not $neighborhoodSize;
 
 if (not $colorOnly and $neighborhoodSize < 1) {
@@ -179,6 +187,9 @@ $renumberClusters = defined $renumberClusters ? 1 : 0;
 my $enableCache = defined $disableCache ? 0 : 1;
 $skipIdMapping = defined $skipIdMapping ? 1 : 0;
 $skipOrganism = defined $skipOrganism ? 1 : 0;
+$idOutputDomainFile = "" if not defined $idOutputDomainFile;
+$idOutputFile = "" if not defined $idOutputFile;
+$debug = defined $debug ? 1 : 0;
 
 
 my $idBaseOutputDir = $ENV{PWD};
@@ -268,7 +279,6 @@ print $warning_fh "UniProt ID\tNo Match/No Neighbor\n";
 
 my $nbCacheFile = "$ENV{PWD}/storable.hubdata";
 my $numCacheFile = "$ENV{PWD}/storable.numbering";
-my $hasParent = $parentDir and -d $parentDir;
 if ($hasParent) {
     if (-f "$parentDir/storable.hubdata") {
         $numCacheFile = "$parentDir/storable.numbering";
@@ -285,20 +295,23 @@ my $ClusterIdMap = $util->getClusterIdMap(); # This is not to be used anywhere b
 timer("numberClusters");
 
 timer("idMapping");
+my $hasDomain = 0;
 if (not $skipIdMapping) {
     print "saving the cluster-protein ID mapping tables\n";
     my ($uniprotMap, $uniprotDomainMap, $uniref50Map, $uniref90Map) = getClusterToIdMapping($dbh, $util, $ssnSequenceVersion);
+    $hasDomain = scalar keys %$uniprotDomainMap;
     saveClusterIdFiles(
         $uniprotMap, $uniprotDomainMap, $uniref50Map, $uniref90Map,
         $uniprotIdDir, $uniref50IdDir, $uniref90IdDir,
         $uniprotSingletonsFile, $uniref50SingletonsFile, $uniref90SingletonsFile,
     );
 }
+$idOutputDomainFile = "" if not $hasDomain;
 timer("idMapping");
 
 
 my $gnnData = {};
-if (not $colorOnly and not $skipIdMapping) {
+if (not $colorOnly) { # and not $skipIdMapping) {
     print "finding neighbors\n";
     my $useCircTest = 1;
     timer("getClusterHubData");
@@ -307,13 +320,7 @@ if (not $colorOnly and not $skipIdMapping) {
     if ($hasParent and -f $nbCacheFile) {
         print "USING PARENT NEIGHBOR DATA with $neighborhoodSize\n";
         my $data = retrieve($nbCacheFile);
-        #$clusterNodes = $data->{clusterNodes};
-        #$withNeighbors = $data->{withNeighbors};
-        #$noMatchMap = $data->{noMatchMap};
-        #$noNeighborMap = $data->{noNeighborMap};
-        #$genomeIds = $data->{genomeIds};
-        #$noneFamily = $data->{noneFamily};
-        #$accessionData = $data->{accessionData};
+        # The cluster number ($data->{accessionData}->{$accession}->{attributes}->{cluster_num}) is updated with new cluster number in this function.
         ($clusterNodes, $withNeighbors, $noMatchMap, $noNeighborMap, $genomeIds, $noneFamily, $accessionData) =
             $util->filterClusterHubData($data, $neighborhoodSize);
         $allNbAccDataForArrows = $accessionData;
@@ -524,6 +531,7 @@ sub getClusterToIdMapping {
     my (%uniref50IdsClusterMap, %uniref90IdsClusterMap, %uniprotIdsClusterMap, %uniprotDomainIdsClusterMap);
     foreach my $clNum (@clusterNumbers) {
         my $nodeIds = $util->getIdsInCluster($clNum, ALL_IDS);
+        die "num nodes in cluster 126: " . scalar @$nodeIds if ($debug);
         foreach my $id (@$nodeIds) {
             (my $proteinId = $id) =~ s/:\d+:\d+$//;
             my $sql = "SELECT * FROM uniref WHERE accession = '$proteinId'";
@@ -578,7 +586,7 @@ sub saveClusterIdFiles {
     );
     if ($hasDomain) {
         unshift @mappingInfo, [$uniprotMap, "UniProt", $uniprotIdDir, $uniprotSingletonsFile, 0];
-        unshift @mappingInfo, [$uniprotMap, "UniProt_Domain", $uniprotIdDir, $uniprotSingletonsFile, 1];
+        unshift @mappingInfo, [$uniprotDomainMap, "UniProt_Domain", $uniprotIdDir, $uniprotSingletonsFile, 1];
     } else {
         unshift @mappingInfo, [$uniprotMap, "UniProt", $uniprotIdDir, $uniprotSingletonsFile, 1];
     }

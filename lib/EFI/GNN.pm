@@ -55,25 +55,25 @@ sub getPfamNames{
     my $pfamNumbers = shift;
 
     my $pfam_info;
-    my @pfam_short=();
-    my @pfam_long=();
+    my @pfam_short;
+    my @pfam_long;
 
-    foreach my $tmp (split('-',$pfamNumbers)){
-        my $sth=$self->{dbh}->prepare("select * from family_info where family='$tmp';");
+    foreach my $tmp (split('-', $pfamNumbers)){
+        my $sth = $self->{dbh}->prepare("select * from family_info where family='$tmp';");
         $sth->execute;
-        $pfam_info=$sth->fetchrow_hashref;
-        my $shorttemp=$pfam_info->{short_name};
-        my $longtemp=$pfam_info->{long_name};
-        if($shorttemp eq ''){
-            $shorttemp=$tmp;
+        $pfam_info = $sth->fetchrow_hashref;
+        my $shorttemp = $pfam_info->{short_name};
+        my $longtemp = $pfam_info->{long_name};
+        if (not $shorttemp) {
+            $shorttemp = $tmp;
         }
-        if($longtemp eq ''){
-            $longtemp=$shorttemp;
+        if (not $longtemp) {
+            $longtemp = $shorttemp;
         }
-        push @pfam_short,$shorttemp;
+        push @pfam_short, $shorttemp;
         push @pfam_long, $longtemp;
     }
-    return (join('-', @pfam_short),join('-',@pfam_long));
+    return (join('-', @pfam_short), join('-', @pfam_long));
 }
 
 
@@ -87,12 +87,12 @@ sub getPdbInfo{
     my $pdbValueCount = 0;
     my $reviewedCount = 0;
 
-    foreach my $accession (@accessions){
-        my $sth=$self->{dbh}->prepare("select STATUS,EC,pdb from annotations where accession='$accession'");
+    foreach my $accession (@accessions) {
+        my $sth = $self->{dbh}->prepare("select STATUS,EC,pdb from annotations where accession='$accession'");
         $sth->execute;
-        my $attribResults=$sth->fetchrow_hashref;
-        my $status = $attribResults->{STATUS} eq "Reviewed" ? "SwissProt" : "TrEMBL";
-        my $pdbNumber = $attribResults->{pdb};
+        my $attribResults = $sth->fetchrow_hashref;
+        my $status = ($attribResults->{STATUS} and $attribResults->{STATUS} eq "Reviewed") ? "SwissProt" : "TrEMBL";
+        my $pdbNumber = $attribResults->{pdb} ? $attribResults->{pdb} : "";
         
         if ($status eq "SwissProt") {
             $reviewedCount++;
@@ -106,12 +106,13 @@ sub getPdbInfo{
 
         my $pdbEvalue = "None";
         my $closestPdbNumber = "None";
+        my $ecNum = $attribResults->{EC} ? $attribResults->{EC} : "";
 #        if ($sth->rows > 0) {
 #            my $pdbresults = $sth->fetchrow_hashref;
 #            $pdbEvalue = $pdbresults->{e};
 #            $closestPdbNumber = $pdbresults->{PDB};
 #        }
-        $pdbInfo{$accession} = join(":", $attribResults->{EC}, $pdbNumber, $closestPdbNumber, $pdbEvalue, $status);
+        $pdbInfo{$accession} = join(":", $ecNum, $pdbNumber, $closestPdbNumber, $pdbEvalue, $status);
     }
     if ($pdbValueCount > 0 and $reviewedCount > 0) {
         $shape='diamond';
@@ -282,7 +283,7 @@ sub getClusterHubData {
                 }
             }
 
-            foreach my $pfamNumber (sort {$a <=> $b} keys %{$pfamsearch->{neigh}}){
+            foreach my $pfamNumber (sort {$a cmp $b} keys %{$pfamsearch->{neigh}}){
                 push @{$clusterData{$clusterId}{$pfamNumber}{orig}}, @{$pfamsearch->{orig}{$pfamNumber}};
                 push @{$clusterData{$clusterId}{$pfamNumber}{dist}}, @{$pfamsearch->{dist}{$pfamNumber}};
                 push @{$clusterData{$clusterId}{$pfamNumber}{stats}}, @{$pfamsearch->{stats}{$pfamNumber}};
@@ -290,7 +291,7 @@ sub getClusterHubData {
                 push @{$clusterData{$clusterId}{$pfamNumber}{neighlist}}, @{$pfamsearch->{neighlist}{$pfamNumber}};
                 push @{$clusterData{$clusterId}{$pfamNumber}{data}}, @{$pfamsearch->{data}{$pfamNumber}};
             }
-            foreach my $pfamNumber (sort {$a <=> $b} keys %{$pfamsearch->{withneighbors}}){
+            foreach my $pfamNumber (sort {$a cmp $b} keys %{$pfamsearch->{withneighbors}}){
                 push @{$withNeighbors{$clusterId}}, @{$pfamsearch->{withneighbors}{$pfamNumber}};
             }
         }
@@ -322,7 +323,11 @@ sub filterClusterHubData {
 
     foreach my $clusterId (@{ $supernodeOrder }) {
         my $nodeIds = $self->getIdsInCluster($clusterId, ALL_IDS|NO_DOMAIN|INTERNAL);
+        my $clusterNum = $self->getClusterNumber($clusterId);
         foreach my $accession (@$nodeIds) {
+            # Update the cluster number since the new filtered network may have different cluster numbering.
+            $data->{accessionData}->{$accession}->{attributes}->{cluster_num} = $clusterNum;
+
             (my $accNoDomain = $accession) =~ s/:\d+:\d+$//;
             $accession = $accNoDomain;
             $accessionData->{$accession}->{attributes} = $data->{accessionData}->{$accession}->{attributes};
@@ -340,7 +345,7 @@ sub filterClusterHubData {
             }
 
             my $pfamsearch = $data->{allPfamData}->{$accession};
-            foreach my $pfamNumber (sort {$a <=> $b} keys %{$pfamsearch->{neigh}}) {
+            foreach my $pfamNumber (sort {$a cmp $b} keys %{$pfamsearch->{neigh}}) {
                 my (@orig, @dist, @stats, @neigh, @neighlist, @data);
                 for (my $i = 0; $i < scalar @{$pfamsearch->{data}->{$pfamNumber}}; $i++) {
                     if ($nbSize >= abs($pfamsearch->{data}->{$pfamNumber}->[$i]->{distance})) {
@@ -363,7 +368,7 @@ sub filterClusterHubData {
                 }
             }
     
-            foreach my $pfamNumber (sort {$a <=> $b} keys %{$pfamsearch->{withneighbors}}){
+            foreach my $pfamNumber (sort {$a cmp $b} keys %{$pfamsearch->{withneighbors}}){
                 push @{$withNeighbors->{$clusterId}}, @{$pfamsearch->{withneighbors}->{$pfamNumber}};
             }
 
@@ -418,7 +423,8 @@ sub writeClusterHubGnn {
     my $clusterData = shift;
     my $withneighbors = shift;
 
-    $gnnwriter->startTag('graph', 'label' => $self->{title} . " GNN", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
+    my $title = (exists $self->{metadata}->{title} and $self->{metadata}->{title}) ? $self->{metadata}->{title} : "SSN Cluster";
+    $gnnwriter->startTag('graph', 'label' => "$title GNN", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
 
     foreach my $clusterId (sort {$a <=> $b} keys %$clusterData){
         my $numQueryableSsns = scalar @{ $withneighbors->{$clusterId} };
@@ -496,11 +502,15 @@ sub saveGnnAttributes {
     my $gnnData = shift;
     my $node = shift;
 
-    my $attrName = $self->{anno}->{ACC}->{display};
+    my %expandFields = (
+        $self->{anno}->{UniRef50_IDs}->{display} => 1,
+        $self->{anno}->{UniRef90_IDs}->{display} => 1,
+        $self->{anno}->{ACC}->{display} => 1,
+    );
 
     # If this is a repnode network, there will be a child node named "ACC". If so, we need to wrap
     # all of the no matches, etc into a list rather than a simple attribute.
-    my @accIdNode = grep { $_ =~ /\S/ and $_->getAttribute('name') eq $attrName } $node->getChildNodes;
+    my @accIdNode = grep { $_ =~ /\S/ and exists $expandFields{$_->getAttribute('name')} } $node->getChildNodes;
     if (scalar @accIdNode) {
         my $accNode = $accIdNode[0];
         my @accIdAttrs = $accNode->findnodes("./*");
@@ -512,15 +522,26 @@ sub saveGnnAttributes {
         my @nbIproFams;
 
         foreach my $accIdAttr (@accIdAttrs) {
-            my $accId = $accIdAttr->getAttribute('value');
-            push @hasNeighbors, $gnnData->{noNeighborMap}->{$accId} == 1 ? "false" : $gnnData->{noNeighborMap}->{$accId} == -1 ? "n/a" : "true";
+            (my $accId = $accIdAttr->getAttribute('value')) =~ s/:\d+:\d+$//;
+            my $hasNeigh = (not exists $gnnData->{noNeighborMap}->{$accId} or $gnnData->{noNeighborMap}->{$accId} == 1) ?
+                                    "false" : $gnnData->{noNeighborMap}->{$accId} == -1 ? "n/a" : "true";
+            push @hasNeighbors, $hasNeigh;
             push @hasMatch, $gnnData->{noMatchMap}->{$accId} ? "false" : "true";
             push @genomeId, $gnnData->{genomeIds}->{$accId};
-            my $nbFams = join(",", uniq sort grep {$_ ne "none"} map { split m/-/, $_->{family} } @{$gnnData->{accessionData}->{$accIdAttr}->{neighbors}});
-            push @nbFams, $nbFams;
-            $nbFams = join(",", uniq sort grep {$_ ne "none"} map { split m/-/, $_->{ipro_family} } @{$gnnData->{accessionData}->{$accIdAttr}->{neighbors}});
-            push @nbIproFams, $nbFams;
+            #my $nbFams = join(",", uniq sort grep {$_ ne "none"} map { split m/-/, $_->{family} } @{$gnnData->{accessionData}->{$accIdAttr}->{neighbors}});
+            #push @nbFams, $nbFams;
+            #$nbFams = join(",", uniq sort grep {$_ ne "none"} map { split m/-/, $_->{ipro_family} } @{$gnnData->{accessionData}->{$accIdAttr}->{neighbors}});
+            #push @nbIproFams, $nbFams;
+            my @fams = map { split m/-/, $_->{family} } @{$gnnData->{accessionData}->{$accId}->{neighbors}};
+            push @nbFams, @fams;
+            @fams = map { split m/-/, $_->{ipro_family} } @{$gnnData->{accessionData}->{$accId}->{neighbors}};
+            push @nbIproFams, @fams;
         }
+
+        # For families, we just take the full set of families and unique them.  There's not much point
+        # in keeping a list that may contain many duplicates.
+        @nbFams = uniq sort grep {$_ and $_ ne "none"} @nbFams;
+        @nbIproFams = uniq sort grep {$_ and $_ ne "none"} @nbIproFams;
 
         writeGnnListField($writer, 'Present in ENA Database?', 'string', \@hasMatch, 0);
         writeGnnListField($writer, 'Genome Neighbors in ENA Database?', 'string', \@hasNeighbors, 0);
@@ -528,8 +549,9 @@ sub saveGnnAttributes {
         writeGnnListField($writer, 'Neighbor Pfam Families', 'string', \@nbFams, "");
         writeGnnListField($writer, 'Neighbor InterPro Families', 'string', \@nbIproFams, "");
     } else {
-        my $nodeId = $node->getAttribute('label');
-        my $hasNeighbors = $gnnData->{noNeighborMap}->{$nodeId} == 1 ? "false" : $gnnData->{noNeighborMap}->{$nodeId} == -1 ? "n/a" : "true";
+        (my $nodeId = $node->getAttribute('label')) =~ s/:\d+:\d+$//;
+        my $hasNeighbors = (not $gnnData->{noNeighborMap}->{$nodeId} or $gnnData->{noNeighborMap}->{$nodeId} == 1) ?
+                                "false" : $gnnData->{noNeighborMap}->{$nodeId} == -1 ? "n/a" : "true";
         my $genomeId = $gnnData->{genomeIds}->{$nodeId};
         my $hasMatch = $gnnData->{noMatchMap}->{$nodeId} ? "false" : "true";
         my @nbFams = uniq sort grep {$_ ne "none"} map { split m/-/, $_->{family} } @{$gnnData->{accessionData}->{$nodeId}->{neighbors}};
@@ -550,7 +572,8 @@ sub writePfamHubGnn {
 
     my @pfamHubs=uniq sort map {keys %{${$clusterData}{$_}}} keys %{$clusterData};
 
-    $writer->startTag('graph', 'label' => $self->{title} . " Pfam GNN", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
+    my $title = (exists $self->{metadata}->{title} and $self->{metadata}->{title}) ? $self->{metadata}->{title} : "Pfam";
+    $writer->startTag('graph', 'label' => "$title GNN", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
 
     foreach my $pfam (@pfamHubs){
         my ($pfam_short, $pfam_long) = $self->getPfamNames($pfam);
@@ -848,7 +871,7 @@ sub writeSsnStats {
     my $numSingles = 0;
 
     foreach my $clusterNum (@clusterNumbers) {
-        my $rawIds = $self->getIdsInCluster($clusterNum, METANODE_IDS);
+        my $rawIds = $self->getIdsInCluster($clusterNum, ALL_IDS);
         my @ids = sort @$rawIds;
         my $count = scalar @ids;
         $numMetanodes += $count;

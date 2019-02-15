@@ -88,8 +88,8 @@ sub writeArrowData {
         my $sql = $self->getInsertStatement($EFI::GNN::Arrows::AttributesTable, $data->{$id}->{attributes}, $dbh);
         $dbh->do($sql);
         my $geneKey = $dbh->last_insert_id(undef, undef, undef, undef);
-        $families{$data->{$id}->{attributes}->{family}} = 1;
-        $families{$data->{$id}->{attributes}->{ipro_family}} = 1;
+        $families{$data->{$id}->{attributes}->{family}} = 1 if $data->{$id}->{attributes}->{family};
+        $families{$data->{$id}->{attributes}->{ipro_family}} = 1 if $data->{$id}->{attributes}->{ipro_family};
 
         foreach my $nb (sort { $a->{num} cmp $b->{num} } @{ $data->{$id}->{neighbors} }) {
             $nb->{gene_key} = $geneKey;

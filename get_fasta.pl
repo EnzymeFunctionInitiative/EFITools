@@ -9,6 +9,8 @@ use Getopt::Long;
 use File::Slurp;
 use Scalar::Util qw(openhandle);
 use Capture::Tiny qw(:all);
+use FindBin;
+use lib $FindBin::Bin . "/lib";
 
 use EFI::Database;
 use EFI::GNN::Base;

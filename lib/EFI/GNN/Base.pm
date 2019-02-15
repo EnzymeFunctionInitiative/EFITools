@@ -13,6 +13,7 @@ use List::Util qw(sum);
 use Array::Utils qw(:all);
 use EFI::Annotations;
 use XML::LibXML::Reader;
+use Data::Dumper;
 
 use constant ALL_IDS => 1;          # Flag to indicate to return all IDs, not just the metanodes
 use constant METANODE_IDS => 2;     # Flag to indicate to return all IDs, not just the metanodes
@@ -401,7 +402,13 @@ sub getIdsInCluster {
 
     my @ids;
     if ($flags & ALL_IDS) {
-        @ids = map { @{$self->{network}->{metanode_map}->{$_}} } @{$self->{network}->{supernodes}->{$clusterId}};
+        # This allows us to get the metanode with domain info in addition to any represented nodes.
+        foreach my $metanodeId (@{$self->{network}->{supernodes}->{$clusterId}}) {
+            push @ids, $metanodeId;
+            (my $noDomainId = $metanodeId) =~ s/:\d+:\d+$//;
+            push @ids, grep { $_ ne $noDomainId } @{$self->{network}->{metanode_map}->{$metanodeId}};
+        }
+#        @ids = map { @{$self->{network}->{metanode_map}->{$_}} } @{$self->{network}->{supernodes}->{$clusterId}};
     } elsif ($flags & METANODE_IDS) {
         @ids = @{$self->{network}->{supernodes}->{$clusterId}};
     }
@@ -615,13 +622,16 @@ sub writeIdMapping {
             push @dataNoDomain, \@cols;
         }
 
-        # Get only metanode IDs, with domain info
-        my $metanodeIds = $self->getIdsInCluster($clusterId, METANODE_IDS|INTERNAL);
-        foreach my $nodeId (@$metanodeIds) {
-            my @cols = ($nodeId, $clusterNum, $color);
-            push @cols, (exists $taxonIds->{$nodeId} ? $taxonIds->{$nodeId} : "");
-            push @cols, (exists $species->{$nodeId} ? $species->{$nodeId} : "");
-            push @data, \@cols;
+        if ($idMapDomainPath) {
+            # Get only metanode IDs, with domain info
+            my $metanodeIds = $self->getIdsInCluster($clusterId, METANODE_IDS|INTERNAL);
+            foreach my $nodeId (@$metanodeIds) {
+                (my $noDomainId = $nodeId) =~ s/:\d+:\d+$//;
+                my @cols = ($nodeId, $clusterNum, $color);
+                push @cols, (exists $taxonIds->{$noDomainId} ? $taxonIds->{$noDomainId} : "");
+                push @cols, (exists $species->{$noDomainId} ? $species->{$noDomainId} : "");
+                push @data, \@cols;
+            }
         }
     }
 
@@ -639,17 +649,17 @@ sub writeIdMapping {
         $idMapDomainOpen = 1;
     }
 
-    my $dataFh = $idMapDomainOpen ? \*DOM_IDMAP : \*IDMAP;
-    my $noDomDataFh;
-    $noDomDataFh = \*IDMAP if $idMapDomainOpen;
+    my $dataFh = \*IDMAP; # $idMapDomainOpen ? \*DOM_IDMAP : \*IDMAP;
+    my $domDataFh;
+    $domDataFh = \*DOM_IDMAP if $idMapDomainOpen;
 
-    foreach my $row (sort idmapsort @data) {
-        $dataFh->print(join("\t", @$row), "\n");
-    }
     if ($idMapDomainOpen) {
-        foreach my $row (sort idmapsort @dataNoDomain) {
-            $noDomDataFh->print(join("\t", @$row), "\n");
+        foreach my $row (sort idmapsort @data) {
+            $domDataFh->print(join("\t", @$row), "\n");
         }
+    }
+    foreach my $row (sort idmapsort @dataNoDomain) {
+        $dataFh->print(join("\t", @$row), "\n");
     }
 
     close IDMAP if $idMapOpen;
@@ -752,21 +762,11 @@ sub addFileActions {
     $B->addAction("if [[ \$HAS_DOMAIN ]]; then");
     if (exists $info->{cat_tool_path}) {
         $B->addAction("    $info->{cat_tool_path} -input-file-pattern \"$info->{uniprot_node_data_path}/cluster_UniProt_Domain_IDs*\" -output-file $info->{uniprot_node_data_path}/cluster_All_UniProt_Domain_IDs.txt.unsorted");
-        $B->addAction("    $info->{cat_tool_path} -input-file-pattern \"$info->{uniref50_node_data_path}/cluster_UniRef50_Domain_IDs*\" -output-file $info->{uniref50_node_data_path}/cluster_All_UniRef50_Domain_IDs.txt.unsorted");
-        $B->addAction("    $info->{cat_tool_path} -input-file-pattern \"$info->{uniref90_node_data_path}/cluster_UniRef90_Domain_IDs*\" -output-file $info->{uniref90_node_data_path}/cluster_All_UniRef90_Domain_IDs.txt.unsorted");
     } else {
         $B->addAction("    cat $info->{uniprot_node_data_path}/cluster_UniProt_Domain_IDs* > $info->{uniprot_node_data_path}/cluster_All_UniProt_Domain_IDs.txt.unsorted");
     }
     $B->addAction("    sort $info->{uniprot_node_data_path}/cluster_All_UniProt_Domain_IDs.txt.unsorted > $info->{uniprot_node_data_path}/cluster_All_UniProt_Domain_IDs.txt");
     $B->addAction("    rm $info->{uniprot_node_data_path}/cluster_All_UniProt_Domain_IDs.txt.unsorted");
-    $B->addAction("    if [[ -f $info->{uniref50_node_data_path}/cluster_All_UniRef50_Domain_IDs.txt.unsorted ]]; then");
-    $B->addAction("        sort $info->{uniref50_node_data_path}/cluster_All_UniRef50_Domain_IDs.txt.unsorted > $info->{uniref50_node_data_path}/cluster_All_UniRef50_Domain_IDs.txt");
-    $B->addAction("        rm $info->{uniref50_node_data_path}/cluster_All_UniRef50_Domain_IDs.txt.unsorted");
-    $B->addAction("    fi");
-    $B->addAction("    if [[ -f $info->{uniref90_node_data_path}/cluster_All_UniRef90_Domain_IDs.txt.unsorted ]]; then");
-    $B->addAction("        sort $info->{uniref90_node_data_path}/cluster_All_UniRef90_Domain_IDs.txt.unsorted > $info->{uniref90_node_data_path}/cluster_All_UniRef90_Domain_IDs.txt");
-    $B->addAction("        rm $info->{uniref90_node_data_path}/cluster_All_UniRef90_Domain_IDs.txt.unsorted");
-    $B->addAction("    fi");
     $B->addAction("fi");
 
     $B->addAction("");

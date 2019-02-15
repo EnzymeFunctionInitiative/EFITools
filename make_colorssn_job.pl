@@ -5,7 +5,12 @@ BEGIN {
     use lib $ENV{EFISHARED};
 }
 
+use strict;
+use warnings;
+
 use Getopt::Long;
+use FindBin;
+use lib $FindBin::Bin . "/lib";
 
 use EFI::Database;
 use EFI::SchedulerApi;
@@ -36,7 +41,7 @@ my $result = GetOptions(
     "job-config=s"              => \$jobConfigFile,
 );
 
-$usage=<<USAGE
+my $usage = <<USAGE
 usage: $0 -ssnin <filename>
 
     -ssn-in             path to file of original ssn network to process
