@@ -9,6 +9,10 @@ BEGIN {
 use strict;
 
 use Getopt::Long;
+use FindBin;
+use lib $FindBin::Bin . "/lib";
+
+
 use EFI::GNN::NeighborUtil;
 use EFI::GNN::Arrows;
 use EFI::Database;

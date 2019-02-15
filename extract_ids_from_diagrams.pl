@@ -9,6 +9,9 @@ BEGIN {
 use strict;
 use DBI;
 use Getopt::Long;
+use FindBin;
+
+use lib $FindBin::Bin . "/lib";
 use EFI::GNN::Arrows;
 
 my ($inputFile, $outputDir, $metaFile, $window);

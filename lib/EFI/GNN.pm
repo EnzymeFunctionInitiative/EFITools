@@ -321,6 +321,13 @@ sub filterClusterHubData {
     my $genomeIds = {};
     my $noneFamily = {};
 
+    my $parentNoneFamily = {};
+    foreach my $oldClusterId (keys %{$data->{noneFamily}}) {
+        foreach my $accId (keys %{$data->{noneFamily}->{$oldClusterId}}) {
+            $parentNoneFamily->{$accId} = $data->{noneFamily}->{$oldClusterId}->{$accId};
+        }
+    }
+
     foreach my $clusterId (@{ $supernodeOrder }) {
         my $nodeIds = $self->getIdsInCluster($clusterId, ALL_IDS|NO_DOMAIN|INTERNAL);
         my $clusterNum = $self->getClusterNumber($clusterId);
@@ -338,8 +345,8 @@ sub filterClusterHubData {
             foreach my $nb (@{$data->{accessionData}->{$accession}->{neighbors}}) {
                 if ($nbSize >= abs($nb->{distance})) {
                     push @{$accessionData->{$accession}->{neighbors}}, $nb;
-                    if (exists $data->{noneFamily}->{$clusterId}->{$nb->{accession}}) {
-                        $noneFamily->{$clusterId}->{$nb->{accession}} = $data->{noneFamily}->{$clusterId}->{$nb->{accession}};
+                    if (exists $parentNoneFamily->{$nb->{accession}}) { # $data->{noneFamily}->{$clusterId}->{$nb->{accession}}) {
+                        $noneFamily->{$clusterId}->{$nb->{accession}} = $parentNoneFamily->{$nb->{accession}}; #$data->{noneFamily}->{$clusterId}->{$nb->{accession}};
                     }
                 }
             }
