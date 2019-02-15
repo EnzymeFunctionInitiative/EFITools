@@ -98,8 +98,6 @@ if ($doIdMapping) {
 
 
 
-use Data::Dumper;
-print Dumper($evalues);
 my $accessionData = findNeighbors($mysqlDbh, $nbSize, $noNeighborFile, $evalues, @inputIds);
 
 my %arrowMeta;
@@ -154,7 +152,9 @@ sub findNeighbors {
 
     my $sortKey = 0;
     foreach my $id (@ids) {
-        my (undef, undef, undef, undef) = $nbFind->findNeighbors($id, $nbSize, $warningFh, $useCircTest, $noneFamily, $accessionData);
+        my $localData = {};
+        my (undef, undef, undef, undef) = $nbFind->findNeighbors($id, $nbSize, $warningFh, $useCircTest, $noneFamily, $localData);
+        $accessionData->{$id} = $localData;
         getAnnotations($dbh, $id, $accessionData, $sortKey, $evalues);
         $sortKey++;
     }

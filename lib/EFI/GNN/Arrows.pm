@@ -4,6 +4,7 @@ package EFI::GNN::Arrows;
 use strict;
 use warnings;
 use DBI;
+use Data::Dumper;
 
 our $AttributesTable = "attributes";
 our $NeighborsTable = "neighbors";
@@ -83,6 +84,8 @@ sub writeArrowData {
                     $dbh->quote($clusterCenters->{$clusterNum}->{degree}) . ")";
         $dbh->do($sql);
     }
+
+    print Dumper($data);
 
     foreach my $id (sort keys %$data) {
         my $sql = $self->getInsertStatement($EFI::GNN::Arrows::AttributesTable, $data->{$id}->{attributes}, $dbh);

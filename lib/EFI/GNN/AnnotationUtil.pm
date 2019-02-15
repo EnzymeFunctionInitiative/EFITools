@@ -34,8 +34,8 @@ sub getAnnotations {
     my $iproDesc = "";
 
     if ((defined $pfams and $pfams) or (defined $ipros and $ipros)) {
-        my @pfams = split '-', $pfams;
-        my @ipros = split '-', $ipros;
+        my @pfams = $pfams ? (split '-', $pfams) : ();
+        my @ipros = $ipros ? (split '-', $ipros) : ();
     
         my $sql = "select family, short_name from family_info where family in ('" . join("','", @pfams, @ipros) . "')";
     
