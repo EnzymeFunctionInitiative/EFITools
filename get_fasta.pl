@@ -60,6 +60,7 @@ $allFastaFile = "$fastaDir/all.fasta" if not $allFastaFile;
 
 my $pattern;
 my $globPattern;
+my $singletonPattern = $EFI::GNN::Base::SingletonUniProtIDFilePattern;
 if ($useAllFiles) {
     $globPattern = "*.txt";
 } else {
@@ -117,20 +118,20 @@ foreach my $file (@files) {
     close DOM_FASTA if $hasDomain;
 }
 
-close ALL;
 
-my $inputSingletonFile = "$nodeDir/singletons.txt";
+my $inputSingletonFile = "$nodeDir/$singletonPattern";
 if ($singletonFile and -f $inputSingletonFile) {
     open FASTA, "> $singletonFile" or die "Unable to write to $singletonFile: $!";
     
     my @ids = map { $_ =~ s/[\r\n]//g; $_ } read_file($inputSingletonFile);
 
-    saveSequences(0, \*FASTA, undef, \@ids, {});
+    saveSequences(0, \*FASTA, undef, \*ALL, \@ids, {});
 
     close FASTA;
 }
 
 
+close ALL;
 
 $dbh->disconnect();
 

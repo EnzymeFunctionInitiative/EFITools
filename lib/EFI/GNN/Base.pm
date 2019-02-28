@@ -26,6 +26,7 @@ our @EXPORT = qw(median writeGnnField writeGnnListField ALL_IDS METANODE_IDS NO_
 
 our $ClusterUniProtIDFilePattern = "cluster_UniProt_IDs_";
 our $ClusterUniProtIDDomainFilePattern = "cluster_UniProt_Domain_IDs_";
+our $SingletonUniProtIDFilePattern = "singleton_UniProt_IDs.txt";
 
 
 sub new {
@@ -104,8 +105,8 @@ sub getNodesAndEdges{
     my %metadata;
 
     my $graphname = $reader->getAttribute('label');
-    $metadata{title} = $graphname;
-    $metadata{source} = "This network was created by the EFI-GNT (Gerlt, Zallot, Davidson, Slater, and Oberg).";
+    $metadata{title}->{value} = $graphname;
+    $metadata{source}->{value} = "This network was created by the EFI-GNT (Gerlt, Zallot, Davidson, Slater, and Oberg).";
 
     my $firstNode = $reader->nextElement;
     my $entireGraphXml = $reader->readOuterXml;
@@ -133,7 +134,9 @@ sub getNodesAndEdges{
             $degrees{$source}++;
             $degrees{$target}++;
         } elsif ($reader->name eq "att") { # Network attributes; we can stick stuff in here :D
-            $metadata{$node->getAttribute("name")} = $node->getAttribute("value");
+            my $attName = $node->getAttribute("name");
+            $metadata{$attName}->{value} = $node->getAttribute("value");
+            $metadata{$attName}->{type} = $node->getAttribute("type") || "string";
         }
     }
 
@@ -454,8 +457,8 @@ sub writeColorSsnMetadata {
 
     foreach my $mdName (keys %{$self->{metadata}}) {
         next if $mdName eq "title"; # part of the graph element
-        $writer->startTag("att", "name" => $mdName, "value" => $self->{metadata}->{$mdName}, "type" => "string");
-        $writer->endTag(  );
+        my $attType = exists $self->{metadata}->{$mdName}->{type} ? $self->{metadata}->{$mdName}->{type} : "string";
+        $writer->emptyTag("att", "name" => $mdName, "value" => $self->{metadata}->{$mdName}->{value}, "type" => $attType);
     }
 }
 
@@ -583,7 +586,7 @@ sub writeColorSsnEdges {
 
     foreach my $edge (@{$self->{edges}}) {
         $writer->startTag('edge', 'id' => $edge->getAttribute('id'), 'label' => $edge->getAttribute('label'), 'source' => $edge->getAttribute('source'), 'target' => $edge->getAttribute('target'));
-        foreach my $attribute ($edge->getElementsByTagName('att')) {
+        foreach my $attribute ($edge->getChildrenByTagName('att')) {
             if ($attribute->getAttribute('name') eq 'interaction' or $attribute->getAttribute('name')=~/rep-net/) {
                 #this tag causes problems and it is not needed, so we do not include it
             } else {
@@ -746,15 +749,21 @@ sub addFileActions {
     } else {
         $B->addAction("cat $info->{uniprot_node_data_path}/cluster_UniProt_IDs* > $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
     }
-    $B->addAction("sort $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted > $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt");
-    $B->addAction("rm $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
+    $B->addAction("if [[ -f $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted ]]; then");
+    $B->addAction("    sort $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted > $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt");
+    $B->addAction("    rm $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
+    $B->addAction("fi");
     $B->addAction("if [[ -f $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt.unsorted ]]; then");
     $B->addAction("    sort $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt.unsorted > $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt");
     $B->addAction("    rm $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt.unsorted");
+    $B->addAction("else");
+    $B->addAction("    rmdir $info->{uniref50_node_data_path}");
     $B->addAction("fi");
     $B->addAction("if [[ -f $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt.unsorted ]]; then");
     $B->addAction("    sort $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt.unsorted > $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt");
     $B->addAction("    rm $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt.unsorted");
+    $B->addAction("else");
+    $B->addAction("    rmdir $info->{uniref90_node_data_path}");
     $B->addAction("fi");
     
     $B->addAction("");
@@ -774,15 +783,19 @@ sub addFileActions {
 
     $B->addAction("zip -jq $info->{ssn_out_zip} $info->{ssn_out}") if $info->{ssn_out} and $info->{ssn_out_zip};
     $B->addAction("zip -jq -r $info->{uniprot_node_zip} $info->{uniprot_node_data_path}") if $info->{uniprot_node_zip} and $info->{uniprot_node_data_path};
-    $B->addAction("zip -jq -r $info->{uniref50_node_zip} $info->{uniref50_node_data_path}") if $info->{uniref50_node_zip} and $info->{uniref50_node_data_path};
-    $B->addAction("zip -jq -r $info->{uniref90_node_zip} $info->{uniref90_node_data_path}") if $info->{uniref90_node_zip} and $info->{uniref90_node_data_path};
+    $B->addAction("if [[ -f $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt ]]; then");
+    $B->addAction("    zip -jq -r $info->{uniref50_node_zip} $info->{uniref50_node_data_path}") if $info->{uniref50_node_zip} and $info->{uniref50_node_data_path};
+    $B->addAction("fi");
+    $B->addAction("if [[ -f $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt ]]; then");
+    $B->addAction("    zip -jq -r $info->{uniref90_node_zip} $info->{uniref90_node_data_path}") if $info->{uniref90_node_zip} and $info->{uniref90_node_data_path};
+    $B->addAction("fi");
     $B->addAction("zip -jq -r $info->{fasta_zip} $info->{fasta_data_path}") if $info->{fasta_data_path} and $info->{fasta_zip};
     $B->addAction("zip -jq $info->{gnn_zip} $info->{gnn}") if $info->{gnn} and $info->{gnn_zip};
     $B->addAction("zip -jq $info->{pfamhubfile_zip} $info->{pfamhubfile}") if $info->{pfamhubfile_zip} and $info->{pfamhubfile};
-    $B->addAction("zip -jq -r $info->{pfam_zip} $info->{pfam_dir}") if $info->{pfam_zip} and $info->{pfam_dir};
-    $B->addAction("zip -jq -r $info->{all_pfam_zip} $info->{all_pfam_dir}") if $info->{all_pfam_zip} and $info->{all_pfam_dir};
-    $B->addAction("zip -jq -r $info->{split_pfam_zip} $info->{split_pfam_dir}") if $info->{split_pfam_zip} and $info->{split_pfam_dir};
-    $B->addAction("zip -jq -r $info->{all_split_pfam_zip} $info->{all_split_pfam_dir}") if $info->{all_split_pfam_zip} and $info->{all_split_pfam_dir};
+    $B->addAction("zip -jq -r $info->{pfam_zip} $info->{pfam_dir} -i \*") if $info->{pfam_zip} and $info->{pfam_dir};
+    $B->addAction("zip -jq -r $info->{all_pfam_zip} $info->{all_pfam_dir} -i \*") if $info->{all_pfam_zip} and $info->{all_pfam_dir};
+    $B->addAction("zip -jq -r $info->{split_pfam_zip} $info->{split_pfam_dir} -i \*") if $info->{split_pfam_zip} and $info->{split_pfam_dir};
+    $B->addAction("zip -jq -r $info->{all_split_pfam_zip} $info->{all_split_pfam_dir} -i \*") if $info->{all_split_pfam_zip} and $info->{all_split_pfam_dir};
     $B->addAction("zip -jq -r $info->{none_zip} $info->{none_dir}") if $info->{none_zip} and $info->{none_dir};
     $B->addAction("zip -jq $info->{arrow_zip} $info->{arrow_file}") if $info->{arrow_zip} and $info->{arrow_file};
 }

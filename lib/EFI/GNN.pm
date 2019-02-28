@@ -19,6 +19,7 @@ use constant MAX_NB_SIZE => 20;
 use List::MoreUtils qw{apply uniq any};
 use List::Util qw(sum max);
 use Array::Utils qw(:all);
+use Data::Dumper;
 
 use base qw(EFI::GNN::Base);
 use EFI::GNN::Base;
@@ -517,7 +518,7 @@ sub saveGnnAttributes {
 
     # If this is a repnode network, there will be a child node named "ACC". If so, we need to wrap
     # all of the no matches, etc into a list rather than a simple attribute.
-    my @accIdNode = grep { $_ =~ /\S/ and exists $expandFields{$_->getAttribute('name')} } $node->getChildNodes;
+    my @accIdNode = grep { $_ =~ /\S/ and $_->nodeName eq "att" and exists $expandFields{$_->getAttribute('name')} } $node->getChildNodes;
     if (scalar @accIdNode) {
         my $accNode = $accIdNode[0];
         my @accIdAttrs = $accNode->findnodes("./*");
@@ -608,7 +609,7 @@ sub writePfamHubGnn {
             $self->writePfamQueryData($pfam, \@clusters, $clusterData, PFAM_THRESHOLD);
             $self->writePfamQueryData($pfam, \@clusters, $clusterData, PFAM_SPLIT);
         }
-        print "WRITING $pfam\n";
+        print "WRITING $pfam\n" if $self->{debug};
         $self->writePfamQueryData($pfam, \@allClusters, $clusterData, PFAM_ANY);
         $self->writePfamQueryData($pfam, \@allClusters, $clusterData, PFAM_ANY_SPLIT);
     }
@@ -844,6 +845,8 @@ sub writePfamNoneClusters {
     my $self = shift;
     my $outDir = shift;
     my $noneFamily = shift;
+    
+    open ALLNONE, ">$outDir/no_pfam_neighbors_all.txt";
 
     foreach my $clusterId (keys %$noneFamily) {
         my $clusterNum = $self->getClusterNumber($clusterId);
@@ -852,10 +855,13 @@ sub writePfamNoneClusters {
 
         foreach my $nodeId (keys %{ $noneFamily->{$clusterId} }) {
             print NONEFH "$nodeId\n";
+            print ALLNONE "$nodeId\n";
         }
 
         close NONEFH;
     }
+
+    close ALLNONE;
 }
 
 sub writeSsnStats {
@@ -881,7 +887,6 @@ sub writeSsnStats {
         my $rawIds = $self->getIdsInCluster($clusterNum, ALL_IDS);
         my @ids = sort @$rawIds;
         my $count = scalar @ids;
-        $numMetanodes += $count;
         push @metaIds, @ids;
 
         map { $idMap{$_} = $clusterNum } @ids;
@@ -891,6 +896,9 @@ sub writeSsnStats {
         $numClusters++ if $count > 1;
 
         $clusterSizes{$clusterNum} = $count;
+        
+        my $metaIds = $self->getIdsInCluster($clusterNum, METANODE_IDS); 
+        $numMetanodes += scalar @$metaIds;
     }
 
     my $seqSrc = exists $self->{has_uniref} ? $self->{has_uniref} : "UniProt";

@@ -85,8 +85,6 @@ sub writeArrowData {
         $dbh->do($sql);
     }
 
-    print Dumper($data);
-
     foreach my $id (sort keys %$data) {
         my $sql = $self->getInsertStatement($EFI::GNN::Arrows::AttributesTable, $data->{$id}->{attributes}, $dbh);
         $dbh->do($sql);

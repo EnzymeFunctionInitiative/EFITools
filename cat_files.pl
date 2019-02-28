@@ -32,8 +32,8 @@ foreach my $file (@files) {
     write_file($outputFile, {append => 1}, $text);
 }
 
-if (not scalar @files) { # no files
-    write_file($outputFile, "");
-}
+#if (not scalar @files) { # no files
+#    write_file($outputFile, "");
+#}
 
 

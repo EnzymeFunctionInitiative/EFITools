@@ -289,7 +289,7 @@ if ($hasParent) {
 timer("numberClusters");
 print "numbering the clusters\n";
 my ($useExistingNumber) = (0);
-my $ssnSequenceVersion = $util->getSequenceSource();
+my $ssnSeqSource = $util->getSequenceSource(); # uniprot, uniref50, or uniref90
 $util->numberClusters($useExistingNumber);
 my $ClusterIdMap = $util->getClusterIdMap(); # This is not to be used anywhere but in the sort function below.
 timer("numberClusters");
@@ -298,12 +298,13 @@ timer("idMapping");
 my $hasDomain = 0;
 if (not $skipIdMapping) {
     print "saving the cluster-protein ID mapping tables\n";
-    my ($uniprotMap, $uniprotDomainMap, $uniref50Map, $uniref90Map) = getClusterToIdMapping($dbh, $util, $ssnSequenceVersion);
+    my ($uniprotMap, $uniprotDomainMap, $uniref50Map, $uniref90Map, $singletonClusters) = getClusterToIdMapping($dbh, $util, $ssnSeqSource);
     $hasDomain = scalar keys %$uniprotDomainMap;
     saveClusterIdFiles(
         $uniprotMap, $uniprotDomainMap, $uniref50Map, $uniref90Map,
         $uniprotIdDir, $uniref50IdDir, $uniref90IdDir,
         $uniprotSingletonsFile, $uniref50SingletonsFile, $uniref90SingletonsFile,
+        $singletonClusters
     );
 }
 $idOutputDomainFile = "" if not $hasDomain;
@@ -323,7 +324,7 @@ if (not $colorOnly) { # and not $skipIdMapping) {
         # The cluster number ($data->{accessionData}->{$accession}->{attributes}->{cluster_num}) is updated with new cluster number in this function.
         ($clusterNodes, $withNeighbors, $noMatchMap, $noNeighborMap, $genomeIds, $noneFamily, $accessionData) =
             $util->filterClusterHubData($data, $neighborhoodSize);
-        $allNbAccDataForArrows = $accessionData;
+        $allNbAccDataForArrows = $data->{accessionData};
     } else {
         print "computing cluster hub/neighbor data\n";
         my ($allNbAccessionData, $allPfamData);
@@ -523,23 +524,27 @@ sub hubCountSortFn {
 sub getClusterToIdMapping {
     my $dbh = shift;
     my $util = shift;
-    my $ssnSequenceVersion = shift;
+    my $ssnSeqSource = shift;
+
+    $ssnSeqSource =~ s/\D//g; # remove all non digits
 
     my @clusterNumbers = $util->getClusterNumbers();
 
     # Get a mapping of IDs to cluster numbers.
-    my (%uniref50IdsClusterMap, %uniref90IdsClusterMap, %uniprotIdsClusterMap, %uniprotDomainIdsClusterMap);
+    my (%uniref50IdsClusterMap, %uniref90IdsClusterMap, %uniprotIdsClusterMap, %uniprotDomainIdsClusterMap, %singletonClusters);
     foreach my $clNum (@clusterNumbers) {
         my $nodeIds = $util->getIdsInCluster($clNum, ALL_IDS);
-        die "num nodes in cluster 126: " . scalar @$nodeIds if ($debug);
+        $singletonClusters{$clNum} = 1 if scalar @$nodeIds == 1;
         foreach my $id (@$nodeIds) {
             (my $proteinId = $id) =~ s/:\d+:\d+$//;
-            my $sql = "SELECT * FROM uniref WHERE accession = '$proteinId'";
-            my $sth = $dbh->prepare($sql);
-            $sth->execute;
-            while (my $row = $sth->fetchrow_hashref) {
-                $uniref50IdsClusterMap{$row->{uniref50_seed}} = $clNum;
-                $uniref90IdsClusterMap{$row->{uniref90_seed}} = $clNum;
+            if ($ssnSeqSource) {
+                my $sql = "SELECT * FROM uniref WHERE accession = '$proteinId'";
+                my $sth = $dbh->prepare($sql);
+                $sth->execute;
+                while (my $row = $sth->fetchrow_hashref) {
+                    $uniref50IdsClusterMap{$row->{uniref50_seed}} = $clNum if $ssnSeqSource < 90;
+                    $uniref90IdsClusterMap{$row->{uniref90_seed}} = $clNum if $ssnSeqSource >= 50;
+                }
             }
             $uniprotIdsClusterMap{$proteinId} = $clNum;
             $uniprotDomainIdsClusterMap{$id} = $clNum if $id ne $proteinId;
@@ -562,7 +567,7 @@ sub getClusterToIdMapping {
         }
     }
 
-    return \%uniprotIdsMap, \%uniprotDomainIdsMap, \%uniref50ClusterIdsMap, \%uniref90ClusterIdsMap;
+    return \%uniprotIdsMap, \%uniprotDomainIdsMap, \%uniref50ClusterIdsMap, \%uniref90ClusterIdsMap, \%singletonClusters;
 }
 
 
@@ -577,6 +582,7 @@ sub saveClusterIdFiles {
     my $uniprotSingletonsFile = shift;
     my $uniref50SingletonsFile = shift;
     my $uniref90SingletonsFile = shift;
+    my $singletonClusters = shift;
 
     my $hasDomain = scalar keys %$uniprotDomainMap;
 
@@ -593,22 +599,30 @@ sub saveClusterIdFiles {
 
     foreach my $info (@mappingInfo) {
         my ($mapping, $filename, $dirPath, $singlesFile, $isDomain) = @$info;
+
+        my @clusterNumbers = sort {$a <=> $b} keys %$mapping;
+
+        next if not scalar @clusterNumbers;
         
         open SINGLES, ">", "$dirPath/singleton_${filename}_IDs.txt";
 
-        foreach my $clNum (sort {$a <=> $b} keys %$mapping) {
+        foreach my $clNum (@clusterNumbers) {
             my @accIds = sort @{$mapping->{$clNum}};
-            if (scalar @accIds > 1) {
+            if (not exists $singletonClusters->{$clNum}) {
+            #if (scalar @accIds > 1) {
                 open FH, ">", "$dirPath/cluster_${filename}_IDs_${clNum}.txt";
                 foreach my $accId (@accIds) {
                     print FH "$accId\n";
                 }
                 close FH;
-            } elsif (scalar @accIds == 1) {
+            #} elsif (scalar @accIds == 1) {
+            } else {
                 my $accId = $accIds[0];
                 print SINGLES "$accId\n";
             }
         }
+
+        close SINGLES;
     }
 }
 
