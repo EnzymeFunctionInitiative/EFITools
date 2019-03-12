@@ -383,6 +383,10 @@ sub filterClusterHubData {
         }
     }
 
+    foreach my $accId (keys %{$data->{accessionData}}) {
+        delete $data->{accessionData}->{$accId} if not exists $accessionData->{$accId};
+    }
+
     return $clusterData, $withNeighbors, $noMatches, $noNeighbors, $genomeIds, $noneFamily, $accessionData;
 }
 
@@ -431,8 +435,11 @@ sub writeClusterHubGnn {
     my $clusterData = shift;
     my $withneighbors = shift;
 
-    my $title = (exists $self->{metadata}->{title} and $self->{metadata}->{title}) ? $self->{metadata}->{title} : "SSN Cluster";
+    my $title = $self->getMetadata("title");
+    $title = "SSN Cluster" if not $title;
     $gnnwriter->startTag('graph', 'label' => "$title GNN", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
+
+    print Dumper($self->{network}->{singletons});
 
     foreach my $clusterId (sort {$a <=> $b} keys %$clusterData){
         my $numQueryableSsns = scalar @{ $withneighbors->{$clusterId} };
@@ -440,12 +447,12 @@ sub writeClusterHubGnn {
         my $totalSsns = scalar @$allClusterIds;
         my $clusterNum = $self->getClusterNumber($clusterId);
 
-        if ($self->isSingleton($clusterId)) {
-            print "excluding hub node $clusterId, simplenumber " . $clusterNum . " because it's a singleton hub\n" if $self->{debug};
+        if ($self->isSingleton($clusterId, INTERNAL)) {
+            print "excluding hub node $clusterId, simplenumber " . $clusterNum . " because it's a singleton $numQueryableSsns hub\n";
             next;
         }
         if ($numQueryableSsns < 2) {
-            print "excluding hub node $clusterId, simplenumber " . $clusterNum . " because it only has 1 queryable ssn.\n" if $self->{debug};
+            print "excluding hub node $clusterId, simplenumber " . $clusterNum . " because it only has 1 queryable ssn.\n";
             next;
         }
 
@@ -531,6 +538,7 @@ sub saveGnnAttributes {
 
         foreach my $accIdAttr (@accIdAttrs) {
             (my $accId = $accIdAttr->getAttribute('value')) =~ s/:\d+:\d+$//;
+            print "NONB: $accId\n" if not exists $gnnData->{noNeighborMap}->{$accId} or not defined $gnnData->{noNeighborMap}->{$accId};
             my $hasNeigh = (not exists $gnnData->{noNeighborMap}->{$accId} or $gnnData->{noNeighborMap}->{$accId} == 1) ?
                                     "false" : $gnnData->{noNeighborMap}->{$accId} == -1 ? "n/a" : "true";
             push @hasNeighbors, $hasNeigh;
@@ -580,7 +588,8 @@ sub writePfamHubGnn {
 
     my @pfamHubs=uniq sort map {keys %{${$clusterData}{$_}}} keys %{$clusterData};
 
-    my $title = (exists $self->{metadata}->{title} and $self->{metadata}->{title}) ? $self->{metadata}->{title} : "Pfam";
+    my $title = $self->getMetadata("title");
+    $title = "Pfam" if not $title;
     $writer->startTag('graph', 'label' => "$title GNN", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
 
     foreach my $pfam (@pfamHubs){
@@ -900,6 +909,9 @@ sub writeSsnStats {
         my $metaIds = $self->getIdsInCluster($clusterNum, METANODE_IDS); 
         $numMetanodes += scalar @$metaIds;
     }
+
+    # Include singletons in the grand total
+    $numAccessions += $numSingles;
 
     my $seqSrc = exists $self->{has_uniref} ? $self->{has_uniref} : "UniProt";
 

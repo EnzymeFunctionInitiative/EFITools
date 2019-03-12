@@ -24,9 +24,6 @@ use constant INTERNAL => 8;         # Internal cluster ID, not cluster number
 use Exporter 'import';
 our @EXPORT = qw(median writeGnnField writeGnnListField ALL_IDS METANODE_IDS NO_DOMAIN INTERNAL);
 
-our $ClusterUniProtIDFilePattern = "cluster_UniProt_IDs_";
-our $ClusterUniProtIDDomainFilePattern = "cluster_UniProt_Domain_IDs_";
-our $SingletonUniProtIDFilePattern = "singleton_UniProt_IDs.txt";
 
 
 sub new {
@@ -105,8 +102,8 @@ sub getNodesAndEdges{
     my %metadata;
 
     my $graphname = $reader->getAttribute('label');
-    $metadata{title}->{value} = $graphname;
-    $metadata{source}->{value} = "This network was created by the EFI-GNT (Gerlt, Zallot, Davidson, Slater, and Oberg).";
+    $metadata{title} = {value => $graphname, type => "string"};
+    $metadata{source} = {value => "This network was created by the EFI-GNT (Gerlt, Zallot, Davidson, Slater, and Oberg).", type => "string"};
 
     my $firstNode = $reader->nextElement;
     my $entireGraphXml = $reader->readOuterXml;
@@ -291,7 +288,7 @@ sub getClusters {
         foreach my $nodeId (sort keys %$nodenames) {
             my $nodeLabel = $nodenames->{$nodeId};
             if (not exists $constellations->{$nodeLabel}) {
-                print "Adding singleton $nodeLabel from $nodeId\n" if $self->{debug};
+                print "Adding singleton $nodeLabel from $nodeId ($newnode)\n";
                 $supernodes->{$newnode} = [$nodeLabel];
                 $singletons->{$newnode} = $nodeLabel;
                 $constellations->{$nodeLabel} = $newnode;
@@ -318,15 +315,17 @@ sub numberClusters {
     my $metanodeMap = $self->{network}->{metanode_map}; # shortcut
 
     my @supernodeKeys = keys %$supernodes;
-    my @clusterIds = sort { my $bs = scalar map { @{$metanodeMap->{$_}} } @{$supernodes->{$b}};
-                                  my $as = scalar map { @{$metanodeMap->{$_}} } @{$supernodes->{$a}};
-                                  my $c = $bs <=> $as;
-                                  $c = $a <=> $b if not $c; # handle equals case
-                                  $c } @supernodeKeys;
+    my @clusterIds = sort {
+            my $as = scalar @{$self->getIdsInCluster($a, ALL_IDS|INTERNAL)};
+            my $bs = scalar @{$self->getIdsInCluster($b, ALL_IDS|INTERNAL)};
+            my $c = $bs <=> $as;
+            $c = $a <=> $b if not $c; # handle equals case
+            $c }
+        @supernodeKeys;
 
     # The sort is to sort by size, descending order
     foreach my $clusterId (@clusterIds) {
-        my $clusterSize = scalar @{$supernodes->{$clusterId}};
+        my $clusterSize = scalar @{$self->getIdsInCluster($clusterId, ALL_IDS|INTERNAL)};
         my $existingPhrase = "";
         my $clusterNum = $simpleNumber;
         if ($useExistingNumber) {
@@ -337,7 +336,7 @@ sub numberClusters {
             }
         }
 
-        print "Supernode $clusterId, $clusterSize original accessions, simplenumber $simpleNumber $existingPhrase\n" if $self->{debug};
+        print "Supernode $clusterId, $clusterSize original accessions, simplenumber $simpleNumber $existingPhrase\n"; # if $self->{debug};
 
         $numbermatch{$clusterId} = $simpleNumber;
         $idmap{$simpleNumber} = $clusterId;
@@ -389,7 +388,7 @@ sub isSingleton {
         $clusterId = $self->{network}->{cluster_num_map}->{$clusterNum};
     }
 
-    return exists $self->{network}->{singletons}->{$clusterId};
+    return not exists $self->{network}->{cluster_id_map}->{$clusterId};
 }
 
 sub getIdsInCluster {
@@ -430,12 +429,29 @@ sub getAllIdsInCluster {
     return $self->getIdsInCluster(ALL_IDS);
 }
 
+sub getMetadata {
+    my $self = shift;
+    my $key = shift;
+
+    if ($key) {
+        if (exists $self->{metadata}->{$key}) {
+            return $self->{metadata}->{$key}->{value};
+        } else {
+            return "";
+        }
+    } else {
+        my @md = map { {name => $_, value => $self->{metadata}->{$_}->{value}, type => $self->{metdata}->{$_}->{type}} } keys %{$self->{metadata}};
+        return \@md;
+    }
+}
+
 sub writeColorSsn {
     my $self = shift;
     my $writer = shift;
     my $gnnData = shift;
 
-    my $title = exists $self->{metadata}->{title} ? $self->{metadata}->{title} : "network";
+    my $title = $self->getMetadata("title");
+    $title = "network" if not $title;
 
     $writer->startTag('graph', 'label' => "$title colorized", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
     $self->writeColorSsnMetadata($writer);
@@ -455,10 +471,12 @@ sub writeColorSsnMetadata {
     my $self = shift;
     my $writer = shift;
 
-    foreach my $mdName (keys %{$self->{metadata}}) {
-        next if $mdName eq "title"; # part of the graph element
-        my $attType = exists $self->{metadata}->{$mdName}->{type} ? $self->{metadata}->{$mdName}->{type} : "string";
-        $writer->emptyTag("att", "name" => $mdName, "value" => $self->{metadata}->{$mdName}->{value}, "type" => $attType);
+    foreach my $md (@{$self->getMetadata()}) {
+        next if $md->{name} eq "title"; # part of the graph element
+        my $mdName = $md->{name};
+        my $mdValue = $md->{value};
+        my $attType = $md->{type};
+        $writer->emptyTag("att", "name" => $mdName, "value" => $mdValue, "type" => $attType);
     }
 }
 
@@ -783,6 +801,9 @@ sub addFileActions {
 
     $B->addAction("zip -jq $info->{ssn_out_zip} $info->{ssn_out}") if $info->{ssn_out} and $info->{ssn_out_zip};
     $B->addAction("zip -jq -r $info->{uniprot_node_zip} $info->{uniprot_node_data_path}") if $info->{uniprot_node_zip} and $info->{uniprot_node_data_path};
+    $B->addAction("if [[ -d $info->{uniprot_domain_node_data_path} ]]; then");
+    $B->addAction("    zip -jq -r $info->{uniprot_domain_node_zip} $info->{uniprot_domain_node_data_path} -i '*'") if $info->{uniprot_domain_node_zip} and $info->{uniprot_domain_node_data_path};
+    $B->addAction("fi");
     $B->addAction("if [[ -f $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt ]]; then");
     $B->addAction("    zip -jq -r $info->{uniref50_node_zip} $info->{uniref50_node_data_path}") if $info->{uniref50_node_zip} and $info->{uniref50_node_data_path};
     $B->addAction("fi");
@@ -792,10 +813,10 @@ sub addFileActions {
     $B->addAction("zip -jq -r $info->{fasta_zip} $info->{fasta_data_path}") if $info->{fasta_data_path} and $info->{fasta_zip};
     $B->addAction("zip -jq $info->{gnn_zip} $info->{gnn}") if $info->{gnn} and $info->{gnn_zip};
     $B->addAction("zip -jq $info->{pfamhubfile_zip} $info->{pfamhubfile}") if $info->{pfamhubfile_zip} and $info->{pfamhubfile};
-    $B->addAction("zip -jq -r $info->{pfam_zip} $info->{pfam_dir} -i \*") if $info->{pfam_zip} and $info->{pfam_dir};
-    $B->addAction("zip -jq -r $info->{all_pfam_zip} $info->{all_pfam_dir} -i \*") if $info->{all_pfam_zip} and $info->{all_pfam_dir};
-    $B->addAction("zip -jq -r $info->{split_pfam_zip} $info->{split_pfam_dir} -i \*") if $info->{split_pfam_zip} and $info->{split_pfam_dir};
-    $B->addAction("zip -jq -r $info->{all_split_pfam_zip} $info->{all_split_pfam_dir} -i \*") if $info->{all_split_pfam_zip} and $info->{all_split_pfam_dir};
+    $B->addAction("zip -jq -r $info->{pfam_zip} $info->{pfam_dir} -i '*'") if $info->{pfam_zip} and $info->{pfam_dir};
+    $B->addAction("zip -jq -r $info->{all_pfam_zip} $info->{all_pfam_dir} -i '*'") if $info->{all_pfam_zip} and $info->{all_pfam_dir};
+    $B->addAction("zip -jq -r $info->{split_pfam_zip} $info->{split_pfam_dir} -i '*'") if $info->{split_pfam_zip} and $info->{split_pfam_dir};
+    $B->addAction("zip -jq -r $info->{all_split_pfam_zip} $info->{all_split_pfam_dir} -i '*'") if $info->{all_split_pfam_zip} and $info->{all_split_pfam_dir};
     $B->addAction("zip -jq -r $info->{none_zip} $info->{none_dir}") if $info->{none_zip} and $info->{none_dir};
     $B->addAction("zip -jq $info->{arrow_zip} $info->{arrow_file}") if $info->{arrow_zip} and $info->{arrow_file};
 }

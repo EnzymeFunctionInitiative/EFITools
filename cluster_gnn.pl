@@ -51,7 +51,7 @@ use EFI::GNN::AnnotationUtil;
 
 my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $cooccurrence, $statsFile, $pfamhubfile, $configFile,
     $pfamDir, $noneDir, $idOutputFile, $idOutputDomainFile, $arrowDataFile, $dontUseNewNeighborMethod,
-    $uniprotIdDir, $uniref50IdDir, $uniref90IdDir,
+    $uniprotIdDir, $uniprotDomainIdDir, $uniref50IdDir, $uniref90IdDir,
     $pfamCoocTable, $hubCountFile, $allPfamDir, $splitPfamDir, $allSplitPfamDir, $clusterSizeFile, $swissprotClustersDescFile,
     $swissprotSinglesDescFile, $parentDir, $renumberClusters, $disableCache, $skipIdMapping, $skipOrganism, $debug);
 
@@ -73,6 +73,7 @@ my $result = GetOptions(
     "split-pfam-dir=s"      => \$splitPfamDir, # like -pfam-dir, but the PFAMs are in individual files
     "all-split-pfam-dir=s"  => \$allSplitPfamDir, # like -all-pfam-dir, but the PFAMs are in individual files
     "uniprot-id-dir=s"      => \$uniprotIdDir,
+    "uniprot-id-domain-dir=s"   => \$uniprotDomainIdDir,
     "uniref50-id-dir=s"     => \$uniref50IdDir,
     "uniref90-id-dir=s"     => \$uniref90IdDir,
     "none-dir=s"            => \$noneDir,
@@ -194,6 +195,7 @@ $debug = defined $debug ? 1 : 0;
 
 my $idBaseOutputDir = $ENV{PWD};
 $uniprotIdDir = "$idBaseOutputDir/UniProt" if not $uniprotIdDir;
+$uniprotDomainIdDir = "$idBaseOutputDir/UniProt_Domain" if not $uniprotDomainIdDir;
 $uniref50IdDir = "$idBaseOutputDir/UniRef50" if not $uniref50IdDir;
 $uniref90IdDir = "$idBaseOutputDir/UniRef90" if not $uniref90IdDir;
 
@@ -218,14 +220,12 @@ $gnnArgs{pfam_dir} = $pfamDir if $pfamDir and -d $pfamDir;
 $gnnArgs{all_pfam_dir} = $allPfamDir if $allPfamDir and -d $allPfamDir;
 $gnnArgs{split_pfam_dir} = $splitPfamDir if $splitPfamDir and -d $splitPfamDir;
 $gnnArgs{all_split_pfam_dir} = $allSplitPfamDir if $allSplitPfamDir and -d $allSplitPfamDir;
-#$gnnArgs{uniprot_id_dir} = $uniprotIdDir if $uniprotIdDir and -d $uniprotIdDir;
-#$gnnArgs{uniref50_id_dir} = $uniref50IdDir if $uniref50IdDir and -d $uniref50IdDir;
-#$gnnArgs{uniref90_id_dir} = $uniref90IdDir if $uniref90IdDir and -d $uniref90IdDir;
 $gnnArgs{color_util} = $colorUtil;
 
 
-my ($uniprotSingletonsFile, $uniref50SingletonsFile, $uniref90SingletonsFile);
+my ($uniprotSingletonsFile, $uniprotDomainSingletonsFile, $uniref50SingletonsFile, $uniref90SingletonsFile);
 $uniprotSingletonsFile = "$uniprotIdDir/singletons_UniProt.txt" if $uniprotIdDir and $idOutputFile;
+$uniprotDomainSingletonsFile = "$uniprotDomainIdDir/singletons_UniProt_Domain.txt" if $uniprotDomainIdDir and $idOutputFile;
 $uniref50SingletonsFile = "$uniref50IdDir/singletons_UniRef50.txt" if $uniref50IdDir and $idOutputFile;
 $uniref90SingletonsFile = "$uniref90IdDir/singletons_UniRef90.txt" if $uniref90IdDir and $idOutputFile;
 
@@ -302,7 +302,7 @@ if (not $skipIdMapping) {
     $hasDomain = scalar keys %$uniprotDomainMap;
     saveClusterIdFiles(
         $uniprotMap, $uniprotDomainMap, $uniref50Map, $uniref90Map,
-        $uniprotIdDir, $uniref50IdDir, $uniref90IdDir,
+        $uniprotIdDir, $uniprotDomainIdDir, $uniref50IdDir, $uniref90IdDir,
         $uniprotSingletonsFile, $uniref50SingletonsFile, $uniref90SingletonsFile,
         $singletonClusters
     );
@@ -324,7 +324,8 @@ if (not $colorOnly) { # and not $skipIdMapping) {
         # The cluster number ($data->{accessionData}->{$accession}->{attributes}->{cluster_num}) is updated with new cluster number in this function.
         ($clusterNodes, $withNeighbors, $noMatchMap, $noNeighborMap, $genomeIds, $noneFamily, $accessionData) =
             $util->filterClusterHubData($data, $neighborhoodSize);
-        $allNbAccDataForArrows = $data->{accessionData};
+        $allNbAccDataForArrows = $accessionData;
+        #$allNbAccDataForArrows = $data->{accessionData};
     } else {
         print "computing cluster hub/neighbor data\n";
         my ($allNbAccessionData, $allPfamData);
@@ -577,6 +578,7 @@ sub saveClusterIdFiles {
     my $uniref50Map = shift;
     my $uniref90Map = shift;
     my $uniprotIdDir = shift;
+    my $uniprotDomainIdDir = shift;
     my $uniref50IdDir = shift;
     my $uniref90IdDir = shift;
     my $uniprotSingletonsFile = shift;
@@ -592,7 +594,10 @@ sub saveClusterIdFiles {
     );
     if ($hasDomain) {
         unshift @mappingInfo, [$uniprotMap, "UniProt", $uniprotIdDir, $uniprotSingletonsFile, 0];
-        unshift @mappingInfo, [$uniprotDomainMap, "UniProt_Domain", $uniprotIdDir, $uniprotSingletonsFile, 1];
+        unshift @mappingInfo, [$uniprotDomainMap, "UniProt_Domain", $uniprotDomainIdDir, $uniprotSingletonsFile, 1];
+        mkdir $uniprotDomainIdDir
+                or die "Unable to create $uniprotDomainIdDir: $!"
+                    if $uniprotDomainIdDir and not -d $uniprotDomainIdDir;
     } else {
         unshift @mappingInfo, [$uniprotMap, "UniProt", $uniprotIdDir, $uniprotSingletonsFile, 1];
     }

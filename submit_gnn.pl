@@ -20,7 +20,7 @@ use EFI::GNN::Base;
 
 my ($ssnIn, $nbSize, $warningFile, $gnn, $ssnOut, $cooc, $stats, $pfamHubFile);
 my ($pfamDir, $pfamDirZip, $allPfamDir, $allPfamDirZip, $splitPfamDir, $splitPfamDirZip, $allSplitPfamDir, $allSplitPfamDirZip);
-my ($uniprotIdZip, $uniref50IdZip, $uniref90IdZip, $idOutputFile, $idOutputDomainFile, $fastaDir, $fastaZip, $noneDir, $noneZip);
+my ($uniprotIdZip, $uniprotIdDomainZip, $uniref50IdZip, $uniref90IdZip, $idOutputFile, $idOutputDomainFile, $fastaDir, $fastaZip, $noneDir, $noneZip);
 my ($dontUseNewNeighborMethod);
 my ($scheduler, $dryRun, $queue, $gnnOnly, $noSubmit, $jobId, $arrowDataFile, $coocTableFile);
 my ($hubCountFile, $clusterSizeFile, $swissprotClustersDescFile, $swissprotSinglesDescFile, $parentDir, $configFile);
@@ -47,6 +47,7 @@ my $result = GetOptions(
     "all-split-pfam-dir=s"  => \$allSplitPfamDir,
     "all-split-pfam-zip=s"  => \$allSplitPfamDirZip, # only used for GNT calls, non batch
     "uniprot-id-zip=s"      => \$uniprotIdZip, # only used for GNT calls, non batch
+    "uniprot-id-domain-zip=s"   => \$uniprotIdDomainZip, # only used for GNT calls, non batch
     "uniref50-id-zip=s"     => \$uniref50IdZip, # only used for GNT calls, non batch
     "uniref90-id-zip=s"     => \$uniref90IdZip, # only used for GNT calls, non batch
     "id-out=s"              => \$idOutputFile,
@@ -229,6 +230,7 @@ unless($nbSize>0){
 my $outputDir = $ENV{PWD};
 my $clusterDataPath = "$outputDir/cluster-data";
 my $uniprotNodeDataPath     = "$clusterDataPath/uniprot-nodes";
+my $uniprotDomainNodeDataPath   = "$clusterDataPath/uniprot-domain-nodes";
 my $uniref50NodeDataPath    = "$clusterDataPath/uniref50-nodes";
 my $uniref90NodeDataPath    = "$clusterDataPath/uniref90-nodes";
 
@@ -316,6 +318,7 @@ if ($fullGntRun) {
         "-split-pfam-dir \"$splitPfamDir\" " .
         "-all-split-pfam-dir \"$allSplitPfamDir\" " .
         "-uniprot-id-dir $uniprotNodeDataPath " .
+        "-uniprot-id-domain-dir $uniprotDomainNodeDataPath " .
         "-uniref50-id-dir $uniref50NodeDataPath " .
         "-uniref90-id-dir $uniref90NodeDataPath " .
         "-id-out \"$idOutputFile\" " .
@@ -331,6 +334,8 @@ my $info = {
     color_only => 0,
     uniprot_node_data_path => $uniprotNodeDataPath,
     uniprot_node_zip => $uniprotIdZip,
+    uniprot_domain_node_data_path => $uniprotDomainNodeDataPath,
+    uniprot_domain_node_zip => $uniprotIdDomainZip,
     uniref50_node_data_path => $uniref50NodeDataPath,
     uniref50_node_zip => $uniref50IdZip,
     uniref90_node_data_path => $uniref90NodeDataPath,

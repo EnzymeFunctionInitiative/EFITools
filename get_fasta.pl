@@ -60,11 +60,11 @@ $allFastaFile = "$fastaDir/all.fasta" if not $allFastaFile;
 
 my $pattern;
 my $globPattern;
-my $singletonPattern = $EFI::GNN::Base::SingletonUniProtIDFilePattern;
+my $singletonPattern = "singleton_UniProt_IDs.txt";
 if ($useAllFiles) {
     $globPattern = "*.txt";
 } else {
-    $pattern = $EFI::GNN::Base::ClusterUniProtIDFilePattern;
+    $pattern = "cluster_UniProt_*IDs_";
     $globPattern = "$pattern*.txt";
 }
 
