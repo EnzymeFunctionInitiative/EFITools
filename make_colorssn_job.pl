@@ -17,10 +17,9 @@ use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm);
 use EFI::Config;
 use EFI::GNN::Base;
-use EFI::JobConfig;
 
 
-my ($ssnIn, $nbSize, $ssnOut, $cooc, $outputDir, $scheduler, $dryRun, $queue, $mapDirName, $jobId);
+my ($ssnIn, $nbSize, $ssnOut, $cooc, $outputDir, $scheduler, $dryRun, $queue, $jobId);
 my ($statsFile, $clusterSizeFile, $swissprotClustersDescFile, $swissprotSinglesDescFile);
 my ($jobConfigFile, $domainMapFileName, $mapFileName);
 my $result = GetOptions(
@@ -31,7 +30,6 @@ my $result = GetOptions(
     "dry-run"                   => \$dryRun,
     "queue=s"                   => \$queue,
     "job-id=s"                  => \$jobId,
-    "map-dir-name=s"            => \$mapDirName,
     "map-file-name=s"           => \$mapFileName,
     "domain-map-file-name=s"    => \$domainMapFileName,
     "stats=s"                   => \$statsFile,
@@ -76,6 +74,7 @@ if (not exists $ENV{EFICONFIG}) {
 }
 my $configFile = $ENV{EFICONFIG};
 
+$ssnIn = "$ENV{PWD}/$ssnIn" if $ssnIn and $ssnIn !~ m/^\//;
 if (not $ssnIn or not -s $ssnIn) {
     $ssnIn = "" if not $ssnIn;
     die "-ssnin $ssnIn does not exist or has a zero size\n$usage";
@@ -97,7 +96,7 @@ if ($ssnInZip =~ /\.zip$/i) {
     $ssnIn =~ s/\.zip$/.xgmml/i;
 }
 
-$mapDirName                 = "cluster-data"                    if not $mapDirName;
+$outputDir                  = "output"                          if not $outputDir;
 $mapFileName                = "mapping_table.txt"               if not $mapFileName;
 $domainMapFileName          = "domain_mapping_table.txt"        if not $domainMapFileName;
 $jobId                      = ""                                if not $jobId;
@@ -109,28 +108,35 @@ $swissprotSinglesDescFile   = "swissprot_singletons_desc.txt"   if not $swisspro
 my $jobNamePrefix = $jobId ? "${jobId}_" : "";
 
 
-my $outputPath              = $ENV{PWD} . "/$outputDir";
-my $clusterDataPath         = "$outputPath/$mapDirName";
-my $uniprotNodeDataPath     = "$clusterDataPath/uniprot-nodes";
-my $uniref50NodeDataPath    = "$clusterDataPath/uniref50-nodes";
-my $uniref90NodeDataPath    = "$clusterDataPath/uniref90-nodes";
-my $fastaDataPath           = "$clusterDataPath/fasta";
-my $allFastaFile            = "$fastaDataPath/all.fasta";
-my $singletonsFastaFile     = "$fastaDataPath/singletons.fasta";
-my $inputSeqsFile           = "$clusterDataPath/sequences.fasta";
+my $outputPath                  = $ENV{PWD} . "/$outputDir";
+my $clusterDataPath             = "cluster-data";
+my $uniprotNodeDataDir          = "$clusterDataPath/uniprot-nodes";
+my $uniprotDomainNodeDataDir    = "$clusterDataPath/uniprot-domain-nodes";
+my $uniref50NodeDataDir         = "$clusterDataPath/uniref50-nodes";
+my $uniref90NodeDataDir         = "$clusterDataPath/uniref90-nodes";
+my $fastaDataPath               = "$clusterDataPath/fasta";
+my $allFastaFile                = "$fastaDataPath/all.fasta";
+my $singletonsFastaFile         = "$fastaDataPath/singletons.fasta";
+my $inputSeqsFile               = "$clusterDataPath/sequences.fasta";
 
 my $uniprotNodeDataZip = "$outputPath/${ssnName}_UniProt_IDs.zip";
+my $uniprotDomainNodeDataZip = "$outputPath/${ssnName}_UniProt_Domain_IDs.zip";
 my $uniref50NodeDataZip = "$outputPath/${ssnName}_UniRef50_IDs.zip";
 my $uniref90NodeDataZip = "$outputPath/${ssnName}_UniRef90_IDs.zip";
 my $fastaZip = "$outputPath/${ssnName}_FASTA.zip";
 
 # The if statements apply to the mkdir cmd, not the die().
-mkdir $outputPath               or die "Unable to create output directory $outputPath: $!"                  if not -d $outputPath;
-mkdir $clusterDataPath          or die "Unable to create output cluster data path $clusterDataPath: $!"     if not -d $clusterDataPath;
-mkdir $uniprotNodeDataPath      or die "Unable to create output node data path $uniprotNodeDataPath: $!"    if not -d $uniprotNodeDataPath;
-mkdir $uniref50NodeDataPath     or die "Unable to create output node data path $uniref50NodeDataPath: $!"   if not -d $uniref50NodeDataPath;
-mkdir $uniref90NodeDataPath     or die "Unable to create output node data path $uniref90NodeDataPath: $!"   if not -d $uniref90NodeDataPath;
-mkdir $fastaDataPath            or die "Unable to create output fasta data path $fastaDataPath: $!"         if not -d $fastaDataPath;
+my $mkPath = sub {
+   my $dir = "$outputPath/$_[0]";
+   mkdir $dir or die "Unable to create output dir $dir: $!" if not -d $dir;
+};
+mkdir $outputPath or die "Unable to create output directory $outputPath: $!" if not -d $outputPath;
+&$mkPath($clusterDataPath);
+&$mkPath($uniprotNodeDataDir);
+&$mkPath($uniprotDomainNodeDataDir);
+&$mkPath($uniref50NodeDataDir);
+&$mkPath($uniref90NodeDataDir);
+&$mkPath($fastaDataPath);
 
 
 my $fileSize = 0;
@@ -152,34 +158,42 @@ my $schedType = "torque";
 $schedType = "slurm" if (defined($scheduler) and $scheduler eq "slurm") or (not defined($scheduler) and usesSlurm());
 my $SS = new EFI::SchedulerApi(type => $schedType, queue => $queue, resource => [1, 1], dryrun => $dryRun);
 
+my $absPath = sub {
+    return $_[0] =~ m/^\// ? $_[0] : "$outputPath/$_[0]";
+};
 
 my $fileInfo = {
     color_only => 1,
-    uniprot_node_data_path => $uniprotNodeDataPath,
-    uniprot_node_zip => $uniprotNodeDataZip,
-    uniref50_node_data_path => $uniref50NodeDataPath,
-    uniref50_node_zip => $uniref50NodeDataZip,
-    uniref90_node_data_path => $uniref90NodeDataPath,
-    uniref90_node_zip => $uniref90NodeDataZip,
-    fasta_data_path => $fastaDataPath,
-    fasta_zip => $fastaZip,
-    fasta_tool_path => "$gntPath/get_fasta.pl",
-    cat_tool_path => "$gntPath/cat_files.pl",
-    ssn_out => "$outputPath/$ssnOut",
-    ssn_out_zip => "$outputPath/$ssnOutZip",
     config_file => $configFile,
     tool_path => $gntPath,
-    all_fasta_file => $allFastaFile,
-    singletons_file => $singletonsFastaFile,
+    fasta_tool_path => "$gntPath/get_fasta.pl",
+    cat_tool_path => "$gntPath/cat_files.pl",
+
+    uniprot_node_data_dir => &$absPath($uniprotNodeDataDir),
+    uniprot_domain_node_data_dir => &$absPath($uniprotDomainNodeDataDir),
+    uniref50_node_data_dir => &$absPath($uniref50NodeDataDir),
+    uniref90_node_data_dir => &$absPath($uniref90NodeDataDir),
+    fasta_data_dir => &$absPath($fastaDataPath),
+    
+    uniprot_node_zip => $uniprotNodeDataZip,
+    uniprot_domain_node_zip => $uniprotDomainNodeDataZip,
+    uniref50_node_zip => $uniref50NodeDataZip,
+    uniref90_node_zip => $uniref90NodeDataZip,
+    fasta_zip => $fastaZip,
+
+    ssn_out => "$outputPath/$ssnOut",
+    ssn_out_zip => "$outputPath/$ssnOutZip",
     input_seqs_file => $inputSeqsFile,
 };
 
 my $scriptArgs = 
+    "-output-dir $outputPath " .
     "-ssnin $ssnIn " .
-    "-ssnout $outputPath/$ssnOut " .
-    "-uniprot-id-dir $uniprotNodeDataPath " .
-    "-uniref50-id-dir $uniref50NodeDataPath " .
-    "-uniref90-id-dir $uniref90NodeDataPath " .
+    "-ssnout $ssnOut " .
+    "-uniprot-id-dir $uniprotNodeDataDir " .
+    "-uniprot-id-domain-dir $uniprotDomainNodeDataDir " .
+    "-uniref50-id-dir $uniref50NodeDataDir " .
+    "-uniref90-id-dir $uniref90NodeDataDir " .
     "-id-out ${ssnName}_$mapFileName " .
     "-id-out-domain ${ssnName}_$domainMapFileName " .
     "-config $configFile " .
@@ -201,7 +215,7 @@ $B->addAction("$gntPath/cluster_gnn.pl $scriptArgs");
 EFI::GNN::Base::addFileActions($B, $fileInfo);
 $B->addAction("touch $outputPath/1.out.completed");
 
-my $jobName = "${jobNamePrefix}colorgnn";
+my $jobName = "${jobNamePrefix}color_ssn";
 my $jobScript = "$outputPath/$jobName.sh";
 $B->jobName($jobName);
 $B->renderToFile($jobScript);

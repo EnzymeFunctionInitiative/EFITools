@@ -53,14 +53,17 @@ my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $cooccurrence, $stat
     $pfamDir, $noneDir, $idOutputFile, $idOutputDomainFile, $arrowDataFile, $dontUseNewNeighborMethod,
     $uniprotIdDir, $uniprotDomainIdDir, $uniref50IdDir, $uniref90IdDir,
     $pfamCoocTable, $hubCountFile, $allPfamDir, $splitPfamDir, $allSplitPfamDir, $clusterSizeFile, $swissprotClustersDescFile,
-    $swissprotSinglesDescFile, $parentDir, $renumberClusters, $disableCache, $skipIdMapping, $skipOrganism, $debug);
+    $swissprotSinglesDescFile, $parentDir, $renumberClusters, $disableCache, $skipIdMapping, $skipOrganism, $debug,
+    $outputDir,
+);
 
 my $result = GetOptions(
-    "ssnin=s"               => \$ssnin,
+    "output-dir=s"          => \$outputDir,
+    "ssnin|ssn-in=s"        => \$ssnin,
     "n|nb-size=s"           => \$neighborhoodSize,
     "warning-file=s"        => \$warningFile,
     "gnn=s"                 => \$gnn,
-    "ssnout=s"              => \$ssnout,
+    "ssnout|ssn-out=s"      => \$ssnout,
     "incfrac|cooc=i"        => \$cooccurrence,
     "stats=s"               => \$statsFile,
     "cluster-sizes=s"       => \$clusterSizeFile,
@@ -146,72 +149,17 @@ USAGE
 ;
 
 
+my ($hasParent, $colorOnly, $useNewNeighborMethod, $enableCache);
 
-if ((not $configFile or not -f $configFile) and not exists $ENV{EFICONFIG}) {
-    die "Either the configuration $configFile file or the EFICONFIG environment variable must be set\n$usage";
-} elsif (not $configFile or not -f $configFile) {
-    $configFile = $ENV{EFICONFIG};
-}
+validateInputs();
 
-#error checking on input values
+defaultParameters();
 
-if (not $ssnin or not -s $ssnin){
-    $ssnin = "" if not $ssnin;
-    die "-ssnin $ssnin does not exist or has a zero size\n$usage";
-}
-
-my $hasParent = $parentDir and -d $parentDir;
-
-my $colorOnly = ($ssnout and not $gnn and not $pfamhubfile and not $hasParent) ? 1 : 0;
-$neighborhoodSize = 0 if not $neighborhoodSize;
-
-if (not $colorOnly and $neighborhoodSize < 1) {
-    die "-nb-size $neighborhoodSize must be an integer greater than zero\n$usage";
-}
-
-
-if (defined $cooccurrence and $cooccurrence =~ /^\d+$/) {
-    $cooccurrence = $cooccurrence / 100;
-} else {
-    if (not $colorOnly and defined $cooccurrence) {
-        die "incfrac must be an integer\n";
-    }
-    $cooccurrence=0.20;  
-}
-
-my $useNewNeighborMethod = 0;
-if (not defined $dontUseNewNeighborMethod) {
-    $useNewNeighborMethod = 1;
-}
-
-$renumberClusters = defined $renumberClusters ? 1 : 0;
-my $enableCache = defined $disableCache ? 0 : 1;
-$skipIdMapping = defined $skipIdMapping ? 1 : 0;
-$skipOrganism = defined $skipOrganism ? 1 : 0;
-$idOutputDomainFile = "" if not defined $idOutputDomainFile;
-$idOutputFile = "" if not defined $idOutputFile;
-$debug = defined $debug ? 1 : 0;
-
-
-my $idBaseOutputDir = $ENV{PWD};
-$uniprotIdDir = "$idBaseOutputDir/UniProt" if not $uniprotIdDir;
-$uniprotDomainIdDir = "$idBaseOutputDir/UniProt_Domain" if not $uniprotDomainIdDir;
-$uniref50IdDir = "$idBaseOutputDir/UniRef50" if not $uniref50IdDir;
-$uniref90IdDir = "$idBaseOutputDir/UniRef90" if not $uniref90IdDir;
-
+adjustRelativePaths();
 
 
 my $db = new EFI::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
-
-mkdir $pfamDir          or die "Unable to create $pfamDir: $!"          if $pfamDir and not -d $pfamDir;
-mkdir $allPfamDir       or die "Unable to create $allPfamDir: $!"       if $allPfamDir and not -d $allPfamDir;
-mkdir $splitPfamDir     or die "Unable to create $splitPfamDir: $!"     if $splitPfamDir and not -d $splitPfamDir;
-mkdir $allSplitPfamDir  or die "Unable to create $allSplitPfamDir: $!"  if $allSplitPfamDir and not -d $allSplitPfamDir;
-mkdir $uniprotIdDir     or die "Unable to create $uniprotIdDir: $!"     if $uniprotIdDir and not -d $uniprotIdDir;
-mkdir $uniref50IdDir    or die "Unable to create $uniref50IdDir: $!"    if $uniref50IdDir and not -d $uniref50IdDir;
-mkdir $uniref90IdDir    or die "Unable to create $uniref90IdDir: $!"    if $uniref90IdDir and not -d $uniref90IdDir;
-mkdir $noneDir          or die "Unable to create $noneDir: $!"          if $noneDir and not -d $noneDir;
 
 
 my $colorUtil = new EFI::GNN::ColorUtil(dbh => $dbh);
@@ -223,33 +171,37 @@ $gnnArgs{all_split_pfam_dir} = $allSplitPfamDir if $allSplitPfamDir and -d $allS
 $gnnArgs{color_util} = $colorUtil;
 
 
-my ($uniprotSingletonsFile, $uniprotDomainSingletonsFile, $uniref50SingletonsFile, $uniref90SingletonsFile);
-$uniprotSingletonsFile = "$uniprotIdDir/singletons_UniProt.txt" if $uniprotIdDir and $idOutputFile;
-$uniprotDomainSingletonsFile = "$uniprotDomainIdDir/singletons_UniProt_Domain.txt" if $uniprotDomainIdDir and $idOutputFile;
-$uniref50SingletonsFile = "$uniref50IdDir/singletons_UniRef50.txt" if $uniref50IdDir and $idOutputFile;
-$uniref90SingletonsFile = "$uniref90IdDir/singletons_UniRef90.txt" if $uniref90IdDir and $idOutputFile;
-
 
 my $util = new EFI::GNN(%gnnArgs);
+
+
 
 
 timer("-----all-------");
 
 print "read xgmml file, get list of nodes and edges\n";
 
+
+
 timer("getNodesAndEdges");
 my $reader = XML::LibXML::Reader->new(location => $ssnin);
 my ($title, $numNodes, $numEdges, $nodeDegrees) = $util->getNodesAndEdges($reader);
 timer("getNodesAndEdges");
 
+
+
 print "found $numNodes nodes\n";
 print "found $numEdges edges\n";
 print "graph name is $title\n";
+
+
 
 timer("getNodes");
 print "parsing nodes for accession information\n";
 my ($swissprotDesc) = $util->getNodes();
 timer("getNodes");
+
+
 
 timer("getTaxonIdsAndSpecies");
 print "getting species and taxon IDs\n";
@@ -261,13 +213,19 @@ if (not $skipOrganism) {
 }
 timer("getTaxonIdsAndSpecies");
 
+
+
 #my $includeSingletonsInSsn = (not defined $gnn or not length $gnn) and (not defined $pfamhubfile or not length $pfamhubfile);
 # We include singletons by default, although if they don't have any represented nodes they won't be colored in the SSN.
 my $includeSingletons = 1;
+
+
 timer("getClusters");
 print "determining clusters\n";
 $util->getClusters($includeSingletons);
 timer("getClusters");
+
+
 
 my $warning_fh;
 if ($gnn and $warningFile) { #$nomatch and $noneighfile) {
@@ -286,29 +244,29 @@ if ($hasParent) {
     }
 }
 
+
+
 timer("numberClusters");
 print "numbering the clusters\n";
 my ($useExistingNumber) = (0);
-my $ssnSeqSource = $util->getSequenceSource(); # uniprot, uniref50, or uniref90
 $util->numberClusters($useExistingNumber);
 my $ClusterIdMap = $util->getClusterIdMap(); # This is not to be used anywhere but in the sort function below.
 timer("numberClusters");
+
+
+
 
 timer("idMapping");
 my $hasDomain = 0;
 if (not $skipIdMapping) {
     print "saving the cluster-protein ID mapping tables\n";
-    my ($uniprotMap, $uniprotDomainMap, $uniref50Map, $uniref90Map, $singletonClusters) = getClusterToIdMapping($dbh, $util, $ssnSeqSource);
-    $hasDomain = scalar keys %$uniprotDomainMap;
-    saveClusterIdFiles(
-        $uniprotMap, $uniprotDomainMap, $uniref50Map, $uniref90Map,
-        $uniprotIdDir, $uniprotDomainIdDir, $uniref50IdDir, $uniref90IdDir,
-        $uniprotSingletonsFile, $uniref50SingletonsFile, $uniref90SingletonsFile,
-        $singletonClusters
-    );
+    my $result = doClusterMapping($dbh, $util);
+    $hasDomain = (exists $result->{has_domain} and $result->{has_domain});
 }
 $idOutputDomainFile = "" if not $hasDomain;
 timer("idMapping");
+
+
 
 
 my $gnnData = {};
@@ -404,6 +362,8 @@ if (not $colorOnly) { # and not $skipIdMapping) {
     $gnnData->{accessionData} = $accessionData;
 }
 
+
+
 timer("writeColorSsn");
 if ($ssnout) {
     print "write out colored ssn network $numNodes nodes and $numEdges edges\n";
@@ -414,7 +374,11 @@ if ($ssnout) {
 }
 timer("writeColorSsn");
 
+
+
 close($warning_fh);
+
+
 
 timer("wrapup");
 print "writing mapping and statistics\n";
@@ -425,6 +389,8 @@ timer("wrapup");
 
 
 print "$0 finished. happy happy happy!\n";
+
+
 
 timer("-----all-------");
 timer(action => "print");
@@ -522,11 +488,36 @@ sub hubCountSortFn {
 }
 
 
+sub doClusterMapping {
+    my $dbh = shift;
+    my $util = shift;
+    
+    my ($uniprotMap, $uniprotDomainMap, $uniref50Map, $uniref90Map, $singletonMap) = getClusterToIdMapping($dbh, $util);
+
+    my %result;
+
+    if ($uniprotIdDir and -d $uniprotIdDir) {
+        saveClusterIdFiles2($uniprotMap, "UniProt", $uniprotIdDir, $singletonMap);
+    }
+    if ($uniprotDomainIdDir and -d $uniprotDomainIdDir) {
+        my $idCount = saveClusterIdFiles2($uniprotDomainMap, "UniProt_Domain", $uniprotDomainIdDir, $singletonMap);
+        $result{has_domain} = $idCount > 0;
+    }
+    if ($uniref50IdDir and -d $uniref50IdDir) {
+        saveClusterIdFiles2($uniref50Map, "UniRef50", $uniref50IdDir, $singletonMap);
+    }
+    if ($uniref90IdDir and -d $uniref90IdDir) {
+        saveClusterIdFiles2($uniref90Map, "UniRef90", $uniref90IdDir, $singletonMap);
+    }
+
+    return \%result;
+}
+
 sub getClusterToIdMapping {
     my $dbh = shift;
     my $util = shift;
-    my $ssnSeqSource = shift;
 
+    my $ssnSeqSource = $util->getSequenceSource(); # uniprot, uniref50, or uniref90
     $ssnSeqSource =~ s/\D//g; # remove all non digits
 
     my @clusterNumbers = $util->getClusterNumbers();
@@ -572,6 +563,47 @@ sub getClusterToIdMapping {
 }
 
 
+sub saveClusterIdFiles2 {
+    my $mapping = shift;
+    my $filePattern = shift;
+    my $outputDir = shift;
+    my $singletonClusters = shift;
+
+    my @clusterNumbers = sort {$a <=> $b} keys %$mapping;
+    return 0 if not scalar @clusterNumbers;
+    
+    open SINGLES, ">", "$outputDir/singleton_${filePattern}_IDs.txt";
+
+    my @ids;
+    my $idCount = 0;
+    foreach my $clNum (@clusterNumbers) {
+        my @accIds = sort @{$mapping->{$clNum}};
+        if (not exists $singletonClusters->{$clNum}) {
+            open FH, ">", "$outputDir/cluster_${filePattern}_IDs_${clNum}.txt";
+            foreach my $accId (@accIds) {
+                print FH "$accId\n";
+                push @ids, $accId;
+            }
+            close FH;
+        } else {
+            my $accId = $accIds[0];
+            print SINGLES "$accId\n";
+        }
+        $idCount++;
+    }
+
+    close SINGLES;
+
+    open ALL, ">", "$outputDir/cluster_All_${filePattern}_IDs.txt";
+    foreach my $id (sort @ids) {
+        print ALL "$id\n";
+    }
+    close ALL;
+
+    return $idCount;
+}
+
+
 sub saveClusterIdFiles {
     my $uniprotMap = shift;
     my $uniprotDomainMap = shift;
@@ -581,29 +613,26 @@ sub saveClusterIdFiles {
     my $uniprotDomainIdDir = shift;
     my $uniref50IdDir = shift;
     my $uniref90IdDir = shift;
-    my $uniprotSingletonsFile = shift;
-    my $uniref50SingletonsFile = shift;
-    my $uniref90SingletonsFile = shift;
     my $singletonClusters = shift;
 
     my $hasDomain = scalar keys %$uniprotDomainMap;
 
     my @mappingInfo = (
-        [$uniref50Map, "UniRef50", $uniref50IdDir, $uniref50SingletonsFile, 1],
-        [$uniref90Map, "UniRef90", $uniref90IdDir, $uniref90SingletonsFile, 1],
+        [$uniref50Map, "UniRef50", $uniref50IdDir, 1],
+        [$uniref90Map, "UniRef90", $uniref90IdDir, 1],
     );
     if ($hasDomain) {
-        unshift @mappingInfo, [$uniprotMap, "UniProt", $uniprotIdDir, $uniprotSingletonsFile, 0];
-        unshift @mappingInfo, [$uniprotDomainMap, "UniProt_Domain", $uniprotDomainIdDir, $uniprotSingletonsFile, 1];
+        unshift @mappingInfo, [$uniprotMap, "UniProt", $uniprotIdDir, 0];
+        unshift @mappingInfo, [$uniprotDomainMap, "UniProt_Domain", $uniprotDomainIdDir, 1];
         mkdir $uniprotDomainIdDir
                 or die "Unable to create $uniprotDomainIdDir: $!"
                     if $uniprotDomainIdDir and not -d $uniprotDomainIdDir;
     } else {
-        unshift @mappingInfo, [$uniprotMap, "UniProt", $uniprotIdDir, $uniprotSingletonsFile, 1];
+        unshift @mappingInfo, [$uniprotMap, "UniProt", $uniprotIdDir, 1];
     }
 
     foreach my $info (@mappingInfo) {
-        my ($mapping, $filename, $dirPath, $singlesFile, $isDomain) = @$info;
+        my ($mapping, $filename, $dirPath, $isDomain) = @$info;
 
         my @clusterNumbers = sort {$a <=> $b} keys %$mapping;
 
@@ -614,13 +643,11 @@ sub saveClusterIdFiles {
         foreach my $clNum (@clusterNumbers) {
             my @accIds = sort @{$mapping->{$clNum}};
             if (not exists $singletonClusters->{$clNum}) {
-            #if (scalar @accIds > 1) {
                 open FH, ">", "$dirPath/cluster_${filename}_IDs_${clNum}.txt";
                 foreach my $accId (@accIds) {
                     print FH "$accId\n";
                 }
                 close FH;
-            #} elsif (scalar @accIds == 1) {
             } else {
                 my $accId = $accIds[0];
                 print SINGLES "$accId\n";
@@ -629,6 +656,113 @@ sub saveClusterIdFiles {
 
         close SINGLES;
     }
+}
+
+
+sub validateInputs {
+    if ((not $configFile or not -f $configFile) and not exists $ENV{EFICONFIG}) {
+        die "Either the configuration $configFile file or the EFICONFIG environment variable must be set\n$usage";
+    } elsif (not $configFile or not -f $configFile) {
+        $configFile = $ENV{EFICONFIG};
+    }
+    
+    #error checking on input values
+    
+    if (not $ssnin or not -s $ssnin){
+        $ssnin = "" if not $ssnin;
+        die "-ssnin $ssnin does not exist or has a zero size\n$usage";
+    }
+    
+    $hasParent = $parentDir and -d $parentDir;
+    
+    $colorOnly = ($ssnout and not $gnn and not $pfamhubfile and not $hasParent) ? 1 : 0;
+    $neighborhoodSize = 0 if not $neighborhoodSize;
+    
+    if (not $colorOnly and $neighborhoodSize < 1) {
+        die "-nb-size $neighborhoodSize must be an integer greater than zero\n$usage";
+    }
+    
+    
+    if (defined $cooccurrence and $cooccurrence =~ /^\d+$/) {
+        $cooccurrence = $cooccurrence / 100;
+    } else {
+        if (not $colorOnly and defined $cooccurrence) {
+            die "incfrac must be an integer\n";
+        }
+        $cooccurrence=0.20;  
+    }
+    
+    $useNewNeighborMethod = 0;
+    if (not defined $dontUseNewNeighborMethod) {
+        $useNewNeighborMethod = 1;
+    }
+}
+
+
+sub defaultParameters {
+    $renumberClusters = defined $renumberClusters ? 1 : 0;
+    $enableCache = defined $disableCache ? 0 : 1;
+    $skipIdMapping = defined $skipIdMapping ? 1 : 0;
+    $skipOrganism = defined $skipOrganism ? 1 : 0;
+    $idOutputDomainFile = "" if not defined $idOutputDomainFile;
+    $idOutputFile = "" if not defined $idOutputFile;
+    $debug = defined $debug ? 1 : 0;
+
+    $outputDir = $ENV{'PWD'} if not defined $outputDir;
+    $uniprotIdDir = "$outputDir/uniprot-ids"                    if not $uniprotIdDir;
+    $uniref50IdDir = "$outputDir/uniref50-ids"                  if not $uniref50IdDir;
+    $uniref90IdDir = "$outputDir/uniref90-ids"                  if not $uniref90IdDir;
+    $uniprotDomainIdDir = ""                                    if not defined $uniprotDomainIdDir;
+
+    $pfamDir = "" if not $pfamDir;
+    $allPfamDir = "" if not $allPfamDir;
+    $splitPfamDir = "" if not $splitPfamDir;
+    $allSplitPfamDir = "" if not $allSplitPfamDir;
+    $noneDir = "" if not $noneDir;
+    $uniprotIdDir = "" if not $uniprotIdDir;
+    $uniprotDomainIdDir = "" if not $uniprotDomainIdDir;
+    $uniref50IdDir = "" if not $uniref50IdDir;
+    $uniref90IdDir = "" if not $uniref90IdDir;
+    $warningFile = "" if not $warningFile;
+    $gnn = "" if not $gnn;
+    $ssnout = "" if not $ssnout;
+    $statsFile = "" if not $statsFile;
+    $clusterSizeFile = "" if not $clusterSizeFile;
+    $swissprotClustersDescFile = "" if not $swissprotClustersDescFile;
+    $swissprotSinglesDescFile = "" if not $swissprotSinglesDescFile;
+    $pfamhubfile = "" if not $pfamhubfile;
+    $idOutputFile = "" if not $idOutputFile;
+    $idOutputDomainFile = "" if not $idOutputDomainFile;
+    $arrowDataFile = "" if not $arrowDataFile;
+    $pfamCoocTable = "" if not $pfamCoocTable;
+    $hubCountFile = "" if not $hubCountFile;
+}
+
+
+sub adjustRelativePaths {
+    # Adjust for relative paths. We pass in relative paths so as to make the command line shorter.
+    $pfamDir = "$outputDir/$pfamDir"                            if $pfamDir !~ m/^\//;
+    $allPfamDir = "$outputDir/$allPfamDir"                      if $allPfamDir !~ m/^\//;
+    $splitPfamDir = "$outputDir/$splitPfamDir"                  if $splitPfamDir !~ m/^\//;
+    $allSplitPfamDir = "$outputDir/$allSplitPfamDir"            if $allSplitPfamDir !~ m/^\//;
+    $noneDir = "$outputDir/$noneDir"                            if $noneDir !~ m/^\//;
+    $uniprotIdDir = "$outputDir/$uniprotIdDir"                  if $uniprotIdDir !~ m/^\//;
+    $uniprotDomainIdDir = "$outputDir/$uniprotDomainIdDir"      if $uniprotDomainIdDir and $uniprotDomainIdDir !~ m/^\//;
+    $uniref50IdDir = "$outputDir/$uniref50IdDir"                if $uniref50IdDir !~ m/^\//;
+    $uniref90IdDir = "$outputDir/$uniref90IdDir"                if $uniref90IdDir !~ m/^\//;
+    $warningFile = "$outputDir/$warningFile"                    if $warningFile !~ m/^\//;
+    $gnn = "$outputDir/$gnn"                                    if $gnn !~ m/^\//;
+    $ssnout = "$outputDir/$ssnout"                              if $ssnout !~ m/^\//;
+    $statsFile = "$outputDir/$statsFile"                        if $statsFile !~ m/^\//;
+    $clusterSizeFile = "$outputDir/$clusterSizeFile"            if $clusterSizeFile !~ m/^\//;
+    $swissprotClustersDescFile = "$outputDir/$swissprotClustersDescFile"    if $swissprotClustersDescFile !~ m/^\//;
+    $swissprotSinglesDescFile = "$outputDir/$swissprotSinglesDescFile"      if $swissprotSinglesDescFile !~ m/^\//;
+    $pfamhubfile = "$outputDir/$pfamhubfile"                    if $pfamhubfile !~ m/^\//;
+    $idOutputFile = "$outputDir/$idOutputFile"                  if $idOutputFile !~ m/^\//;
+    $idOutputDomainFile = "$outputDir/$idOutputDomainFile"      if $idOutputDomainFile !~ m/^\//;
+    $arrowDataFile = "$outputDir/$arrowDataFile"                if $arrowDataFile and $arrowDataFile !~ m/^\//;
+    $pfamCoocTable = "$outputDir/$pfamCoocTable"                if $pfamCoocTable and $pfamCoocTable !~ m/^\//;
+    $hubCountFile = "$outputDir/$hubCountFile"                  if $hubCountFile and $hubCountFile !~ m/^\//;
 }
 
 

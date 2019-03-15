@@ -18,13 +18,11 @@ use EFI::GNN::Base;
 #$configfile=read_file($ENV{'EFICFG'}) or die "could not open $ENV{'EFICFG'}\n";
 #eval $configfile;
 
-my ($result, $nodeDir, $fastaDir, $configFile, $allFastaFile, $singletonFile, $useAllFiles);
-$result = GetOptions(
+my ($nodeDir, $fastaDir, $configFile, $useAllFiles);
+my $result = GetOptions(
     "node-dir=s"        => \$nodeDir,
     "out-dir=s"         => \$fastaDir,
-    "all=s"             => \$allFastaFile,
     "use-all-files"     => \$useAllFiles,
-    "singletons=s"      => \$singletonFile,
     "config=s"          => \$configFile,
 );
 
@@ -32,10 +30,8 @@ my $usage=<<USAGE
 usage: $0 -data-dir <path_to_data_dir> -config <config_file>
     -node-dir       path to directory containing lists of IDs (one file/list per cluster number)
     -out-dir        path to directory to output fasta files to
-    -all            path to file to put all sequences into
     -use-all-files  if present, will grab all files in tihe input node-dir rathern than just those
                     matching the specific pattern it is looking for
-    -singletons     path to file containing a list of singletons (nodes without a cluster)
     -config         path to configuration file
 USAGE
 ;
@@ -46,6 +42,9 @@ if (not -d $nodeDir) {
 }
 
 mkdir $fastaDir or die "Unable to create $fastaDir: $!" if not -d $fastaDir;
+
+my $allFastaFile = "$fastaDir/all.fasta";
+my $singletonFile = "$fastaDir/singletons.fasta";
 
 die "Config file required in environment or as a parameter.\n$usage"
     if not -f $configFile and not exists $ENV{EFICONFIG} and not -f $ENV{EFICONFIG};
@@ -60,7 +59,7 @@ $allFastaFile = "$fastaDir/all.fasta" if not $allFastaFile;
 
 my $pattern;
 my $globPattern;
-my $singletonPattern = "singleton_UniProt_IDs.txt";
+my $singletonPattern = "singleton_UniProt_*IDs.txt";
 if ($useAllFiles) {
     $globPattern = "*.txt";
 } else {

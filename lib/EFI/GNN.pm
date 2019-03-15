@@ -910,9 +910,6 @@ sub writeSsnStats {
         $numMetanodes += scalar @$metaIds;
     }
 
-    # Include singletons in the grand total
-    $numAccessions += $numSingles;
-
     my $seqSrc = exists $self->{has_uniref} ? $self->{has_uniref} : "UniProt";
 
     open STATS, ">", $statsFile or die "Unable to open stats file $statsFile for writing: $!";

@@ -155,6 +155,7 @@ sub getNodes {
     my $clusterNumMap = {};
     my $domainMapping = {};
     my %swissprotDesc;
+    my $checkUniref = 1;
 
     my $efi = new EFI::Annotations;
 
@@ -186,8 +187,9 @@ sub getNodes {
                     (my $noDomain = $nodeLabel) =~ s/:\d+:\d+$//;
                     push @{$metanodeMap->{$nodeLabel}}, $attrAcc if $noDomain ne $attrAcc;
                 }
-            } elsif ($attrName =~ m/UniRef(\d+)/) {
+            } elsif ($checkUniref and $attrName =~ m/UniRef(\d+)/) {
                 $self->{has_uniref} = "UniRef$1";
+                $checkUniref = 0; # save some regex evals
             } elsif ($attrName eq EFI::Annotations::FIELD_SWISSPROT_DESC) {
                 my @childList = $annotation->findnodes('./*');
                 if (scalar @childList) {
@@ -753,64 +755,27 @@ sub addFileActions {
     my $B = shift; # This is an EFI::SchedulerApi::Builder object
     my $info = shift;
 
-    my $fastaTool = "$info->{fasta_tool_path} -node-dir $info->{uniprot_node_data_path} -out-dir $info->{fasta_data_path} -config $info->{config_file}";
-    $fastaTool .= " -all $info->{all_fasta_file}" if $info->{all_fasta_file};
-    $fastaTool .= " -singletons $info->{singletons_file}" if $info->{singletons_file};
+    my $fastaTool = "$info->{fasta_tool_path} -node-dir $info->{uniprot_node_data_dir} -out-dir $info->{fasta_data_dir} -config $info->{config_file}";
     $fastaTool .= " -input-sequences $info->{input_seqs_file}" if $info->{input_seqs_file};
     $B->addAction($fastaTool);
 
     $B->addAction("");
-    if (exists $info->{cat_tool_path}) {
-        $B->addAction("$info->{cat_tool_path} -input-file-pattern \"$info->{uniprot_node_data_path}/cluster_UniProt_IDs*\" -output-file $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
-        $B->addAction("$info->{cat_tool_path} -input-file-pattern \"$info->{uniref50_node_data_path}/cluster_UniRef50_IDs*\" -output-file $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt.unsorted");
-        $B->addAction("$info->{cat_tool_path} -input-file-pattern \"$info->{uniref90_node_data_path}/cluster_UniRef90_IDs*\" -output-file $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt.unsorted");
-    } else {
-        $B->addAction("cat $info->{uniprot_node_data_path}/cluster_UniProt_IDs* > $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
-    }
-    $B->addAction("if [[ -f $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted ]]; then");
-    $B->addAction("    sort $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted > $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt");
-    $B->addAction("    rm $info->{uniprot_node_data_path}/cluster_All_UniProt_IDs.txt.unsorted");
-    $B->addAction("fi");
-    $B->addAction("if [[ -f $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt.unsorted ]]; then");
-    $B->addAction("    sort $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt.unsorted > $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt");
-    $B->addAction("    rm $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt.unsorted");
-    $B->addAction("else");
-    $B->addAction("    rmdir $info->{uniref50_node_data_path}");
-    $B->addAction("fi");
-    $B->addAction("if [[ -f $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt.unsorted ]]; then");
-    $B->addAction("    sort $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt.unsorted > $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt");
-    $B->addAction("    rm $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt.unsorted");
-    $B->addAction("else");
-    $B->addAction("    rmdir $info->{uniref90_node_data_path}");
-    $B->addAction("fi");
-    
-    $B->addAction("");
-    $B->addAction("HAS_DOMAIN=`ls $info->{uniprot_node_data_path} | grep cluster_UniProt_Domain_IDs || true`");
-    $B->addAction("if [[ \$HAS_DOMAIN ]]; then");
-    if (exists $info->{cat_tool_path}) {
-        $B->addAction("    $info->{cat_tool_path} -input-file-pattern \"$info->{uniprot_node_data_path}/cluster_UniProt_Domain_IDs*\" -output-file $info->{uniprot_node_data_path}/cluster_All_UniProt_Domain_IDs.txt.unsorted");
-    } else {
-        $B->addAction("    cat $info->{uniprot_node_data_path}/cluster_UniProt_Domain_IDs* > $info->{uniprot_node_data_path}/cluster_All_UniProt_Domain_IDs.txt.unsorted");
-    }
-    $B->addAction("    sort $info->{uniprot_node_data_path}/cluster_All_UniProt_Domain_IDs.txt.unsorted > $info->{uniprot_node_data_path}/cluster_All_UniProt_Domain_IDs.txt");
-    $B->addAction("    rm $info->{uniprot_node_data_path}/cluster_All_UniProt_Domain_IDs.txt.unsorted");
-    $B->addAction("fi");
-
-    $B->addAction("");
-    $B->addAction("");
-
     $B->addAction("zip -jq $info->{ssn_out_zip} $info->{ssn_out}") if $info->{ssn_out} and $info->{ssn_out_zip};
-    $B->addAction("zip -jq -r $info->{uniprot_node_zip} $info->{uniprot_node_data_path}") if $info->{uniprot_node_zip} and $info->{uniprot_node_data_path};
-    $B->addAction("if [[ -d $info->{uniprot_domain_node_data_path} ]]; then");
-    $B->addAction("    zip -jq -r $info->{uniprot_domain_node_zip} $info->{uniprot_domain_node_data_path} -i '*'") if $info->{uniprot_domain_node_zip} and $info->{uniprot_domain_node_data_path};
+    $B->addAction("if [[ -f $info->{uniprot_node_data_dir}/cluster_All_UniProt_IDs.txt ]]; then") if $info->{uniprot_node_data_dir};
+    $B->addAction("    zip -jq -r $info->{uniprot_node_zip} $info->{uniprot_node_data_dir}") if $info->{uniprot_node_zip} and $info->{uniprot_node_data_dir};
     $B->addAction("fi");
-    $B->addAction("if [[ -f $info->{uniref50_node_data_path}/cluster_All_UniRef50_IDs.txt ]]; then");
-    $B->addAction("    zip -jq -r $info->{uniref50_node_zip} $info->{uniref50_node_data_path}") if $info->{uniref50_node_zip} and $info->{uniref50_node_data_path};
+    $B->addAction("if [[ -f $info->{uniprot_domain_node_data_dir}/cluster_All_UniProt_Domain_IDs.txt ]]; then") if $info->{uniprot_domain_node_data_dir};
+    $B->addAction("    zip -jq -r $info->{uniprot_domain_node_zip} $info->{uniprot_domain_node_data_dir}") if $info->{uniprot_domain_node_zip} and $info->{uniprot_domain_node_data_dir};
     $B->addAction("fi");
-    $B->addAction("if [[ -f $info->{uniref90_node_data_path}/cluster_All_UniRef90_IDs.txt ]]; then");
-    $B->addAction("    zip -jq -r $info->{uniref90_node_zip} $info->{uniref90_node_data_path}") if $info->{uniref90_node_zip} and $info->{uniref90_node_data_path};
+    $B->addAction("if [[ -f $info->{uniref50_node_data_dir}/cluster_All_UniRef50_IDs.txt ]]; then") if $info->{uniref50_node_data_dir};
+    $B->addAction("    zip -jq -r $info->{uniref50_node_zip} $info->{uniref50_node_data_dir}") if $info->{uniref50_node_zip} and $info->{uniref50_node_data_dir};
     $B->addAction("fi");
-    $B->addAction("zip -jq -r $info->{fasta_zip} $info->{fasta_data_path}") if $info->{fasta_data_path} and $info->{fasta_zip};
+    $B->addAction("if [[ -f $info->{uniref90_node_data_dir}/cluster_All_UniRef90_IDs.txt ]]; then") if $info->{uniref90_node_data_dir};
+    $B->addAction("    zip -jq -r $info->{uniref90_node_zip} $info->{uniref90_node_data_dir}") if $info->{uniref90_node_zip} and $info->{uniref90_node_data_dir};
+    $B->addAction("fi");
+    $B->addAction("if [[ -f $info->{fasta_data_dir}/all.fasta ]]; then") if $info->{fasta_data_dir};
+    $B->addAction("    zip -jq -r $info->{fasta_zip} $info->{fasta_data_dir}") if $info->{fasta_data_dir} and $info->{fasta_zip};
+    $B->addAction("fi");
     $B->addAction("zip -jq $info->{gnn_zip} $info->{gnn}") if $info->{gnn} and $info->{gnn_zip};
     $B->addAction("zip -jq $info->{pfamhubfile_zip} $info->{pfamhubfile}") if $info->{pfamhubfile_zip} and $info->{pfamhubfile};
     $B->addAction("zip -jq -r $info->{pfam_zip} $info->{pfam_dir} -i '*'") if $info->{pfam_zip} and $info->{pfam_dir};
