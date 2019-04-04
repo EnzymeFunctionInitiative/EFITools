@@ -5,6 +5,9 @@ BEGIN {
     use lib $ENV{EFISHARED};
 }
 
+use strict;
+use warnings;
+
 use Getopt::Long;
 use File::Slurp;
 use Scalar::Util qw(openhandle);
@@ -18,11 +21,12 @@ use EFI::GNN::Base;
 #$configfile=read_file($ENV{'EFICFG'}) or die "could not open $ENV{'EFICFG'}\n";
 #eval $configfile;
 
-my ($nodeDir, $fastaDir, $configFile, $useAllFiles);
+my ($nodeDir, $fastaDir, $configFile, $useAllFiles, $domainFastaDir);
 my $result = GetOptions(
     "node-dir=s"        => \$nodeDir,
     "out-dir=s"         => \$fastaDir,
     "use-all-files"     => \$useAllFiles,
+    "domain-out-dir=s"  => \$domainFastaDir,
     "config=s"          => \$configFile,
 );
 
@@ -30,6 +34,11 @@ my $usage=<<USAGE
 usage: $0 -data-dir <path_to_data_dir> -config <config_file>
     -node-dir       path to directory containing lists of IDs (one file/list per cluster number)
     -out-dir        path to directory to output fasta files to
+    -domain-out-dir path to directory to output fasta files with domain only. If this is present
+                    will output both full sequence and sequence with domain extracted, into the
+                    two separate folders (-out-dir and -domain-out-dir). Assumes that the
+                    -node-dir is the list of nodes that includes the domain, not the normal
+                    UniProt ID lists.
     -use-all-files  if present, will grab all files in tihe input node-dir rathern than just those
                     matching the specific pattern it is looking for
     -config         path to configuration file
@@ -40,36 +49,51 @@ USAGE
 if (not -d $nodeDir) {
     die "The input data directory must be specified and exist.\n$usage";
 }
+if ($domainFastaDir and not $fastaDir) {
+    die "When using -domain-out-dir, -out-dir must also be specified.";
+} elsif (not $fastaDir) {
+    die "-out-dir must be specified.";
+}
+if ($configFile and not -f $configFile and not exists $ENV{EFICONFIG} and not -f $ENV{EFICONFIG}) {
+    die "Config file required in environment or as a parameter.\n$usage"
+}
 
-mkdir $fastaDir or die "Unable to create $fastaDir: $!" if not -d $fastaDir;
+$configFile = $ENV{EFICONFIG} if not $configFile and not -f $configFile;
 
-my $allFastaFile = "$fastaDir/all.fasta";
-my $singletonFile = "$fastaDir/singletons.fasta";
 
-die "Config file required in environment or as a parameter.\n$usage"
-    if not -f $configFile and not exists $ENV{EFICONFIG} and not -f $ENV{EFICONFIG};
+mkdir $fastaDir or die "Unable to create $fastaDir: $!" if $fastaDir and not -d $fastaDir;
+mkdir $domainFastaDir or die "Unable to create $fastaDir: $!" if $domainFastaDir and not -d $domainFastaDir;
 
-$configFile = $ENV{EFICONFIG} if not -f $configFile;
+
 
 my $db = new EFI::Database(config_file => $configFile);
 my $dbh = $db->getHandle();
 
 my $blastDbPath = $ENV{EFIDBPATH};
-$allFastaFile = "$fastaDir/all.fasta" if not $allFastaFile;
 
 my $pattern;
 my $globPattern;
-my $singletonPattern = "singleton_UniProt_*IDs.txt";
+my $singletonPattern = "singleton_UniProt_IDs.txt";
 if ($useAllFiles) {
     $globPattern = "*.txt";
 } else {
-    $pattern = "cluster_UniProt_*IDs_";
+    if ($domainFastaDir) {
+        $pattern = "cluster_UniProt_Domain_IDs_";
+        $singletonPattern = "singleton_UniProt_Domain_IDs.txt";
+    } else {
+        $pattern = "cluster_UniProt_IDs_";
+    }
     $globPattern = "$pattern*.txt";
 }
 
 my @files = sort file_sort glob("$nodeDir/$globPattern");
 
-open ALL, ">$allFastaFile";
+open ALL, ">$fastaDir/all.fasta" or die "Unable to write to $fastaDir/all.fasta: $!";
+my $allDomFh;
+if ($domainFastaDir) {
+    open ALLDOM, ">$domainFastaDir/all.fasta" or die "Unable to write to $domainFastaDir/all.fasta: $!";
+    $allDomFh = \*ALLDOM;
+}
 
 foreach my $file (@files) {
     my $clusterNum = $file;
@@ -82,7 +106,6 @@ foreach my $file (@files) {
         $fastaFileName = "$clusterNum.fasta";
     }
     
-    my @ids;
     my %customHeaders;
     my @ids = map {
             my $id = $_;
@@ -95,42 +118,46 @@ foreach my $file (@files) {
             $id;
         } read_file($file);
 
-    my $hasDomain = scalar grep m/:/, @ids;
     my $domFh;
-    if ($hasDomain) {
+    if ($allDomFh) {
         my $domFastaFileName = "cluster_domain_$clusterNum.fasta";
-        open DOM_FASTA, ">$fastaDir/$domFastaFileName";
+        open DOM_FASTA, ">", "$domainFastaDir/$domFastaFileName" or die "Unable to write to $domainFastaDir/$domFastaFileName: $!";
         $domFh = \*DOM_FASTA;
     }
 
-    open FASTA, ">$fastaDir/$fastaFileName";
-    open NODES, $file;
+    open FASTA, ">", "$fastaDir/$fastaFileName" or die "Unable to write to $fastaDir/$fastaFileName: $!";
 
     print "Retrieving sequences for cluster $clusterNum...\n";
 
-    saveSequences($clusterNum, \*FASTA, $domFh, \*ALL, \@ids, \%customHeaders);
+    saveSequences($clusterNum, \*FASTA, $domFh, \*ALL, $allDomFh, \@ids, \%customHeaders);
 
     print "Done retrieving sequences!\n";
 
-    close NODES;
     close FASTA;
-    close DOM_FASTA if $hasDomain;
+    close DOM_FASTA if $allDomFh;
 }
 
 
 my $inputSingletonFile = "$nodeDir/$singletonPattern";
-if ($singletonFile and -f $inputSingletonFile) {
-    open FASTA, "> $singletonFile" or die "Unable to write to $singletonFile: $!";
+if (-f $inputSingletonFile) {
+    open FASTA, ">", "$fastaDir/singletons.fasta" or die "Unable to write to $fastaDir/singletons.fasta: $!";
+    my $domFh;
+    if ($domainFastaDir) {
+        open FASTA_DOM, ">", "$domainFastaDir/singletons.fasta" or die "Unable to write to $domainFastaDir/singletons.fasta: $!";
+        $domFh = \*FASTA_DOM;
+    }
     
     my @ids = map { $_ =~ s/[\r\n]//g; $_ } read_file($inputSingletonFile);
 
-    saveSequences(0, \*FASTA, undef, \*ALL, \@ids, {});
+    saveSequences(0, \*FASTA, $domFh, \*ALL, $allDomFh, \@ids, {});
 
+    close FASTA_DOM if $domainFastaDir;
     close FASTA;
 }
 
 
 close ALL;
+close ALLDOM if $domainFastaDir;
 
 $dbh->disconnect();
 
@@ -146,40 +173,27 @@ sub saveSequences {
     my $outputFh = shift;
     my $domOutputFh = shift;
     my $allFh = shift;
+    my $allDomFh = shift;
     my $idRef = shift;
     my $customHeaders = shift;
     
     my @ids = @{ $idRef }; # convert array ref to list
-    my $hasDomain = scalar grep m/:/, @ids;
 
     while (scalar @ids) {
         my @rawBatchIds = splice(@ids, 0, 1000);
         my @batchIds = map { my $a = $_; $a =~ s/:\d+:\d+$//; $a } @rawBatchIds;
 
-        my @domExt = map {
-                my @parts = split m/:/;
-                scalar @parts == 3 ? [$parts[1], $parts[2]] : [];
-            } @rawBatchIds;
-
-#        # If the IDs contain domain extent, then we switch to retrieving a single sequence at a time
-#        # specifying the domain extent to fastacmd.
-#        my @domainArgs;
-#        my $domainAcc = "";
-#        if ($hasDomain) {
-#            @batchIds = splice(@ids, 0, 1);
-#            my @parts = split(m/:/, $batchIds[0]);
-#            $batchIds[0] = $parts[0];
-#            if (scalar @parts > 2) {
-#                @domainArgs = ("-L", $parts[1].",".$parts[2]);
-#                $domainAcc = join(":", @parts);
-#            }
-#        } else {
-#            @batchIds = splice(@ids, 0, 1000);
-#        }
+        my %domExt;
+        if ($allDomFh) {
+            %domExt  = map {
+                            my @parts = split m/:/;
+                            $parts[0] => [$parts[1], $parts[2]];
+                           } @rawBatchIds;
+        }
 
         my $batchLine = join(",", @batchIds);
         my ($fastacmdOutput, $fastaErr) = capture {
-            system("fastacmd", "-d", "$blastDbPath/combined.fasta", "-s", $batchLine, @domainArgs);
+            system("fastacmd", "-d", "$blastDbPath/combined.fasta", "-s", $batchLine);
         };
 
         my @sequences = split /\n>/, $fastacmdOutput;
@@ -188,8 +202,12 @@ sub saveSequences {
             if ($seq =~ s/^\w\w\|(\w{6,10})\|.*//) {
                 my $accession = $1;
                 my $customHeader = exists $customHeaders->{$accession} ? $customHeaders->{$accession} : "";
-                $accession = $domainAcc ? $domainAcc : $accession;
                 writeSequence($accession, $clusterNum, $outputFh, $allFh, $seq, $customHeader);
+                if ($allDomFh) {
+                    $seq = extractDomain($seq, $domExt{$accession});
+                    my $domAcc = $accession . ":" . join(":", @{$domExt{$accession}});
+                    writeSequence($domAcc, $clusterNum, $domOutputFh, $allDomFh, $seq, $customHeader);
+                }
             }
         }
     }
@@ -204,7 +222,8 @@ sub writeSequence {
     my $header = shift;
 
     if (not $header) {
-        my $sql = "select Organism,PFAM from annotations where accession = '$accession'";
+        (my $sqlAcc = $accession) =~ s/:\d+:\d+$//;
+        my $sql = "select Organism,PFAM from annotations where accession = '$sqlAcc'";
         my $sth = $dbh->prepare($sql);
         $sth->execute();
         
@@ -222,6 +241,31 @@ sub writeSequence {
 
     $fastaFh->print(">$header$seq\n");
     $allFh->print(">$header$seq\n") if $allFh;
+}
+
+sub extractDomain {
+    my $seq = shift;
+    my $domRef = shift;
+
+    my ($start, $end) = @$domRef;
+    $seq =~ s/[\r\n]//g;
+
+    if ($start >= 0 and $start < length($seq) and $end >= 0 and $end < length($seq)) {
+        my $len = $end - $start;
+        $seq = substr($seq, $start-1, $len);
+        my $fmtSeq = "";
+        while ($seq) {
+            $fmtSeq .= "\n" . substr($seq, 0, 80);
+            if (length($seq) > 80) {
+                $seq = substr($seq, 80);
+            } else {
+                $seq = "";
+            }
+        }
+        return "$fmtSeq";
+    } else {
+        return $seq;
+    }
 }
 
 

@@ -473,11 +473,10 @@ sub writeColorSsnMetadata {
     my $self = shift;
     my $writer = shift;
 
-    foreach my $md (@{$self->getMetadata()}) {
-        next if $md->{name} eq "title"; # part of the graph element
-        my $mdName = $md->{name};
-        my $mdValue = $md->{value};
-        my $attType = $md->{type};
+    foreach my $mdName (keys %{$self->{metadata}}) {
+        next if $mdName eq "title"; # part of the graph element
+        my $mdValue = $self->{metadata}->{$mdName}->{value};
+        my $attType = $self->{metadata}->{$mdName}->{type};
         $writer->emptyTag("att", "name" => $mdName, "value" => $mdValue, "type" => $attType);
     }
 }
@@ -755,9 +754,13 @@ sub addFileActions {
     my $B = shift; # This is an EFI::SchedulerApi::Builder object
     my $info = shift;
 
-    my $fastaTool = "$info->{fasta_tool_path} -node-dir $info->{uniprot_node_data_dir} -out-dir $info->{fasta_data_dir} -config $info->{config_file}";
+    my $fastaTool = "$info->{fasta_tool_path} -out-dir $info->{fasta_data_dir} -config $info->{config_file}";
     $fastaTool .= " -input-sequences $info->{input_seqs_file}" if $info->{input_seqs_file};
-    $B->addAction($fastaTool);
+    $B->addAction("if [[ -f $info->{uniprot_domain_node_data_dir}/cluster_All_UniProt_Domain_IDs.txt ]]; then") if $info->{uniprot_domain_node_data_dir} and $info->{fasta_domain_data_dir};
+    $B->addAction($fastaTool . " -domain-out-dir $info->{fasta_domain_data_dir} -node-dir $info->{uniprot_domain_node_data_dir}");
+    $B->addAction("else");
+    $B->addAction($fastaTool . " -node-dir $info->{uniprot_node_data_dir}");
+    $B->addAction("fi");
 
     $B->addAction("");
     $B->addAction("zip -jq $info->{ssn_out_zip} $info->{ssn_out}") if $info->{ssn_out} and $info->{ssn_out_zip};
@@ -775,6 +778,9 @@ sub addFileActions {
     $B->addAction("fi");
     $B->addAction("if [[ -f $info->{fasta_data_dir}/all.fasta ]]; then") if $info->{fasta_data_dir};
     $B->addAction("    zip -jq -r $info->{fasta_zip} $info->{fasta_data_dir}") if $info->{fasta_data_dir} and $info->{fasta_zip};
+    $B->addAction("fi");
+    $B->addAction("if [[ -f $info->{fasta_domain_data_dir}/all.fasta ]]; then") if $info->{fasta_domain_data_dir};
+    $B->addAction("    zip -jq -r $info->{fasta_domain_zip} $info->{fasta_domain_data_dir}") if $info->{fasta_domain_data_dir} and $info->{fasta_domain_zip};
     $B->addAction("fi");
     $B->addAction("zip -jq $info->{gnn_zip} $info->{gnn}") if $info->{gnn} and $info->{gnn_zip};
     $B->addAction("zip -jq $info->{pfamhubfile_zip} $info->{pfamhubfile}") if $info->{pfamhubfile_zip} and $info->{pfamhubfile};

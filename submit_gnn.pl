@@ -20,7 +20,8 @@ use EFI::GNN::Base;
 
 my ($ssnIn, $nbSize, $warningFile, $gnn, $ssnOut, $cooc, $stats, $pfamHubFile, $baseDir);
 my ($pfamDirZip, $allPfamDirZip, $splitPfamDirZip, $allSplitPfamDirZip);
-my ($uniprotIdZip, $uniprotIdDomainZip, $uniref50IdZip, $uniref90IdZip, $idOutputFile, $idOutputDomainFile, $fastaZip, $noneZip);
+my ($uniprotIdZip, $uniprotIdDomainZip, $uniref50IdZip, $uniref90IdZip, $idOutputFile, $idOutputDomainFile);
+my ($fastaZip, $fastaDomainZip, $noneZip);
 my ($dontUseNewNeighborMethod);
 my ($scheduler, $dryRun, $queue, $gnnOnly, $noSubmit, $jobId, $arrowDataFile, $coocTableFile);
 my ($hubCountFile, $clusterSizeFile, $swissprotClustersDescFile, $swissprotSinglesDescFile, $parentDir, $configFile);
@@ -49,6 +50,7 @@ my $result = GetOptions(
     "id-out=s"              => \$idOutputFile,
     "id-out-domain=s"       => \$idOutputDomainFile,
     "fasta-zip=s"           => \$fastaZip,
+    "fasta-domain-zip=s"    => \$fastaDomainZip,
     "none-zip=s"            => \$noneZip,
     "disable-nnm"           => \$dontUseNewNeighborMethod,
     "scheduler=s"           => \$scheduler,
@@ -153,7 +155,7 @@ $swissprotClustersDescFile = "${inputFileBase}_swissprot_clusters_desc.txt" if n
 $swissprotSinglesDescFile = "${inputFileBase}_swissprot_singles_desc.txt"   if not $swissprotSinglesDescFile;
 
 
-my ($pfamDir, $allPfamDir, $splitPfamDir, $allSplitPfamDir, $fastaDir, $noneDir);
+my ($pfamDir, $allPfamDir, $splitPfamDir, $allSplitPfamDir, $fastaDir, $fastaDomainDir, $noneDir);
 my ($uniprotNodeDataDir, $uniprotDomainNodeDataDir, $uniref50NodeDataDir, $uniref90NodeDataDir);
 my $clusterDataDir = "cluster-data"; #relative for simplicity
 if ($fullGntRun) {
@@ -162,6 +164,7 @@ if ($fullGntRun) {
     $splitPfamDir = "$clusterDataDir/split-pfam-data"                               if not $splitPfamDir;
     $allSplitPfamDir = "$clusterDataDir/all-split-pfam-data"                        if not $allSplitPfamDir;
     $fastaDir = "$clusterDataDir/fasta"                                             if not $fastaDir;
+    $fastaDomainDir = "$clusterDataDir/fasta-domain"                                if not $fastaDomainDir;
     $noneDir = "$clusterDataDir/pfam-none"                                          if not $noneDir;
     $uniprotNodeDataDir = "$clusterDataDir/uniprot-nodes";
     $uniprotDomainNodeDataDir = "$clusterDataDir/uniprot-domain-nodes";
@@ -173,6 +176,7 @@ if ($fullGntRun) {
     $splitPfamDirZip = "$outputDir/${inputFileBase}_split_pfam_mapping.zip"         if not $splitPfamDirZip;
     $allSplitPfamDirZip = "$outputDir/${inputFileBase}_all_split_pfam_mapping.zip"  if not $allSplitPfamDirZip;
     $fastaZip = "$outputDir/${inputFileBase}_FASTA.zip"                             if not $fastaZip;
+    $fastaDomainZip = "$outputDir/${inputFileBase}_FASTA_Domain.zip"                if not $fastaDomainZip;
     $noneZip = "$outputDir/${inputFileBase}_no_pfam_neighbors.zip"                  if not $noneZip;
     $uniprotIdZip = "$outputDir/${inputFileBase}_UniProt_IDs.zip"                   if not $uniprotIdZip;
     $uniprotIdDomainZip = "$outputDir/${inputFileBase}_UniProt_Domain_IDs.zip"      if not $uniprotIdDomainZip;
@@ -199,12 +203,14 @@ if ($fullGntRun) {
     &$mkPath($uniref50NodeDataDir);
     &$mkPath($uniref90NodeDataDir);
     &$mkPath($fastaDir);
+    &$mkPath($fastaDomainDir);
 } else {
     $pfamDir = ""                                                                   if not defined $pfamDir;
     $allPfamDir = ""                                                                if not defined $allPfamDir;
     $splitPfamDir = ""                                                              if not defined $splitPfamDir;
     $allSplitPfamDir = ""                                                           if not defined $allSplitPfamDir;
     $fastaDir = ""                                                                  if not defined $fastaDir;
+    $fastaDomainDir = ""                                                            if not defined $fastaDomainDir;
     $noneDir = ""                                                                   if not defined $noneDir;
     $uniprotNodeDataDir = "";
     $uniprotDomainNodeDataDir = "";
@@ -216,6 +222,7 @@ if ($fullGntRun) {
     $splitPfamDirZip = ""                                                           if not defined $splitPfamDirZip;
     $allSplitPfamDirZip = ""                                                        if not defined $allSplitPfamDirZip;
     $fastaZip = ""                                                                  if not defined $fastaZip;
+    $fastaDomainZip = ""                                                            if not defined $fastaDomainZip;
     $noneZip = ""                                                                   if not defined $noneZip;
     $uniprotIdZip = ""                                                              if not defined $uniprotIdZip;
     $uniprotIdDomainZip = ""                                                        if not defined $uniprotIdDomainZip;
@@ -256,7 +263,9 @@ print "uniref90-id-zip is $uniref90IdZip\n";
 print "id-out is $idOutputFile\n";
 print "id-out-domain is $idOutputDomainFile\n";
 print "fasta-dir is $fastaDir\n";
+print "fasta-domain-dir is $fastaDomainDir\n";
 print "fasta-zip is $fastaZip\n";
+print "fasta-domain-zip is $fastaDomainZip\n";
 print "none-dir is $noneDir\n";
 print "none-zip is $noneZip\n";
 print "arrow-file is $arrowDataFile\n";
@@ -350,6 +359,7 @@ my $info = {
     uniref50_node_data_dir => &$absPath($uniref50NodeDataDir),
     uniref90_node_data_dir => &$absPath($uniref90NodeDataDir),
     fasta_data_dir => &$absPath($fastaDir),
+    fasta_domain_data_dir => &$absPath($fastaDomainDir),
     none_dir => &$absPath($noneDir),
     pfam_dir => &$absPath($pfamDir),
     all_pfam_dir => &$absPath($allPfamDir),
@@ -361,6 +371,7 @@ my $info = {
     uniref50_node_zip => $uniref50IdZip,
     uniref90_node_zip => $uniref90IdZip,
     fasta_zip => $fastaZip,
+    fasta_domain_zip => $fastaDomainZip,
     none_zip => $noneZip,
     pfam_zip => $pfamDirZip,
     all_pfam_zip => $allPfamDirZip,

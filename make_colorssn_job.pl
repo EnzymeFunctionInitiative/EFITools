@@ -80,6 +80,8 @@ if (not $ssnIn or not -s $ssnIn) {
     die "-ssnin $ssnIn does not exist or has a zero size\n$usage";
 }
 
+die "$usage\nERROR: missing -queue parameter" if not $queue;
+
 
 
 
@@ -114,9 +116,8 @@ my $uniprotNodeDataDir          = "$clusterDataPath/uniprot-nodes";
 my $uniprotDomainNodeDataDir    = "$clusterDataPath/uniprot-domain-nodes";
 my $uniref50NodeDataDir         = "$clusterDataPath/uniref50-nodes";
 my $uniref90NodeDataDir         = "$clusterDataPath/uniref90-nodes";
-my $fastaDataPath               = "$clusterDataPath/fasta";
-my $allFastaFile                = "$fastaDataPath/all.fasta";
-my $singletonsFastaFile         = "$fastaDataPath/singletons.fasta";
+my $fastaDataDir                = "$clusterDataPath/fasta";
+my $fastaDomainDataDir          = "$clusterDataPath/fasta-domain";
 my $inputSeqsFile               = "$clusterDataPath/sequences.fasta";
 
 my $uniprotNodeDataZip = "$outputPath/${ssnName}_UniProt_IDs.zip";
@@ -124,6 +125,7 @@ my $uniprotDomainNodeDataZip = "$outputPath/${ssnName}_UniProt_Domain_IDs.zip";
 my $uniref50NodeDataZip = "$outputPath/${ssnName}_UniRef50_IDs.zip";
 my $uniref90NodeDataZip = "$outputPath/${ssnName}_UniRef90_IDs.zip";
 my $fastaZip = "$outputPath/${ssnName}_FASTA.zip";
+my $fastaDomainZip = "$outputPath/${ssnName}_FASTA_Domain.zip";
 
 # The if statements apply to the mkdir cmd, not the die().
 my $mkPath = sub {
@@ -136,7 +138,8 @@ mkdir $outputPath or die "Unable to create output directory $outputPath: $!" if 
 &$mkPath($uniprotDomainNodeDataDir);
 &$mkPath($uniref50NodeDataDir);
 &$mkPath($uniref90NodeDataDir);
-&$mkPath($fastaDataPath);
+&$mkPath($fastaDataDir);
+&$mkPath($fastaDomainDataDir);
 
 
 my $fileSize = 0;
@@ -173,13 +176,15 @@ my $fileInfo = {
     uniprot_domain_node_data_dir => &$absPath($uniprotDomainNodeDataDir),
     uniref50_node_data_dir => &$absPath($uniref50NodeDataDir),
     uniref90_node_data_dir => &$absPath($uniref90NodeDataDir),
-    fasta_data_dir => &$absPath($fastaDataPath),
+    fasta_data_dir => &$absPath($fastaDataDir),
+    fasta_domain_data_dir => &$absPath($fastaDomainDataDir),
     
     uniprot_node_zip => $uniprotNodeDataZip,
     uniprot_domain_node_zip => $uniprotDomainNodeDataZip,
     uniref50_node_zip => $uniref50NodeDataZip,
     uniref90_node_zip => $uniref90NodeDataZip,
     fasta_zip => $fastaZip,
+    fasta_domain_zip => $fastaDomainZip,
 
     ssn_out => "$outputPath/$ssnOut",
     ssn_out_zip => "$outputPath/$ssnOutZip",
