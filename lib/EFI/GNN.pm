@@ -439,8 +439,6 @@ sub writeClusterHubGnn {
     $title = "SSN Cluster" if not $title;
     $gnnwriter->startTag('graph', 'label' => "$title GNN", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
 
-    print Dumper($self->{network}->{singletons});
-
     foreach my $clusterId (sort {$a <=> $b} keys %$clusterData){
         my $numQueryableSsns = scalar @{ $withneighbors->{$clusterId} };
         my $allClusterIds = $self->getIdsInCluster($clusterId, ALL_IDS|INTERNAL);
@@ -538,7 +536,6 @@ sub saveGnnAttributes {
 
         foreach my $accIdAttr (@accIdAttrs) {
             (my $accId = $accIdAttr->getAttribute('value')) =~ s/:\d+:\d+$//;
-            print "NONB: $accId\n" if not exists $gnnData->{noNeighborMap}->{$accId} or not defined $gnnData->{noNeighborMap}->{$accId};
             my $hasNeigh = (not exists $gnnData->{noNeighborMap}->{$accId} or $gnnData->{noNeighborMap}->{$accId} == 1) ?
                                     "false" : $gnnData->{noNeighborMap}->{$accId} == -1 ? "n/a" : "true";
             push @hasNeighbors, $hasNeigh;
