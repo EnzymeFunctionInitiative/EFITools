@@ -8,8 +8,7 @@ use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 $VERSION     = 1.00;
 @ISA         = qw(Exporter);
 @EXPORT      = ();
-@EXPORT_OK   = qw(usesSlurm getSchedulerType getLmod);
-#%EXPORT_TAGS = (DEFAULT => [qw(&func1)], Both    => [qw(&func1 &func2)]);
+@EXPORT_OK   = qw(usesSlurm getSchedulerType getLmod defaultScheduler validateConfigFile);
 
 
 sub usesSlurm {
@@ -22,12 +21,16 @@ sub usesSlurm {
 }
 
 sub getSchedulerType {
-    my ($scheduler) = @_;
-    if (defined($scheduler) and $scheduler eq "torque") {
+    my $scheduler = shift;
+    if ($scheduler and $scheduler eq "torque") {
         return "torque";
     } else {
-        return "slurm";
+        return defaultScheduler();
     }
+}
+
+sub defaultScheduler {
+    return "slurm";
 }
 
 sub getLmod {

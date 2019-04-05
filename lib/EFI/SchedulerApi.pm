@@ -68,6 +68,10 @@ sub workingDirectory {
     my ($self, $workingDir) = @_;
 }
 
+sub node {
+    my ($self, $node) = @_;
+}
+
 sub setScriptAbortOnError {
     my ($self, $doAbort) = @_;
 
@@ -123,6 +127,7 @@ sub render {
     print $fh ("$pfx " . $self->{mail} . "\n") if length($self->{mail});
     print $fh ("$pfx " . $self->{working_dir} . "\n") if length($self->{working_dir});
     print $fh ("$pfx " . $self->{name} . "\n") if length($self->{name});
+    print $fh ("$pfx " . $self->{node} . "\n") if $self->{node};
     print $fh join("\n", @{$self->{other_config}}), "\n" if scalar(@{$self->{other_config}});
     
     if (length $self->{output_file_stdout}) {
@@ -253,6 +258,10 @@ sub workingDirectory {
     $self->{working_dir} = "-w $workingDir";
 }
 
+sub node {
+    my ($self, $node) = @_;
+}
+
 
 
 
@@ -343,6 +352,11 @@ sub workingDirectory {
     $self->{working_dir} = "-D $workingDir";
 }
 
+sub node {
+    my ($self, $node) = @_;
+    $self->{node} = "-w $node";
+}
+
 
 
 
@@ -371,6 +385,8 @@ sub new {
     } else {
         $self->{type} = TORQUE;
     }
+
+    $self->{node} = $args{node} ? $args{node} : "";
     
     $self->{queue} = $args{queue};
 
@@ -422,6 +438,7 @@ sub getBuilder {
     }
 
     $b->queue($self->{queue}) if defined $self->{queue};
+    $b->node($self->{node}) if $self->{node};
     $b->resource($self->{resource}[0], $self->{resource}[1], $self->{resource}[2]) if defined $self->{resource};
     $b->workingDirectory($self->{default_working_dir}) if exists $self->{default_working_dir} and -d $self->{default_working_dir};
     $b->outputBaseFilepath($self->{output_base_filepath}) if exists $self->{output_base_filepath} and length $self->{output_base_filepath};

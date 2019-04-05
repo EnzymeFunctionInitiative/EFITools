@@ -129,7 +129,7 @@ sub build_annotations {
     }
     my $status = join($AnnoRowSep, @statusValues);
 
-    my ($iproDom, $iproFam, $iproSup, $iproOther) = parseInterpro(\@rows);
+    my ($iproDom, $iproFam, $iproSup, $iproOther) = parse_interpro(\@rows);
 
     my $tab = $accession .
         "\n\tSTATUS\t" . $status . 
@@ -174,7 +174,7 @@ sub build_annotations {
 }
 
 
-sub parseInterpro {
+sub parse_interpro {
     my $rows = shift;
 
     my (@dom, @fam, @sup, @other);
