@@ -223,7 +223,7 @@ sub writeSequence {
 
     if (not $header) {
         (my $sqlAcc = $accession) =~ s/:\d+:\d+$//;
-        my $sql = "select Organism,PFAM from annotations where accession = '$sqlAcc'";
+        my $sql = "SELECT annotations.Organism, GROUP_CONCAT(PFAM.id) AS PFAM FROM annotations LEFT JOIN PFAM ON annotations.accession = PFAM.accession WHERE annotations.accession = '$sqlAcc'";
         my $sth = $dbh->prepare($sql);
         $sth->execute();
         
