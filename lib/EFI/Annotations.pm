@@ -13,10 +13,17 @@ use constant FIELD_SEQ_SRC_VALUE_INPUT => "INPUT";
 use constant FIELD_SEQ_SRC_VALUE_BLASTHIT => "BLASTHIT";
 use constant FIELD_SEQ_SRC_VALUE_BLASTHIT_FAMILY => "FAMILY+BLASTHIT";
 use constant FIELD_SEQ_KEY => "Sequence";
+use constant FIELD_SEQ_LEN_KEY => "Sequence_Length";
 use constant FIELD_ID_ACC => "ACC";
 use constant FIELD_SWISSPROT_DESC => "Swissprot Description";
 use constant FIELD_TAXON_ID => "Taxonomy ID";
 use constant FIELD_SPECIES => "Species";
+use constant FIELD_UNIREF50_IDS => "UniRef50_IDs";
+use constant FIELD_UNIREF90_IDS => "UniRef90_IDs";
+use constant FIELD_UNIREF100_IDS => "UniRef100_IDs";
+use constant FIELD_UNIREF50_CLUSTER_SIZE => "UniRef50_Cluster_Size";
+use constant FIELD_UNIREF90_CLUSTER_SIZE => "UniRef90_Cluster_Size";
+use constant FIELD_UNIREF100_CLUSTER_SIZE => "UniRef100_Cluster_Size";
 
 our $Version = 2;
 
@@ -41,14 +48,15 @@ sub build_taxid_query_string {
 
 sub build_query_string {
     my $accession = shift;
-    my $unirefVersion = shift;
-    return build_query_string_base("accession", $accession, $unirefVersion);
+    my $extraWhere = shift || "";
+    return build_query_string_base("accession", $accession, $extraWhere);
 }
 
 
 sub build_query_string_base {
     my $column = shift;
     my $id = shift;
+    my $extraWhere = shift || "";
 
     my @ids = ($id);
     if (ref $id eq "ARRAY") {
@@ -77,7 +85,7 @@ from annotations as A
 left join taxonomy as T on A.Taxonomy_ID = T.Taxonomy_ID
 left join PFAM as P on A.accession = P.accession
 left join INTERPRO as I on A.accession = I.accession
-where A.$column $idQuoted
+where A.$column $idQuoted $extraWhere
 group by A.accession
 SQL
     }
@@ -174,6 +182,12 @@ sub build_annotations {
 }
 
 
+sub get_uniref_sequence_length {
+    my $row = shift;
+    return ($row->{accession}, $row->{Sequence_Length});
+}
+
+
 sub parse_interpro {
     my $rows = shift;
 
@@ -234,52 +248,52 @@ sub get_annotation_data {
 
     my $idx = 0;
 
-    $annoData{"ACC"}                    = {order => $idx++, display => "List of IDs in Rep Node"};
-    $annoData{"Cluster Size"}           = {order => $idx++, display => "Number of IDs in Rep Node"};
-    $annoData{"Sequence_Source"}        = {order => $idx++, display => "Sequence Source"};
-    $annoData{"Query_IDs"}              = {order => $idx++, display => "Query IDs"};
-    $annoData{"Other_IDs"}              = {order => $idx++, display => "Other IDs"};
-    $annoData{"Organism"}               = {order => $idx++, display => "Organism"};
-    $annoData{"Taxonomy_ID"}            = {order => $idx++, display => FIELD_TAXON_ID};
-    $annoData{"STATUS"}                 = {order => $idx++, display => "UniProt Annotation Status"};
-    $annoData{"Description"}            = {order => $idx++, display => "Description"};
-    $annoData{"Swissprot_Description"}  = {order => $idx++, display => FIELD_SWISSPROT_DESC};
-    $annoData{"Sequence_Length"}        = {order => $idx++, display => "Sequence Length"};
-    $annoData{"GN"}                     = {order => $idx++, display => "Gene Name"};
-    $annoData{"NCBI_IDs"}               = {order => $idx++, display => "NCBI IDs"};
-    $annoData{"Superkingdom"}           = {order => $idx++, display => "Superkingdom"};
-    $annoData{"Kingdom"}                = {order => $idx++, display => "Kingdom"};
-    $annoData{"Phylum"}                 = {order => $idx++, display => "Phylum"};
-    $annoData{"Class"}                  = {order => $idx++, display => "Class"};
-    $annoData{"Order"}                  = {order => $idx++, display => "Order"};
-    $annoData{"Family"}                 = {order => $idx++, display => "Family"};
-    $annoData{"Genus"}                  = {order => $idx++, display => "Genus"};
-    $annoData{"Species"}                = {order => $idx++, display => FIELD_SPECIES};
-    $annoData{"EC"}                     = {order => $idx++, display => "EC"};
-    $annoData{"PFAM"}                   = {order => $idx++, display => "PFAM"};
-    $annoData{"PDB"}                    = {order => $idx++, display => "PDB"};
-    $annoData{"IPRO_DOM"}               = {order => $idx++, display => "InterPro (Domain)"};
-    $annoData{"IPRO_FAM"}               = {order => $idx++, display => "InterPro (Family)"};
-    $annoData{"IPRO_SUP"}               = {order => $idx++, display => "InterPro (Homologous Superfamily)"};
-    $annoData{"IPRO"}                   = {order => $idx++, display => "InterPro (Other)"};
-    $annoData{"BRENDA"}                 = {order => $idx++, display => "BRENDA ID"};
-    $annoData{"CAZY"}                   = {order => $idx++, display => "CAZY Name"};
-    $annoData{"GO"}                     = {order => $idx++, display => "GO Term"};
-    $annoData{"KEGG"}                   = {order => $idx++, display => "KEGG ID"};
-    $annoData{"PATRIC"}                 = {order => $idx++, display => "PATRIC ID"};
-    $annoData{"STRING"}                 = {order => $idx++, display => "STRING ID"};
-    $annoData{"HMP_Body_Site"}          = {order => $idx++, display => "HMP Body Site"};
-    $annoData{"HMP_Oxygen"}             = {order => $idx++, display => "HMP Oxygen"};
-    $annoData{"P01_gDNA"}               = {order => $idx++, display => "P01 gDNA"};
-    $annoData{"UniRef50_IDs"}           = {order => $idx++, display => "UniRef50 Cluster IDs"};
-    $annoData{"UniRef50_Cluster_Size"}  = {order => $idx++, display => "UniRef50 Cluster Size"};
-    $annoData{"UniRef90_IDs"}           = {order => $idx++, display => "UniRef90 Cluster IDs"};
-    $annoData{"UniRef90_Cluster_Size"}  = {order => $idx++, display => "UniRef90 Cluster Size"};
-    $annoData{"UniRef100_IDs"}          = {order => $idx++, display => "UniRef100 Cluster IDs"};
-    $annoData{"UniRef100_Cluster_Size"} = {order => $idx++, display => "UniRef100 Cluster Size"};
-    $annoData{"ACC_CDHIT"}              = {order => $idx++, display => "CD-HIT IDs"};
-    $annoData{"ACC_CDHIT_COUNT"}        = {order => $idx++, display => "CD-HIT Cluster Size"};
-    $annoData{FIELD_SEQ_KEY}            = {order => $idx++, display => "Sequence"};
+    $annoData{"ACC"}                        = {order => $idx++, display => "List of IDs in Rep Node"};
+    $annoData{"Cluster Size"}               = {order => $idx++, display => "Number of IDs in Rep Node"};
+    $annoData{"Sequence_Source"}            = {order => $idx++, display => "Sequence Source"};
+    $annoData{"Query_IDs"}                  = {order => $idx++, display => "Query IDs"};
+    $annoData{"Other_IDs"}                  = {order => $idx++, display => "Other IDs"};
+    $annoData{"Organism"}                   = {order => $idx++, display => "Organism"};
+    $annoData{"Taxonomy_ID"}                = {order => $idx++, display => FIELD_TAXON_ID};
+    $annoData{"STATUS"}                     = {order => $idx++, display => "UniProt Annotation Status"};
+    $annoData{"Description"}                = {order => $idx++, display => "Description"};
+    $annoData{"Swissprot_Description"}      = {order => $idx++, display => FIELD_SWISSPROT_DESC};
+    $annoData{"Sequence_Length"}            = {order => $idx++, display => "Sequence Length"};
+    $annoData{"GN"}                         = {order => $idx++, display => "Gene Name"};
+    $annoData{"NCBI_IDs"}                   = {order => $idx++, display => "NCBI IDs"};
+    $annoData{"Superkingdom"}               = {order => $idx++, display => "Superkingdom"};
+    $annoData{"Kingdom"}                    = {order => $idx++, display => "Kingdom"};
+    $annoData{"Phylum"}                     = {order => $idx++, display => "Phylum"};
+    $annoData{"Class"}                      = {order => $idx++, display => "Class"};
+    $annoData{"Order"}                      = {order => $idx++, display => "Order"};
+    $annoData{"Family"}                     = {order => $idx++, display => "Family"};
+    $annoData{"Genus"}                      = {order => $idx++, display => "Genus"};
+    $annoData{"Species"}                    = {order => $idx++, display => FIELD_SPECIES};
+    $annoData{"EC"}                         = {order => $idx++, display => "EC"};
+    $annoData{"PFAM"}                       = {order => $idx++, display => "PFAM"};
+    $annoData{"PDB"}                        = {order => $idx++, display => "PDB"};
+    $annoData{"IPRO_DOM"}                   = {order => $idx++, display => "InterPro (Domain)"};
+    $annoData{"IPRO_FAM"}                   = {order => $idx++, display => "InterPro (Family)"};
+    $annoData{"IPRO_SUP"}                   = {order => $idx++, display => "InterPro (Homologous Superfamily)"};
+    $annoData{"IPRO"}                       = {order => $idx++, display => "InterPro (Other)"};
+    $annoData{"BRENDA"}                     = {order => $idx++, display => "BRENDA ID"};
+    $annoData{"CAZY"}                       = {order => $idx++, display => "CAZY Name"};
+    $annoData{"GO"}                         = {order => $idx++, display => "GO Term"};
+    $annoData{"KEGG"}                       = {order => $idx++, display => "KEGG ID"};
+    $annoData{"PATRIC"}                     = {order => $idx++, display => "PATRIC ID"};
+    $annoData{"STRING"}                     = {order => $idx++, display => "STRING ID"};
+    $annoData{"HMP_Body_Site"}              = {order => $idx++, display => "HMP Body Site"};
+    $annoData{"HMP_Oxygen"}                 = {order => $idx++, display => "HMP Oxygen"};
+    $annoData{"P01_gDNA"}                   = {order => $idx++, display => "P01 gDNA"};
+    $annoData{"UniRef50_IDs"}               = {order => $idx++, display => "UniRef50 Cluster IDs"};
+    $annoData{"UniRef50_Cluster_Size"}      = {order => $idx++, display => "UniRef50 Cluster Size"};
+    $annoData{"UniRef90_IDs"}               = {order => $idx++, display => "UniRef90 Cluster IDs"};
+    $annoData{"UniRef90_Cluster_Size"}      = {order => $idx++, display => "UniRef90 Cluster Size"};
+    $annoData{"UniRef100_IDs"}              = {order => $idx++, display => "UniRef100 Cluster IDs"};
+    $annoData{"UniRef100_Cluster_Size"}     = {order => $idx++, display => "UniRef100 Cluster Size"};
+    $annoData{"ACC_CDHIT"}                  = {order => $idx++, display => "CD-HIT IDs"};
+    $annoData{"ACC_CDHIT_COUNT"}            = {order => $idx++, display => "CD-HIT Cluster Size"};
+    $annoData{"Sequence"}                   = {order => $idx++, display => "Sequence"};
 
     return \%annoData;
 }
@@ -313,19 +327,19 @@ sub is_list_attribute {
     $self->{anno} = get_annotation_data() if not exists $self->{anno};
 
     return (
-        $attr eq "IPRO"             or $attr eq $self->{anno}->{"IPRO"}->{display}          or 
-        $attr eq "GI"               or $attr eq $self->{anno}->{"GI"}->{display}            or 
-        $attr eq "PDB"              or $attr eq $self->{anno}->{"PDB"}->{display}           or
-        $attr eq "PFAM"             or $attr eq $self->{anno}->{"PFAM"}->{display}          or 
-        $attr eq "GO"               or $attr eq $self->{anno}->{"GO"}->{display}            or 
-        $attr eq "HMP_Body_Site"    or $attr eq $self->{anno}->{"HMP_Body_Site"}->{display} or
-        $attr eq "CAZY"             or $attr eq $self->{anno}->{"CAZY"}->{display}          or 
-        $attr eq "Query_IDs"        or $attr eq $self->{anno}->{"Query_IDs"}->{display}     or 
-        $attr eq "Other_IDs"        or $attr eq $self->{anno}->{"Other_IDs"}->{display}     or
-        $attr eq "Description"      or $attr eq $self->{anno}->{"Description"}->{display}   or 
-        $attr eq "NCBI_IDs"         or $attr eq $self->{anno}->{"NCBI_IDs"}->{display}      or 
-        $attr eq "UniRef50_IDs"     or $attr eq $self->{anno}->{"UniRef50_IDs"}->{display}  or
-        $attr eq "UniRef90_IDs"     or $attr eq $self->{anno}->{"UniRef90_IDs"}->{display}  or 
+        $attr eq "IPRO"             or $attr eq $self->{anno}->{"IPRO"}->{display}              or 
+        $attr eq "GI"               or $attr eq $self->{anno}->{"GI"}->{display}                or 
+        $attr eq "PDB"              or $attr eq $self->{anno}->{"PDB"}->{display}               or
+        $attr eq "PFAM"             or $attr eq $self->{anno}->{"PFAM"}->{display}              or 
+        $attr eq "GO"               or $attr eq $self->{anno}->{"GO"}->{display}                or 
+        $attr eq "HMP_Body_Site"    or $attr eq $self->{anno}->{"HMP_Body_Site"}->{display}     or
+        $attr eq "CAZY"             or $attr eq $self->{anno}->{"CAZY"}->{display}              or 
+        $attr eq "Query_IDs"        or $attr eq $self->{anno}->{"Query_IDs"}->{display}         or 
+        $attr eq "Other_IDs"        or $attr eq $self->{anno}->{"Other_IDs"}->{display}         or
+        $attr eq "Description"      or $attr eq $self->{anno}->{"Description"}->{display}       or 
+        $attr eq "NCBI_IDs"         or $attr eq $self->{anno}->{"NCBI_IDs"}->{display}          or 
+        $attr eq FIELD_UNIREF50_IDS or $attr eq $self->{anno}->{"UniRef50_IDs"}->{display}  or
+        $attr eq FIELD_UNIREF90_IDS or $attr eq $self->{anno}->{"UniRef90_IDs"}->{display}  or 
         $attr eq "ACC_CDHIT"        or $attr eq $self->{anno}->{"ACC_CDHIT"}->{display}
     );
 }
@@ -360,9 +374,9 @@ sub is_expandable_attr {
         );
     }
     $result = ($result or (
-        $attr eq "UniRef50_IDs"     or $attr eq $self->{anno}->{"UniRef50_IDs"}->{display}      or 
-        $attr eq "UniRef90_IDs"     or $attr eq $self->{anno}->{"UniRef90_IDs"}->{display}      or 
-        $attr eq "UniRef100_IDs"    or $attr eq $self->{anno}->{"UniRef100_IDs"}->{display}     
+        $attr eq FIELD_UNIREF50_IDS     or $attr eq $self->{anno}->{"UniRef50_IDs"}->{display}  or 
+        $attr eq FIELD_UNIREF90_IDS     or $attr eq $self->{anno}->{"UniRef90_IDs"}->{display}  or 
+        $attr eq FIELD_UNIREF100_IDS    or $attr eq $self->{anno}->{"UniRef100_IDs"}->{display}     
     ));
     return $result;
 }
