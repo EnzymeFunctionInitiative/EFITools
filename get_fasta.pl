@@ -1,7 +1,8 @@
 #!/usr/bin/env perl
 
 BEGIN {
-    die "The efishared environment must be loaded before running this script" if not exists $ENV{EFISHARED} or not exists $ENV{EFIDBPATH};
+    die "The efishared environment must be loaded before running this script" if not exists $ENV{EFISHARED};
+    die "The efidb environment must be loaded before running this script" if not exists $ENV{EFIDBPATH};
     use lib $ENV{EFISHARED};
 }
 
@@ -58,7 +59,7 @@ if ($configFile and not -f $configFile and not exists $ENV{EFICONFIG} and not -f
     die "Config file required in environment or as a parameter.\n$usage"
 }
 
-$configFile = $ENV{EFICONFIG} if not $configFile and not -f $configFile;
+$configFile = $ENV{EFICONFIG} if not $configFile or not -f $configFile;
 
 
 mkdir $fastaDir or die "Unable to create $fastaDir: $!" if $fastaDir and not -d $fastaDir;
