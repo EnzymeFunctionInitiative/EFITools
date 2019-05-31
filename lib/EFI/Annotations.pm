@@ -294,6 +294,7 @@ sub get_annotation_data {
     $annoData{"ACC_CDHIT"}                  = {order => $idx++, display => "CD-HIT IDs"};
     $annoData{"ACC_CDHIT_COUNT"}            = {order => $idx++, display => "CD-HIT Cluster Size"};
     $annoData{"Sequence"}                   = {order => $idx++, display => "Sequence"};
+    $annoData{"User_IDs_in_Cluster"}        = {order => $idx++, display => "User IDs in Cluster"};
 
     return \%annoData;
 }
@@ -340,7 +341,8 @@ sub is_list_attribute {
         $attr eq "NCBI_IDs"         or $attr eq $self->{anno}->{"NCBI_IDs"}->{display}          or 
         $attr eq FIELD_UNIREF50_IDS or $attr eq $self->{anno}->{"UniRef50_IDs"}->{display}  or
         $attr eq FIELD_UNIREF90_IDS or $attr eq $self->{anno}->{"UniRef90_IDs"}->{display}  or 
-        $attr eq "ACC_CDHIT"        or $attr eq $self->{anno}->{"ACC_CDHIT"}->{display}
+        $attr eq "ACC_CDHIT"        or $attr eq $self->{anno}->{"ACC_CDHIT"}->{display} or
+        $attr eq "User_IDs_in_Cluster" or $attr eq $self->{anno}->{"User_IDs_in_Cluster"}->{display}
     );
 }
 
