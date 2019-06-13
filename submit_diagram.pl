@@ -13,6 +13,7 @@ use lib $FindBin::Bin . "/lib";
 
 use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm);
+use EFI::GNN::Arrows;
 
 
 my ($diagramZipFile, $blastSeq, $evalue, $maxNumSeq, $outputFile, $scheduler, $queue, $dryRun,
@@ -64,6 +65,9 @@ usage: $0 -diagram-file <filename> [-scheduler <slurm|torque>] [-queue <queue_na
 USAGE
 ;
 
+my $diagramVersion = $EFI::GNN::Arrows::Version;
+
+
 if (not -f $diagramZipFile and not $blastSeq and not -f $idFile and not -f $fastaFile) {
     die "$usage";
 }
@@ -101,10 +105,10 @@ $title = ""                                     if not $title;
 $nbSize = 10                                    if not $nbSize;
 $jobId = ""                                     if not defined $jobId;
 
-if ($diagramZipFile and $diagramZipFile !~ /\.zip$/) {
-    print "Not unzipping a file that doesn't end in zip ($diagramZipFile)\n";
-    exit(0);
-}
+#if ($diagramZipFile and $diagramZipFile !~ /\.zip$/) {
+#    print "Not unzipping a file that doesn't end in zip ($diagramZipFile)\n";
+#    exit(0);
+#}
 
 (my $diagramDbFile = $diagramZipFile) =~ s/\.zip$/.sqlite/g;
 
@@ -132,18 +136,9 @@ my $jobId;
 
 
 ###################################################################################################
-# This job simply unzips the file.
-if ($diagramZipFile) {
-    $jobType = "unzip";
-    $B->resource(1, 1, "5gb");
-    $B->addAction("$toolpath/unzip_file.pl -in $diagramZipFile -out $outputFile -out-ext sqlite 2> $stderrFile");
-    addBashErrorCheck($B, 1, $outputFile);
-}
-
-###################################################################################################
 # This job runs a BLAST on the input sequence, then extracts the sequence IDs from the output BLAST
 # and then finds all of the neighbors for those IDs and creates the sqlite database from that.
-elsif ($blastSeq) {
+if ($blastSeq) {
     $jobType = "BLAST" if not $jobType;
 
     my $seqFile = "$outputDir/query.fa";
@@ -160,6 +155,7 @@ elsif ($blastSeq) {
     #$B->addAction("grep -v '#' $blastOutFile | cut -f 2,11,12 | sort -k3,3nr | cut -d'|' -f2 > $blastIdListFile");
     $B->addAction("grep -v '#' $blastOutFile | cut -f 2,11,12 | sort -k3,3nr | sed 's/[\t ]\\{1,\\}/|/g' | cut -d'|' -f2,4 > $blastIdListFile");
     $B->addAction("create_diagram_db.pl -id-file $blastIdListFile -db-file $outputFile -blast-seq-file $seqFile -job-type $jobType $titleArg -nb-size $nbSize");
+    $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
 
     addBashErrorCheck($B, 1, $outputFile);
 }
@@ -169,6 +165,7 @@ elsif ($idFile) {
 
     $B->resource(1, 1, "10gb");
     $B->addAction("create_diagram_db.pl -id-file $idFile -db-file $outputFile -job-type $jobType $titleArg -nb-size $nbSize -do-id-mapping");
+    $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
 
     addBashErrorCheck($B, 0, $outputFile);
 }
@@ -182,9 +179,23 @@ elsif ($fastaFile) {
     $B->addAction("extract_ids_from_fasta.pl -fasta-file $fastaFile -output-file $tempIdFile");
     $B->addAction("create_diagram_db.pl -id-file $tempIdFile -db-file $outputFile -job-type $jobType $titleArg -nb-size $nbSize -do-id-mapping");
     $B->addAction("rm $tempIdFile");
+    $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
     
     addBashErrorCheck($B, 0, $outputFile);
 }
+
+else {
+    $jobType = "unzip";
+    $B->resource(1, 1, "5gb");
+    ###################################################################################################
+    # This job simply unzips the file.
+    if ($diagramZipFile =~ m/\.zip$/i) {
+        $B->addAction("$toolpath/unzip_file.pl -in $diagramZipFile -out $outputFile -out-ext sqlite 2> $stderrFile");
+    }
+    $B->addAction("$toolpath/check_diagram_version.pl -db-file $outputFile -version $diagramVersion -version-file $outputDir/diagram.version");
+    addBashErrorCheck($B, 1, $outputFile);
+}
+
 
 
 $jobType = lc $jobType;

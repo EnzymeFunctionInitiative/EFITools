@@ -16,6 +16,7 @@ use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm);
 use EFI::Config;
 use EFI::GNN::Base;
+use EFI::GNN::Arrows;
 
 
 my ($ssnIn, $nbSize, $warningFile, $gnn, $ssnOut, $cooc, $stats, $pfamHubFile, $baseDir);
@@ -273,6 +274,10 @@ print "cooc-table is $coocTableFile\n";
 print "hub-count-file is $hubCountFile\n";
 print "job-id is $jobId\n";
 
+my $diagramVersion = $EFI::GNN::Arrows::Version; #TODO: put this somewhere else
+
+
+
 unless($nbSize>0){
     die "-n $nbSize must be an integer greater than zero\n$usage";
 }
@@ -428,6 +433,7 @@ if ($fullGntRun) {
     EFI::GNN::Base::addFileActions($B, $info);
 }
 $B->addAction("\n\n$toolpath/save_version.pl > $outputDir/gnn.completed");
+$B->addAction("echo $diagramVersion > $outputDir/diagram.version");
 
 $B->jobName("${jobNamePrefix}submit_gnn");
 $B->renderToFile("$outputDir/submit_gnn.sh");

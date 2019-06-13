@@ -8,6 +8,8 @@ use Data::Dumper;
 
 our $AttributesTable = "attributes";
 our $NeighborsTable = "neighbors";
+our $Version = 3;
+
 
 sub new {
     my ($class, %args) = @_;
@@ -46,6 +48,7 @@ sub writeArrowData {
     push @sqlStatements, getCreateFamilyTableSql();
     push @sqlStatements, getCreateDegreeTableSql();
     push @sqlStatements, getCreateMetadataTableSql();
+    push @sqlStatements, getClusterIndexTableSql();
     foreach my $sql (@sqlStatements) {
         $dbh->do($sql);
     }
@@ -85,8 +88,41 @@ sub writeArrowData {
         $dbh->do($sql);
     }
 
-    foreach my $id (sort keys %$data) {
-        my $sql = $self->getInsertStatement($EFI::GNN::Arrows::AttributesTable, $data->{$id}->{attributes}, $dbh);
+    # Sort first by cluster number then by accession.
+    my $sortFn = sub {
+        my $comp = $data->{$a}->{attributes}->{cluster_num} <=> $data->{$b}->{attributes}->{cluster_num};
+        return $comp if $comp;
+        return 1 if not $data->{$a}->{attributes}->{accession};
+        return -1 if not $data->{$b}->{attributes}->{accession};
+        $comp = $data->{$a}->{attributes}->{accession} cmp $data->{$b}->{attributes}->{accession};
+        return $comp;
+    };
+    my @sortedIds = keys %$data;
+    if (scalar @sortedIds and exists $data->{$sortedIds[0]}->{attributes}->{cluster_num}) {
+        @sortedIds = sort $sortFn @sortedIds;
+    } else {
+        @sortedIds = sort @sortedIds;
+    }
+
+    my $clusterIndex = 0;
+    my $lastCluster = -1;
+    my $start = -1;
+    my %extents;
+
+    foreach my $id (@sortedIds) {
+        next if not $data->{$id}->{attributes}->{accession};
+
+        # Here we determine the range of cluster indexes in each cluster.
+        my $clusterNum = $data->{$id}->{attributes}->{cluster_num};
+        if ($clusterNum != $lastCluster) {
+            if ($start != -1) {
+                $extents{$lastCluster} = [$start, $clusterIndex-1];
+            }
+            $lastCluster = $clusterNum;
+            $start = $clusterIndex;
+        }
+
+        my $sql = $self->getInsertStatement($EFI::GNN::Arrows::AttributesTable, $data->{$id}->{attributes}, $dbh, $clusterIndex);
         $dbh->do($sql);
         my $geneKey = $dbh->last_insert_id(undef, undef, undef, undef);
         $families{$data->{$id}->{attributes}->{family}} = 1 if $data->{$id}->{attributes}->{family};
@@ -99,10 +135,19 @@ sub writeArrowData {
             $families{$nb->{family}} = 1;
             $families{$nb->{ipro_family}} = 1;
         }
+        $clusterIndex++;
     }
+    $extents{$lastCluster} = [$start, $clusterIndex-1];
 
     foreach my $id (sort keys %families) {
         my $sql = "INSERT INTO families (family) VALUES (" . $dbh->quote($id) . ")";
+        $dbh->do($sql);
+    }
+    
+    foreach my $num (sort {$a<=>$b} keys %extents) {
+        next if not exists $extents{$num};
+        my ($min, $max) = @{$extents{$num}};
+        my $sql = "INSERT INTO cluster_index (cluster_num, start_index, end_index) VALUES ($num, $min, $max)";
         $dbh->do($sql);
     }
 
@@ -158,12 +203,17 @@ sub writeMatchedIds {
 sub getCreateAttributeTableSql {
     my @statements;
     my $cols = getAttributeColsSql();
-    $cols .= "\n                        , sort_order INTEGER";
-    $cols .= "\n                        , strain VARCHAR(2000)";
-    $cols .= "\n                        , cluster_num INTEGER";
-    $cols .= "\n                        , organism VARCHAR(2000)";
-    $cols .= "\n                        , is_bound INTEGER"; # 0 - not encountering any contig boundary; 1 - left; 2 - right; 3 - both
-    $cols .= "\n                        , evalue REAL";
+    $cols .= <<SQL;
+                        ,
+                        sort_order INTEGER,
+                        strain VARCHAR(2000),
+                        cluster_num INTEGER,
+                        organism VARCHAR(2000),
+                        is_bound INTEGER,
+                        evalue REAL,
+                        cluster_index INTEGER
+SQL
+    # is_bound: 0 - not encountering any contig boundary; 1 - left; 2 - right; 3 - bo,
 
     my $sql = "CREATE TABLE $EFI::GNN::Arrows::AttributesTable ($cols)";
     push @statements, $sql;
@@ -171,6 +221,16 @@ sub getCreateAttributeTableSql {
     push @statements, $sql;
     $sql = "CREATE INDEX ${EFI::GNN::Arrows::AttributesTable}_cl_num_index ON $EFI::GNN::Arrows::AttributesTable (cluster_num)";
     push @statements, $sql;
+    $sql = "CREATE INDEX ${EFI::GNN::Arrows::AttributesTable}_cl_index_index ON $EFI::GNN::Arrows::AttributesTable (cluster_index)";
+    push @statements, $sql;
+    return @statements;
+}
+
+
+sub getClusterIndexTableSql {
+    my @statements;
+    push @statements, "CREATE TABLE cluster_index (cluster_num INTEGER, start_index INTEGER, end_index INTEGER)";
+    push @statements, "CREATE INDEX cluster_num_table_index ON cluster_index (cluster_num)";
     return @statements;
 }
 
@@ -254,15 +314,19 @@ sub getInsertStatement {
     my $table = shift;
     my $attr = shift;
     my $dbh = shift;
+    my $clusterIndex = shift;
 
-    my $strainCol = exists $attr->{strain} ? ",strain" : "";
-    my $clusterNumCol = exists $attr->{cluster_num} ? ",cluster_num" : "";
-    my $geneKeyCol = exists $attr->{gene_key} ? ",gene_key" : "";
-    my $organismCol = exists $attr->{organism} ? ",organism" : "";
-    my $isBoundCol = exists $attr->{is_bound} ? ",is_bound" : "";
-    my $orderCol = exists $attr->{sort_order} ? ",sort_order" : "";
-    my $evalueCol = exists $attr->{evalue} ? ",evalue" : "";
-    my $addlCols = $strainCol . $clusterNumCol . $geneKeyCol . $organismCol . $isBoundCol . $orderCol . $evalueCol;
+    my @addlCols;
+    push @addlCols, exists $attr->{strain} ? ",strain" : "";
+    push @addlCols, exists $attr->{cluster_num} ? ",cluster_num" : "";
+    push @addlCols, exists $attr->{gene_key} ? ",gene_key" : "";
+    push @addlCols, exists $attr->{organism} ? ",organism" : "";
+    push @addlCols, exists $attr->{is_bound} ? ",is_bound" : "";
+    push @addlCols, exists $attr->{sort_order} ? ",sort_order" : "";
+    push @addlCols, exists $attr->{evalue} ? ",evalue" : "";
+    push @addlCols, defined $clusterIndex ? ",cluster_index" : "";
+    #my $addlCols = $strainCol . $clusterNumCol . $geneKeyCol . $organismCol . $isBoundCol . $orderCol . $evalueCol;
+    my $addlCols = join("", @addlCols);
 
     # If the family field is a fusion of multiple pfams, we get the color for each pfam in the fusion
     # as well as a color for the fusion.
@@ -294,6 +358,7 @@ sub getInsertStatement {
     $sql .= "," . $dbh->quote($attr->{is_bound}) if exists $attr->{is_bound};
     $sql .= "," . $dbh->quote($attr->{sort_order}) if exists $attr->{sort_order};
     $sql .= "," . $dbh->quote($attr->{evalue}) if exists $attr->{evalue};
+    $sql .= "," . $dbh->quote($clusterIndex) if defined $clusterIndex;
     $sql .= ")";
 
     return $sql;
@@ -369,6 +434,27 @@ sub computeClusterCenters {
     }
 
     return \%centers;
+}
+
+
+sub getDbVersion {
+    my $dbFile = shift;
+
+    my $version = 2;
+
+    my $dbh = DBI->connect("dbi:SQLite:dbname=$dbFile","","");
+
+    my $sql = "SELECT * FROM sqlite_master WHERE type='table' AND name = 'cluster_index'";
+    my $sth = $dbh->prepare($sql);
+    $sth->execute();
+    if ($sth->fetchrow_hashref()) {
+        $version = 3;
+    }
+    $sth->finish();
+
+    $dbh->disconnect();
+
+    return $version;
 }
 
 
