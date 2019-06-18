@@ -252,7 +252,7 @@ sub getInputIds {
 
     open FILE, $file or die "Unable to open $file for reading: $!";
     while (<FILE>) {
-        chomp;
+        s/[\r\n]+$//;
         my @lineIds = split(/,+/, $_);
         foreach my $idLine (@lineIds) {
             my ($id, $evalue);
