@@ -92,6 +92,8 @@ sub writeArrowData {
     my $sortFn = sub {
         my $comp = $data->{$a}->{attributes}->{cluster_num} <=> $data->{$b}->{attributes}->{cluster_num};
         return $comp if $comp;
+        return $data->{$a}->{attributes}->{evalue} <=> $data->{$b}->{attributes}->{evalue}
+            if exists $data->{$a}->{attributes}->{evalue} and exists $data->{$b}->{attributes}->{evalue};
         return 1 if not $data->{$a}->{attributes}->{accession};
         return -1 if not $data->{$b}->{attributes}->{accession};
         $comp = $data->{$a}->{attributes}->{accession} cmp $data->{$b}->{attributes}->{accession};
