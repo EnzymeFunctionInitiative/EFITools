@@ -118,7 +118,6 @@ my $uniref50NodeDataDir         = "$clusterDataPath/uniref50-nodes";
 my $uniref90NodeDataDir         = "$clusterDataPath/uniref90-nodes";
 my $fastaDataDir                = "$clusterDataPath/fasta";
 my $fastaDomainDataDir          = "$clusterDataPath/fasta-domain";
-my $inputSeqsFile               = "$clusterDataPath/sequences.fasta";
 
 my $uniprotNodeDataZip = "$outputPath/${ssnName}_UniProt_IDs.zip";
 my $uniprotDomainNodeDataZip = "$outputPath/${ssnName}_UniProt_Domain_IDs.zip";
@@ -188,7 +187,6 @@ my $fileInfo = {
 
     ssn_out => "$outputPath/$ssnOut",
     ssn_out_zip => "$outputPath/$ssnOutZip",
-    input_seqs_file => $inputSeqsFile,
 };
 
 my $scriptArgs = 

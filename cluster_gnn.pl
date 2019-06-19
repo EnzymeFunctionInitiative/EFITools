@@ -229,7 +229,7 @@ timer("getClusters");
 
 my $warning_fh;
 if ($gnn and $warningFile) { #$nomatch and $noneighfile) {
-    open($warning_fh, ">$warningFile") or warn "cannot write file of no-match/no-neighbor warnings for accessions\n";
+    open($warning_fh, ">$warningFile") or warn "cannot write file $warningFile of no-match/no-neighbor warnings for accessions\n";
 } else {
     open($warning_fh, ">/dev/null") or die "cannot write file of no-match/no-neighbor warnings to /dev/null\n";
 }
