@@ -920,15 +920,17 @@ sub writeSsnStats {
     close STATS;
 
 
-    open SIZE, ">", $sizeFile or die "Unable to open size file $sizeFile for writing: $!";
-
-    foreach my $clusterNum (sort {$a <=> $b} keys %clusterSizes) {
-        if ($clusterSizes{$clusterNum} > 1) {
-            print SIZE "$clusterNum\t$clusterSizes{$clusterNum}\n";
+    if ($sizeFile) {
+        open SIZE, ">", $sizeFile or die "Unable to open size file $sizeFile for writing: $!";
+    
+        foreach my $clusterNum (sort {$a <=> $b} keys %clusterSizes) {
+            if ($clusterSizes{$clusterNum} > 1) {
+                print SIZE "$clusterNum\t$clusterSizes{$clusterNum}\n";
+            }
         }
+    
+        close SIZE;
     }
-
-    close SIZE;
 
 
     open SPCLDESC, ">", $spClustersDescFile or die "Unable to open swissprot desc file $spClustersDescFile for writing: $!";

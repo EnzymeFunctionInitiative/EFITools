@@ -261,7 +261,8 @@ my $hasDomain = 0;
 if (not $skipIdMapping) {
     print "saving the cluster-protein ID mapping tables\n";
     my $result = doClusterMapping($dbh, $util);
-    $hasDomain = (exists $result->{has_domain} and $result->{has_domain});
+    $hasDomain = $result->{has_domain};
+    saveClusterSizes($clusterSizeFile, $result->{sizes}) if $result->{sizes};
 }
 $idOutputDomainFile = "" if not $hasDomain;
 timer("idMapping");
@@ -383,6 +384,8 @@ close($warning_fh);
 timer("wrapup");
 print "writing mapping and statistics\n";
 $util->writeIdMapping($idOutputFile, $idOutputDomainFile, $taxonIds, $species) if $idOutputFile;
+# The cluster size mapping file is written near the beginning of the process, so we don't want to
+# write it here.
 $util->writeSsnStats($swissprotDesc, $statsFile, $clusterSizeFile, $swissprotClustersDescFile, $swissprotSinglesDescFile) if $statsFile and $clusterSizeFile and $swissprotClustersDescFile and $swissprotSinglesDescFile;
 $util->finish();
 timer("wrapup");
@@ -488,30 +491,74 @@ sub hubCountSortFn {
 }
 
 
+sub saveClusterSizes {
+    my $sizeFile = shift;
+    my $data = shift;
+
+    open SIZE, ">", $sizeFile or die "Unable to open size file $sizeFile for writing: $!";
+    
+    my @clusterNumbers = sort { $a <=> $b } keys %{$data->{uniprot}};
+    my $wroteHeader = 0;
+    foreach my $clusterNum (@clusterNumbers) {
+        if (not $wroteHeader) {
+            $wroteHeader = 1;
+            print SIZE "Cluster Number\tUniProt Cluster Size";
+            print SIZE "\tUniRef90 Cluster Size" if $data->{uniref90}->{$clusterNum};
+            print SIZE "\tUniRef50 Cluster Size" if $data->{uniref50}->{$clusterNum};
+            print SIZE "\n";
+        }
+
+        if ($data->{uniprot}->{$clusterNum} > 1) {
+            print SIZE "$clusterNum";
+            print SIZE "\t$data->{uniprot}->{$clusterNum}";
+        } else {
+            next;
+        }
+        if ($data->{uniref90}->{$clusterNum}) {
+            print SIZE "\t$data->{uniref90}->{$clusterNum}";
+        }
+        if ($data->{uniref50}->{$clusterNum}) {
+            print SIZE "\t$data->{uniref50}->{$clusterNum}";
+        }
+        print SIZE "\n";
+    }
+    
+    close SIZE;
+}
+
+
 sub doClusterMapping {
     my $dbh = shift;
     my $util = shift;
     
     my ($uniprotMap, $uniprotDomainMap, $uniref50Map, $uniref90Map, $singletonMap) = getClusterToIdMapping($dbh, $util);
 
-    my %result;
+    my $result = {};
+    my $sizeData = {};
+    my @params;
 
     if ($uniprotIdDir and -d $uniprotIdDir) {
-        saveClusterIdFiles2($uniprotMap, "UniProt", $uniprotIdDir, $singletonMap);
+        my ($idCount, $sizes) = saveClusterIdFiles2($uniprotMap, "UniProt", $uniprotIdDir, $singletonMap);
+        $sizeData->{uniprot} = $sizes;
     }
     if ($uniprotDomainIdDir and -d $uniprotDomainIdDir) {
-        my $idCount = saveClusterIdFiles2($uniprotDomainMap, "UniProt_Domain", $uniprotDomainIdDir, $singletonMap);
-        $result{has_domain} = $idCount > 0;
+        my ($idCount, $sizes) = saveClusterIdFiles2($uniprotDomainMap, "UniProt_Domain", $uniprotDomainIdDir, $singletonMap);
+        $result->{has_domain} = $idCount > 0;
     }
     if ($uniref50IdDir and -d $uniref50IdDir) {
-        saveClusterIdFiles2($uniref50Map, "UniRef50", $uniref50IdDir, $singletonMap);
+        my ($idCount, $sizes) = saveClusterIdFiles2($uniref50Map, "UniRef50", $uniref50IdDir, $singletonMap);
+        $sizeData->{uniref50} = $sizes;
     }
     if ($uniref90IdDir and -d $uniref90IdDir) {
-        saveClusterIdFiles2($uniref90Map, "UniRef90", $uniref90IdDir, $singletonMap);
+        my ($idCount, $sizes) = saveClusterIdFiles2($uniref90Map, "UniRef90", $uniref90IdDir, $singletonMap);
+        $sizeData->{uniref90} = $sizes;
     }
 
-    return \%result;
+    $result->{sizes} = $sizeData;
+
+    return $result;
 }
+
 
 sub getClusterToIdMapping {
     my $dbh = shift;
@@ -574,6 +621,8 @@ sub saveClusterIdFiles2 {
     
     open SINGLES, ">", "$outputDir/singleton_${filePattern}_IDs.txt";
 
+    my $sizeData = {};
+
     my @ids;
     my $idCount = 0;
     foreach my $clNum (@clusterNumbers) {
@@ -585,6 +634,7 @@ sub saveClusterIdFiles2 {
                 push @ids, $accId;
             }
             close FH;
+            $sizeData->{$clNum} = scalar @accIds;
         } else {
             my $accId = $accIds[0];
             print SINGLES "$accId\n";
@@ -600,7 +650,7 @@ sub saveClusterIdFiles2 {
     }
     close ALL;
 
-    return $idCount;
+    return ($idCount, $sizeData);
 }
 
 
