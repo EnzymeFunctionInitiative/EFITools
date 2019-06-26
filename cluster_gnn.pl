@@ -386,7 +386,7 @@ print "writing mapping and statistics\n";
 $util->writeIdMapping($idOutputFile, $idOutputDomainFile, $taxonIds, $species) if $idOutputFile;
 # The cluster size mapping file is written near the beginning of the process, so we don't want to
 # write it here.
-$util->writeSsnStats($swissprotDesc, $statsFile, $clusterSizeFile, $swissprotClustersDescFile, $swissprotSinglesDescFile) if $statsFile and $clusterSizeFile and $swissprotClustersDescFile and $swissprotSinglesDescFile;
+$util->writeSsnStats($swissprotDesc, $statsFile, "", $swissprotClustersDescFile, $swissprotSinglesDescFile) if $statsFile and $swissprotClustersDescFile and $swissprotSinglesDescFile;
 $util->finish();
 timer("wrapup");
 
