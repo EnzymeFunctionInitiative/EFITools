@@ -14,6 +14,7 @@ use constant FIELD_SEQ_SRC_VALUE_BLASTHIT => "BLASTHIT";
 use constant FIELD_SEQ_SRC_VALUE_BLASTHIT_FAMILY => "FAMILY+BLASTHIT";
 use constant FIELD_SEQ_KEY => "Sequence";
 use constant FIELD_SEQ_LEN_KEY => "Sequence_Length";
+use constant FIELD_UNIREF_CLUSTER_ID_SEQ_LEN_KEY => "Cluster_ID_Sequence_Length";
 use constant FIELD_ID_ACC => "ACC";
 use constant FIELD_SWISSPROT_DESC => "Swissprot Description";
 use constant FIELD_TAXON_ID => "Taxonomy ID";
@@ -117,6 +118,7 @@ sub build_annotations {
     my $accession = shift;
     my $row = shift;
     my $ncbiIds = shift;
+    my $annoSpec = shift;
 
     if (ref $accession eq "HASH" and not defined $ncbiIds) {
         $ncbiIds = $row;
@@ -139,40 +141,44 @@ sub build_annotations {
 
     my ($iproDom, $iproFam, $iproSup, $iproOther) = parse_interpro(\@rows);
 
+    my $attrFunc = sub {
+        return 1 if not $annoSpec;
+        return exists $annoSpec->{$_[0]};
+    };
+
     my $tab = $accession .
         "\n\tSTATUS\t" . $status . 
-        "\n\tSequence_Length\t" . merge_anno_rows(\@rows, "Sequence_Length") . 
-        "\n\tTaxonomy_ID\t" . merge_anno_rows(\@rows, "Taxonomy_ID") . 
-        "\n\tP01_gDNA\t" . merge_anno_rows(\@rows, "GDNA") . 
-        "\n\tDescription\t" . merge_anno_rows(\@rows, "Description") . 
-        "\n\tSwissprot_Description\t" . merge_anno_rows(\@rows, "SwissProt_Description") . 
-        "\n\tOrganism\t" . merge_anno_rows(\@rows, "Organism") . 
-        "\n\tGN\t" . merge_anno_rows(\@rows, "GN") . 
-        "\n\tPFAM\t" . merge_anno_rows_uniq(\@rows, "PFAM2") . 
-        "\n\tPDB\t" . merge_anno_rows(\@rows, "pdb") . 
-        "\n\tIPRO_DOM\t" . join($AnnoRowSep, @$iproDom) .
-        "\n\tIPRO_FAM\t" . join($AnnoRowSep, @$iproFam) .
-        "\n\tIPRO_SUP\t" . join($AnnoRowSep, @$iproSup) .
-        "\n\tIPRO\t" . join($AnnoRowSep, @$iproOther) .
-        "\n\tGO\t" . merge_anno_rows(\@rows, "GO") .
-        "\n\tKEGG\t" . merge_anno_rows(\@rows, "KEGG") .
-        "\n\tSTRING\t" . merge_anno_rows(\@rows, "STRING") .
-        "\n\tBRENDA\t" . merge_anno_rows(\@rows, "BRENDA") .
-        "\n\tPATRIC\t" . merge_anno_rows(\@rows, "PATRIC") .
-        "\n\tHMP_Body_Site\t" . merge_anno_rows(\@rows, "HMP_Body_Site") .
-        "\n\tHMP_Oxygen\t" . merge_anno_rows(\@rows, "HMP_Oxygen") .
-        "\n\tEC\t" . merge_anno_rows(\@rows, "EC") .
-        "\n\tSuperkingdom\t" . merge_anno_rows(\@rows, "Domain");
-    $tab .= "\n\tKingdom\t" . merge_anno_rows(\@rows, "Kingdom") if $Version > 1;
-    $tab .=
-        "\n\tPhylum\t" . merge_anno_rows(\@rows, "Phylum") .
-        "\n\tClass\t" . merge_anno_rows(\@rows, "Class") .
-        "\n\tOrder\t" . merge_anno_rows(\@rows, "TaxOrder") .
-        "\n\tFamily\t" . merge_anno_rows(\@rows, "Family") .
-        "\n\tGenus\t" . merge_anno_rows(\@rows, "Genus") .
-        "\n\tSpecies\t" . merge_anno_rows(\@rows, "Species") .
-        "\n\tCAZY\t" . merge_anno_rows(\@rows, "Cazy");
-    $tab .= "\n\tNCBI_IDs\t" . join(",", @$ncbiIds) if ($ncbiIds);
+        "\n\tSequence_Length\t" . merge_anno_rows(\@rows, "Sequence_Length");
+    $tab .= "\n\tTaxonomy_ID\t" . merge_anno_rows(\@rows, "Taxonomy_ID") if &$attrFunc("Taxonomy_ID"); 
+    $tab .= "\n\tP01_gDNA\t" . merge_anno_rows(\@rows, "GDNA") if &$attrFunc("P01_gDNA"); 
+    $tab .= "\n\tDescription\t" . merge_anno_rows(\@rows, "Description") if &$attrFunc("Description"); 
+    $tab .= "\n\tSwissprot_Description\t" . merge_anno_rows(\@rows, "SwissProt_Description") if &$attrFunc("Swissprot_Description"); 
+    $tab .= "\n\tOrganism\t" . merge_anno_rows(\@rows, "Organism") if &$attrFunc("Organism"); 
+    $tab .= "\n\tGN\t" . merge_anno_rows(\@rows, "GN") if &$attrFunc("GN"); 
+    $tab .= "\n\tPFAM\t" . merge_anno_rows_uniq(\@rows, "PFAM2") if &$attrFunc("PFAM"); 
+    $tab .= "\n\tPDB\t" . merge_anno_rows(\@rows, "pdb") if &$attrFunc("PDB"); 
+    $tab .= "\n\tIPRO_DOM\t" . join($AnnoRowSep, @$iproDom) if &$attrFunc("IPRO_DOM");
+    $tab .= "\n\tIPRO_FAM\t" . join($AnnoRowSep, @$iproFam) if &$attrFunc("IPRO_FAM");
+    $tab .= "\n\tIPRO_SUP\t" . join($AnnoRowSep, @$iproSup) if &$attrFunc("IPRO_SUP");
+    $tab .= "\n\tIPRO\t" . join($AnnoRowSep, @$iproOther) if &$attrFunc("IPRO");
+    $tab .= "\n\tGO\t" . merge_anno_rows(\@rows, "GO") if &$attrFunc("GO");
+    $tab .= "\n\tKEGG\t" . merge_anno_rows(\@rows, "KEGG") if &$attrFunc("KEGG");
+    $tab .= "\n\tSTRING\t" . merge_anno_rows(\@rows, "STRING") if &$attrFunc("STRING");
+    $tab .= "\n\tBRENDA\t" . merge_anno_rows(\@rows, "BRENDA") if &$attrFunc("BRENDA");
+    $tab .= "\n\tPATRIC\t" . merge_anno_rows(\@rows, "PATRIC") if &$attrFunc("PATRIC");
+    $tab .= "\n\tHMP_Body_Site\t" . merge_anno_rows(\@rows, "HMP_Body_Site") if &$attrFunc("HMP_Body_Site");
+    $tab .= "\n\tHMP_Oxygen\t" . merge_anno_rows(\@rows, "HMP_Oxygen") if &$attrFunc("HMP_Oxygen");
+    $tab .= "\n\tEC\t" . merge_anno_rows(\@rows, "EC") if &$attrFunc("EC");
+    $tab .= "\n\tSuperkingdom\t" . merge_anno_rows(\@rows, "Domain") if &$attrFunc("Superkingdom");
+    $tab .= "\n\tKingdom\t" . merge_anno_rows(\@rows, "Kingdom") if $Version > 1 and &$attrFunc("Kingdom");
+    $tab .= "\n\tPhylum\t" . merge_anno_rows(\@rows, "Phylum") if &$attrFunc("Phylum");
+    $tab .= "\n\tClass\t" . merge_anno_rows(\@rows, "Class") if &$attrFunc("Class");
+    $tab .= "\n\tOrder\t" . merge_anno_rows(\@rows, "TaxOrder") if &$attrFunc("Order");
+    $tab .= "\n\tFamily\t" . merge_anno_rows(\@rows, "Family") if &$attrFunc("Family");
+    $tab .= "\n\tGenus\t" . merge_anno_rows(\@rows, "Genus") if &$attrFunc("Genus");
+    $tab .= "\n\tSpecies\t" . merge_anno_rows(\@rows, "Species") if &$attrFunc("Species");
+    $tab .= "\n\tCAZY\t" . merge_anno_rows(\@rows, "Cazy") if &$attrFunc("CAZY");
+    $tab .= "\n\tNCBI_IDs\t" . join(",", @$ncbiIds) if $ncbiIds and &$attrFunc("NCBI_IDs");
     # UniRef is added elsewhere
     #$tab .= "\n\tUniRef50\t" . $row->{"UniRef50_Cluster"} if $row->{"UniRef50_Cluster"};
     #$tab .= "\n\tUniRef90\t" . $row->{"UniRef90_Cluster"} if $row->{"UniRef90_Cluster"};
@@ -259,6 +265,7 @@ sub get_annotation_data {
     $annoData{"Description"}                = {order => $idx++, display => "Description"};
     $annoData{"Swissprot_Description"}      = {order => $idx++, display => FIELD_SWISSPROT_DESC};
     $annoData{"Sequence_Length"}            = {order => $idx++, display => "Sequence Length"};
+    $annoData{"Cluster_ID_Sequence_Length"} = {order => $idx++, display => "Cluster ID Sequence Length"};
     $annoData{"GN"}                         = {order => $idx++, display => "Gene Name"};
     $annoData{"NCBI_IDs"}                   = {order => $idx++, display => "NCBI IDs"};
     $annoData{"Superkingdom"}               = {order => $idx++, display => "Superkingdom"};
@@ -349,9 +356,17 @@ sub is_list_attribute {
 sub get_attribute_type {
     my $attr = shift;
 
-    if ($attr eq "Sequence_Length" or $attr eq "UniRef50_Cluster_Size" or $attr eq "UniRef90_Cluster_Size" or
-        $attr eq "UniRef100_Cluster_Size" or $attr eq "ACC_CDHIT_COUNT" or $attr eq "Cluster Size")
-    {
+    my %intTypes = (
+        "Cluster_ID_Sequence_Length" => 1,
+        "Sequence_Length" => 1,
+        "UniRef50_Cluster_Size" => 1,
+        "UniRef90_Cluster_Size" => 1,
+        "UniRef100_Cluster_Size" => 1,
+        "ACC_CDHIT_COUNT" => 1,
+        "Cluster Size" => 1,
+    );
+
+    if (exists $intTypes{$attr}) {
         return "integer";
     } else {
         return "string";
