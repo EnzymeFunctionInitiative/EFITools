@@ -5,7 +5,7 @@ use strict;
 use DBI;
 use Log::Message::Simple qw[:STD :CARP];
 require 'Config.pm';
-use EFI::Config qw(biocluster_configure);
+use EFI::Config qw(cluster_configure);
 
 
 sub new {
@@ -14,7 +14,7 @@ sub new {
     my $self = {};
     bless($self, $class);
 
-    biocluster_configure($self, %args);
+    cluster_configure($self, %args);
 
     if (exists $args{load_infile}) {
         $self->{load_infile} = $args{load_infile};

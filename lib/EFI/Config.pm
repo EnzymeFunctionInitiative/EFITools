@@ -8,7 +8,7 @@ use Config::IniFiles;
 use Log::Message::Simple qw[:STD :CARP];
 
 
-our @EXPORT_OK = qw(biocluster_configure);
+our @EXPORT_OK = qw(cluster_configure);
 
 
 use constant {
@@ -29,6 +29,7 @@ use constant {
 
     CLUSTER_SECTION             => "cluster",
     CLUSTER_QUEUE               => "queue",
+    CLUSTER_EXTRA_PATH          => "extra_path",
 
     DBBUILD_SECTION             => "database-build",
     DBBUILD_UNIPROT_URL         => "uniprot_url",
@@ -45,6 +46,7 @@ use constant {
 use constant NO_ACCESSION_MATCHES_FILENAME => "no_accession_matches.txt";
 use constant FASTA_ID_FILENAME => "userfasta.ids.txt";
 use constant FASTA_META_FILENAME => "fasta.metadata";
+use constant ANNOTATION_SPEC_FILENAME => "annotation.spec";
 
 # Deprecated -- use the ones in EFI::Annotations instead.
 use constant FIELD_SEQ_SRC_KEY => "Sequence_Source";
@@ -53,7 +55,7 @@ use constant FIELD_SEQ_SRC_VALUE_FASTA => "USER";
 use constant FIELD_SEQ_SRC_VALUE_FAMILY => "FAMILY";
 
 
-sub biocluster_configure {
+sub cluster_configure {
     my ($object, %args) = @_;
 
     $object->{config_file_path} = $FindBin::Bin . "/" . "efi.config";
@@ -130,6 +132,7 @@ sub parseConfig {
 
 
     $object->{cluster}->{queue} = $cfg->val(CLUSTER_SECTION, CLUSTER_QUEUE);
+    $object->{cluster}->{extra_path} = $cfg->val(CLUSTER_SECTION, CLUSTER_EXTRA_PATH);
 
     croak getError(CLUSTER_QUEUE)                   if not defined $object->{cluster}->{queue};
 

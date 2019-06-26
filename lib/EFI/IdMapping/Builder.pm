@@ -9,7 +9,7 @@ use lib abs_path(dirname(__FILE__)) . "/../../";
 use DBI;
 use POSIX qw(floor);
 use Log::Message::Simple qw[:STD :CARP];
-use EFI::Config qw(biocluster_configure);
+use EFI::Config qw(cluster_configure);
 use EFI::SchedulerApi;
 use EFI::Database::Schema;
 use EFI::IdMapping::Util;
@@ -24,7 +24,7 @@ sub new {
     my $self = {};
     bless($self, $class);
 
-    biocluster_configure($self, %args);
+    cluster_configure($self, %args);
 
     $self->{build_dir} = $args{build_dir};
     $self->{input_dir} = $args{build_dir} . "/../input";

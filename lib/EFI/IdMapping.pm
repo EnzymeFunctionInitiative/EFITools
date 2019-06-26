@@ -6,7 +6,7 @@ use lib "../";
 
 use DBI;
 use Log::Message::Simple qw[:STD :CARP];
-use EFI::Config qw(biocluster_configure);
+use EFI::Config qw(cluster_configure);
 use EFI::SchedulerApi;
 use EFI::Database;
 use EFI::IdMapping::Util;
@@ -19,9 +19,9 @@ sub new {
     my $self = {};
     bless($self, $class);
 
-    biocluster_configure($self, %args);
+    cluster_configure($self, %args);
 
-    # $self->{db} is defined by biocluster_configure
+    # $self->{db} is defined by cluster_configure
     $self->{db_obj} = new EFI::Database(%args);
 
     $self->{dbh} = $self->{db_obj}->getHandle();

@@ -32,6 +32,7 @@ sub new {
     # Echo the first part of all acctions
     $self->{echo_actions} = exists $args{echo_actions} ? $args{echo_actions} : 0;
     $self->{abort_script_on_action_fail} = exists $args{abort_script_on_action_fail} ? $args{abort_script_on_action_fail} : 1;
+    $self->{extra_path} = $args{extra_path} ? $args{extra_path} : ""; # use this to add an export PATH=... to the top of every script
 
     return $self;
 }
@@ -146,9 +147,8 @@ sub render {
         }
     }
 
-    if ($self->{abort_script_on_action_fail}) {
-        print $fh "set -e\n";
-    }
+    print $fh "export PATH=$self->{extra_path}:\$PATH\n" if $self->{extra_path};
+    print $fh "set -e\n" if $self->{abort_script_on_action_fail};
 
     foreach my $action (@{$self->{actions}}) {
         print $fh "$action\n";
@@ -191,6 +191,11 @@ sub new {
     $self->{arrayid_var_name} = "PBS_ARRAYID";
 
     return bless($self, $class);
+}
+
+sub addPath {
+    my ($self, $path) = @_;
+    $self->{extra_env} = $path;
 }
 
 sub jobName {
@@ -386,6 +391,8 @@ sub new {
         $self->{type} = TORQUE;
     }
 
+    $self->{extra_path} = $args{extra_path} ? $args{extra_path} : "";
+
     $self->{node} = $args{node} ? $args{node} : "";
     
     $self->{queue} = $args{queue};
@@ -429,6 +436,7 @@ sub getBuilder {
     my ($self) = @_;
 
     my %args = ("dryrun" => $self->{dryrun});
+    $args{extra_path} = $self->{extra_path} if $self->{extra_path};
 
     my $b;
     if ($self->{type} == SLURM) {
