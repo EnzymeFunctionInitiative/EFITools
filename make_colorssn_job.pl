@@ -21,7 +21,7 @@ use EFI::GNN::Base;
 
 my ($ssnIn, $nbSize, $ssnOut, $cooc, $outputDir, $scheduler, $dryRun, $queue, $jobId);
 my ($statsFile, $clusterSizeFile, $swissprotClustersDescFile, $swissprotSinglesDescFile);
-my ($jobConfigFile, $domainMapFileName, $mapFileName);
+my ($jobConfigFile, $domainMapFileName, $mapFileName, $extraRam);
 my $result = GetOptions(
     "ssn-in=s"                  => \$ssnIn,
     "ssn-out=s"                 => \$ssnOut,
@@ -37,6 +37,7 @@ my $result = GetOptions(
     "sp-clusters-desc=s"        => \$swissprotClustersDescFile,
     "sp-singletons-desc=s"      => \$swissprotSinglesDescFile,
     "job-config=s"              => \$jobConfigFile,
+    "extra-ram"                 => \$extraRam,
 );
 
 my $usage = <<USAGE
@@ -58,6 +59,7 @@ usage: $0 -ssnin <filename>
     -sp-singletons-desc file to output SwissProt descriptions to for any singleton node that have
                         SwissProt annotations
     -job-config         file specifying the parameters and files to use as input output for this job
+    -extra-ram          use increased amount of memory
 
 The only required argument is -ssnin, all others have defaults.
 USAGE
@@ -147,7 +149,7 @@ if ($ssnInZip !~ m/\.zip/) { # If it's a .zip we can't predict apriori what the 
 }
 
 # Y = MX+B, M=emperically determined, B = safety factor; X = file size in MB; Y = RAM reservation in GB
-my $ramReservation = 150;
+my $ramReservation = defined $extraRam ? 500 : 150;
 if ($fileSize) {
     my $ramPredictionM = 0.02;
     my $ramSafety = 10;
