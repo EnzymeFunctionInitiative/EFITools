@@ -78,16 +78,17 @@ my $singletonPattern = "singleton_UniProt_IDs.txt";
 if ($useAllFiles) {
     $globPattern = "*.txt";
 } else {
-    if ($domainFastaDir) {
-        $pattern = "cluster_UniProt_Domain_IDs_";
-        $singletonPattern = "singleton_UniProt_Domain_IDs.txt";
-    } else {
-        $pattern = "cluster_UniProt_IDs_";
-    }
+    $pattern = "cluster_Uni*_IDs_";
     $globPattern = "$pattern*.txt";
 }
 
 my @files = sort file_sort glob("$nodeDir/$globPattern");
+if (scalar @files) {
+    (my $pat = $files[0]) =~ s%^.*cluster_(Uni[^_]+)(.*)_IDs.*\.txt%$1$2%;
+    $singletonPattern = "singleton_${pat}_IDs.txt";
+    $pattern = "cluster_${pat}_IDs_";
+}
+
 
 open ALL, ">$fastaDir/all.fasta" or die "Unable to write to $fastaDir/all.fasta: $!";
 my $allDomFh;
@@ -119,8 +120,10 @@ foreach my $file (@files) {
             $id;
         } read_file($file);
 
+    next if not scalar @ids;
+
     my $domFh;
-    if ($allDomFh) {
+    if ($allDomFh and $ids[0] =~ m/:/) { # Check for domain.  In some cases we pass the domain parameter for all calls - for example when we can't determine the file type apriori (e.g. when input file is zipped)
         my $domFastaFileName = "cluster_domain_$clusterNum.fasta";
         open DOM_FASTA, ">", "$domainFastaDir/$domFastaFileName" or die "Unable to write to $domainFastaDir/$domFastaFileName: $!";
         $domFh = \*DOM_FASTA;
@@ -180,12 +183,14 @@ sub saveSequences {
     
     my @ids = @{ $idRef }; # convert array ref to list
 
+    my $hasDomain = scalar @ids and $ids[0] =~ m/:/;
+
     while (scalar @ids) {
         my @rawBatchIds = splice(@ids, 0, 1000);
         my @batchIds = map { my $a = $_; $a =~ s/:\d+:\d+$//; $a } @rawBatchIds;
 
         my %domExt;
-        if ($allDomFh) {
+        if ($allDomFh and $hasDomain) {
             %domExt  = map {
                             my @parts = split m/:/;
                             $parts[0] => [$parts[1], $parts[2]];
@@ -204,7 +209,7 @@ sub saveSequences {
                 my $accession = $1;
                 my $customHeader = exists $customHeaders->{$accession} ? $customHeaders->{$accession} : "";
                 writeSequence($accession, $clusterNum, $outputFh, $allFh, $seq, $customHeader);
-                if ($allDomFh) {
+                if ($allDomFh and $hasDomain) {
                     $seq = extractDomain($seq, $domExt{$accession});
                     my $domAcc = $accession . ":" . join(":", @{$domExt{$accession}});
                     writeSequence($domAcc, $clusterNum, $domOutputFh, $allDomFh, $seq, $customHeader);
@@ -251,7 +256,7 @@ sub extractDomain {
     my ($start, $end) = @$domRef;
     $seq =~ s/[\r\n]//g;
 
-    if ($start >= 0 and $start < length($seq) and $end >= 0 and $end < length($seq)) {
+    if ($start >= 0 and $start < length($seq) and $end >= 0 and $end <= length($seq)) {
         my $len = $end - $start;
         $seq = substr($seq, $start-1, $len);
         my $fmtSeq = "";
@@ -263,9 +268,9 @@ sub extractDomain {
                 $seq = "";
             }
         }
-        return "$fmtSeq";
+        return $fmtSeq;
     } else {
-        return $seq;
+        return "\n$seq";
     }
 }
 

@@ -162,6 +162,7 @@ sub getNodes {
     foreach my $node (@{$self->{nodes}}){
         my $nodeLabel = $node->getAttribute('label');
         my $nodeId = $node->getAttribute('id'); 
+        (my $noDomain = $nodeLabel) =~ s/:\d+:\d+$//;
 
         (my $proteinId = $nodeLabel) =~ s/:\d+:\d+$//;
         $domainMapping->{$nodeLabel} = $proteinId if $nodeLabel ne $proteinId; # Map protein:domain combo to protein only
@@ -184,7 +185,6 @@ sub getNodes {
                     #make sure all accessions within the node are included in the gnn network
                     my $attrAcc = $accessionlist->getAttribute('value');
                     print "Expanded $nodeLabel into $attrAcc\n" if $self->{debug};
-                    (my $noDomain = $nodeLabel) =~ s/:\d+:\d+$//;
                     push @{$metanodeMap->{$nodeLabel}}, $attrAcc if $noDomain ne $attrAcc;
                 }
             } elsif ($checkUniref and $attrName =~ m/UniRef(\d+)/) {
@@ -754,34 +754,49 @@ sub addFileActions {
     my $B = shift; # This is an EFI::SchedulerApi::Builder object
     my $info = shift;
 
-    my $fastaTool = "$info->{fasta_tool_path} -out-dir $info->{fasta_data_dir} -config $info->{config_file}";
+    my $fastaTool = "$info->{fasta_tool_path} -config $info->{config_file}";
     $fastaTool .= " -input-sequences $info->{input_seqs_file}" if $info->{input_seqs_file};
-    $B->addAction("if [[ -f $info->{uniprot_domain_node_data_dir}/cluster_All_UniProt_Domain_IDs.txt ]]; then") if $info->{uniprot_domain_node_data_dir} and $info->{fasta_domain_data_dir};
-    $B->addAction($fastaTool . " -domain-out-dir $info->{fasta_domain_data_dir} -node-dir $info->{uniprot_domain_node_data_dir}");
-    $B->addAction("else");
-    $B->addAction($fastaTool . " -node-dir $info->{uniprot_node_data_dir}");
-    $B->addAction("fi");
 
-    $B->addAction("");
+    my $writeBashZipIf = sub {
+        my ($inDir, $outZip, $testFile, $extraFn) = @_;
+        if ($outZip and $inDir) {
+            $B->addAction("if [[ -s $inDir/$testFile ]]; then");
+            $B->addAction("    zip -jq -r $outZip $inDir");
+            &$extraFn() if $extraFn;
+            $B->addAction("fi");
+            $B->addAction("");
+        }
+    };
+
+    my $writeGetFastaIf = sub {
+        my ($inDir, $outZip, $testFile, $domIdDir, $outDir, $domOutDir) = @_;
+        if ($outZip and $inDir) {
+            my $outDirArg = " -out-dir $outDir";
+            my $extraFn = sub {
+                $B->addAction("    $fastaTool -node-dir $inDir $outDirArg");
+            };
+            if ($domIdDir and $domOutDir) {
+                $extraFn = sub {
+                    $B->addAction("    $fastaTool -domain-out-dir $domOutDir -node-dir $domIdDir $outDirArg");
+                };
+            }
+            &$writeBashZipIf($inDir, $outZip, $testFile, $extraFn);
+        }
+    };
+
     $B->addAction("zip -jq $info->{ssn_out_zip} $info->{ssn_out}") if $info->{ssn_out} and $info->{ssn_out_zip};
-    $B->addAction("if [[ -f $info->{uniprot_node_data_dir}/cluster_All_UniProt_IDs.txt ]]; then") if $info->{uniprot_node_data_dir};
-    $B->addAction("    zip -jq -r $info->{uniprot_node_zip} $info->{uniprot_node_data_dir}") if $info->{uniprot_node_zip} and $info->{uniprot_node_data_dir};
-    $B->addAction("fi");
-    $B->addAction("if [[ -f $info->{uniprot_domain_node_data_dir}/cluster_All_UniProt_Domain_IDs.txt ]]; then") if $info->{uniprot_domain_node_data_dir};
-    $B->addAction("    zip -jq -r $info->{uniprot_domain_node_zip} $info->{uniprot_domain_node_data_dir}") if $info->{uniprot_domain_node_zip} and $info->{uniprot_domain_node_data_dir};
-    $B->addAction("fi");
-    $B->addAction("if [[ -f $info->{uniref50_node_data_dir}/cluster_All_UniRef50_IDs.txt ]]; then") if $info->{uniref50_node_data_dir};
-    $B->addAction("    zip -jq -r $info->{uniref50_node_zip} $info->{uniref50_node_data_dir}") if $info->{uniref50_node_zip} and $info->{uniref50_node_data_dir};
-    $B->addAction("fi");
-    $B->addAction("if [[ -f $info->{uniref90_node_data_dir}/cluster_All_UniRef90_IDs.txt ]]; then") if $info->{uniref90_node_data_dir};
-    $B->addAction("    zip -jq -r $info->{uniref90_node_zip} $info->{uniref90_node_data_dir}") if $info->{uniref90_node_zip} and $info->{uniref90_node_data_dir};
-    $B->addAction("fi");
-    $B->addAction("if [[ -f $info->{fasta_data_dir}/all.fasta ]]; then") if $info->{fasta_data_dir};
-    $B->addAction("    zip -jq -r $info->{fasta_zip} $info->{fasta_data_dir}") if $info->{fasta_data_dir} and $info->{fasta_zip};
-    $B->addAction("fi");
-    $B->addAction("if [[ -f $info->{fasta_domain_data_dir}/all.fasta ]]; then") if $info->{fasta_domain_data_dir};
-    $B->addAction("    zip -jq -r $info->{fasta_domain_zip} $info->{fasta_domain_data_dir}") if $info->{fasta_domain_data_dir} and $info->{fasta_domain_zip};
-    $B->addAction("fi");
+    &$writeGetFastaIf($info->{uniprot_node_data_dir}, $info->{uniprot_node_zip}, "cluster_All_UniProt_IDs.txt", $info->{uniprot_domain_node_data_dir}, $info->{fasta_data_dir}, $info->{fasta_domain_data_dir});
+    &$writeGetFastaIf($info->{uniref90_node_data_dir}, $info->{uniref90_node_zip}, "cluster_All_UniRef90_IDs.txt", $info->{uniref90_domain_node_data_dir}, $info->{fasta_uniref90_data_dir}, $info->{fasta_uniref90_domain_data_dir});
+    &$writeGetFastaIf($info->{uniref50_node_data_dir}, $info->{uniref50_node_zip}, "cluster_All_UniRef50_IDs.txt", $info->{uniref50_domain_node_data_dir}, $info->{fasta_uniref50_data_dir}, $info->{fasta_uniref50_domain_data_dir});
+    &$writeBashZipIf($info->{uniprot_domain_node_data_dir}, $info->{uniprot_domain_node_zip}, "cluster_All_UniProt_Domain_IDs.txt");
+    &$writeBashZipIf($info->{uniref50_domain_node_data_dir}, $info->{uniref50_domain_node_zip}, "cluster_All_UniRef50_Domain_IDs.txt");
+    &$writeBashZipIf($info->{uniref90_domain_node_data_dir}, $info->{uniref90_domain_node_zip}, "cluster_All_UniRef90_Domain_IDs.txt");
+    &$writeBashZipIf($info->{fasta_data_dir}, $info->{fasta_zip}, "all.fasta");
+    &$writeBashZipIf($info->{fasta_domain_data_dir}, $info->{fasta_domain_zip}, "all.fasta");
+    &$writeBashZipIf($info->{fasta_uniref90_data_dir}, $info->{fasta_uniref90_zip}, "all.fasta");
+    &$writeBashZipIf($info->{fasta_uniref90_domain_data_dir}, $info->{fasta_uniref90_domain_zip}, "all.fasta");
+    &$writeBashZipIf($info->{fasta_uniref50_data_dir}, $info->{fasta_uniref50_zip}, "all.fasta");
+    &$writeBashZipIf($info->{fasta_uniref50_domain_data_dir}, $info->{fasta_uniref50_domain_zip}, "all.fasta");
     $B->addAction("zip -jq $info->{gnn_zip} $info->{gnn}") if $info->{gnn} and $info->{gnn_zip};
     $B->addAction("zip -jq $info->{pfamhubfile_zip} $info->{pfamhubfile}") if $info->{pfamhubfile_zip} and $info->{pfamhubfile};
     $B->addAction("zip -jq -r $info->{pfam_zip} $info->{pfam_dir} -i '*'") if $info->{pfam_zip} and $info->{pfam_dir};

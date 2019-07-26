@@ -40,6 +40,8 @@ use Time::HiRes qw(time);
 use Storable;
 use Data::Dumper;
 
+use EFI::Util qw(checkNetworkType);
+
 use lib $FindBin::Bin . "/lib";
 use EFI::Database;
 use EFI::GNN;
@@ -49,9 +51,9 @@ use EFI::GNN::ColorUtil;
 use EFI::GNN::AnnotationUtil;
 
 
-my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $cooccurrence, $statsFile, $pfamhubfile, $configFile,
+my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $cooccurrence, $statsFile, $pfamHubFile, $configFile,
     $pfamDir, $noneDir, $idOutputFile, $idOutputDomainFile, $arrowDataFile, $dontUseNewNeighborMethod,
-    $uniprotIdDir, $uniprotDomainIdDir, $uniref50IdDir, $uniref90IdDir,
+    $uniprotIdDir, $uniprotDomainIdDir, $uniref50IdDir, $uniref90IdDir, $uniref50DomainIdDir, $uniref90DomainIdDir,
     $pfamCoocTable, $hubCountFile, $allPfamDir, $splitPfamDir, $allSplitPfamDir, $clusterSizeFile, $swissprotClustersDescFile,
     $swissprotSinglesDescFile, $parentDir, $renumberClusters, $disableCache, $skipIdMapping, $skipOrganism, $debug,
     $outputDir,
@@ -69,16 +71,18 @@ my $result = GetOptions(
     "cluster-sizes=s"       => \$clusterSizeFile,
     "sp-clusters-desc=s"    => \$swissprotClustersDescFile,
     "sp-singletons-desc=s"  => \$swissprotSinglesDescFile,
-    "pfam=s"                => \$pfamhubfile,
+    "pfam=s"                => \$pfamHubFile,
     "config=s"              => \$configFile,
     "pfam-dir=s"            => \$pfamDir,
     "all-pfam-dir=s"        => \$allPfamDir, # all Pfams, not just those within user-specified cooccurrence threshold
     "split-pfam-dir=s"      => \$splitPfamDir, # like -pfam-dir, but the PFAMs are in individual files
     "all-split-pfam-dir=s"  => \$allSplitPfamDir, # like -all-pfam-dir, but the PFAMs are in individual files
     "uniprot-id-dir=s"      => \$uniprotIdDir,
-    "uniprot-id-domain-dir=s"   => \$uniprotDomainIdDir,
+    "uniprot-domain-id-dir=s"   => \$uniprotDomainIdDir,
     "uniref50-id-dir=s"     => \$uniref50IdDir,
+    "uniref50-domain-id-dir=s"  => \$uniref50DomainIdDir,
     "uniref90-id-dir=s"     => \$uniref90IdDir,
+    "uniref90-domain-id-dir=s"  => \$uniref90DomainIdDir,
     "none-dir=s"            => \$noneDir,
     "id-out=s"              => \$idOutputFile,
     "id-out-domain=s"       => \$idOutputDomainFile, # if there is no domain info on the IDs, this isn't output even if the arg is present.
@@ -215,7 +219,7 @@ timer("getTaxonIdsAndSpecies");
 
 
 
-#my $includeSingletonsInSsn = (not defined $gnn or not length $gnn) and (not defined $pfamhubfile or not length $pfamhubfile);
+#my $includeSingletonsInSsn = (not defined $gnn or not length $gnn) and (not defined $pfamHubFile or not length $pfamHubFile);
 # We include singletons by default, although if they don't have any represented nodes they won't be colored in the SSN.
 my $includeSingletons = 1;
 
@@ -260,7 +264,8 @@ timer("idMapping");
 my $hasDomain = 0;
 if (not $skipIdMapping) {
     print "saving the cluster-protein ID mapping tables\n";
-    my $result = doClusterMapping($dbh, $util);
+    my ($ssnType, $hasDom) = checkNetworkType($ssnin);
+    my $result = doClusterMapping($dbh, $util, $ssnType);
     $hasDomain = $result->{has_domain};
     saveClusterSizes($clusterSizeFile, $result->{sizes}) if $result->{sizes};
 }
@@ -323,9 +328,9 @@ if (not $colorOnly) { # and not $skipIdMapping) {
     timer("writeClusterHubGnn");
     
     timer("writePfamHubGnn");
-    if ($pfamhubfile) {
+    if ($pfamHubFile) {
         print "writing pfam hub GNN\n";
-        my $pfamoutput=new IO::File(">$pfamhubfile");
+        my $pfamoutput=new IO::File(">$pfamHubFile");
         my $pfamwriter=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $pfamoutput);
         $util->writePfamHubGnn($pfamwriter, $clusterNodes, $withNeighbors);
         $util->writePfamNoneClusters($noneDir, $noneFamily);
@@ -530,8 +535,13 @@ sub saveClusterSizes {
 sub doClusterMapping {
     my $dbh = shift;
     my $util = shift;
+    my $ssnType = shift;
     
-    my ($uniprotMap, $uniprotDomainMap, $uniref50Map, $uniref90Map, $singletonMap) = getClusterToIdMapping($dbh, $util);
+    my ($uniprotMap, $domainMap, $uniref50Map, $uniref90Map, $singletonMap) = getClusterToIdMapping($dbh, $util);
+
+    my $domainOutDir = $ssnType eq "UniRef50" ? $uniref50DomainIdDir : 
+                            $ssnType eq "UniRef90" ? $uniref90DomainIdDir :
+                            $uniprotDomainIdDir;
 
     my $result = {};
     my $sizeData = {};
@@ -541,8 +551,8 @@ sub doClusterMapping {
         my ($idCount, $sizes) = saveClusterIdFiles2($uniprotMap, "UniProt", $uniprotIdDir, $singletonMap);
         $sizeData->{uniprot} = $sizes;
     }
-    if ($uniprotDomainIdDir and -d $uniprotDomainIdDir) {
-        my ($idCount, $sizes) = saveClusterIdFiles2($uniprotDomainMap, "UniProt_Domain", $uniprotDomainIdDir, $singletonMap);
+    if ($domainOutDir and -d $domainOutDir) {
+        my ($idCount, $sizes) = saveClusterIdFiles2($domainMap, "${ssnType}_Domain", $domainOutDir, $singletonMap);
         $result->{has_domain} = $idCount > 0;
     }
     if ($uniref50IdDir and -d $uniref50IdDir) {
@@ -725,7 +735,7 @@ sub validateInputs {
     
     $hasParent = $parentDir and -d $parentDir;
     
-    $colorOnly = ($ssnout and not $gnn and not $pfamhubfile and not $hasParent) ? 1 : 0;
+    $colorOnly = ($ssnout and not $gnn and not $pfamHubFile and not $hasParent) ? 1 : 0;
     $neighborhoodSize = 0 if not $neighborhoodSize;
     
     if (not $colorOnly and $neighborhoodSize < 1) {
@@ -763,6 +773,8 @@ sub defaultParameters {
     $uniref50IdDir = "$outputDir/uniref50-ids"                  if not $uniref50IdDir;
     $uniref90IdDir = "$outputDir/uniref90-ids"                  if not $uniref90IdDir;
     $uniprotDomainIdDir = ""                                    if not defined $uniprotDomainIdDir;
+    $uniref50DomainIdDir = ""                                   if not defined $uniref50DomainIdDir;
+    $uniref90DomainIdDir = ""                                   if not defined $uniref90DomainIdDir;
 
     $pfamDir = "" if not $pfamDir;
     $allPfamDir = "" if not $allPfamDir;
@@ -780,7 +792,7 @@ sub defaultParameters {
     $clusterSizeFile = "" if not $clusterSizeFile;
     $swissprotClustersDescFile = "" if not $swissprotClustersDescFile;
     $swissprotSinglesDescFile = "" if not $swissprotSinglesDescFile;
-    $pfamhubfile = "" if not $pfamhubfile;
+    $pfamHubFile = "" if not $pfamHubFile;
     $idOutputFile = "" if not $idOutputFile;
     $idOutputDomainFile = "" if not $idOutputDomainFile;
     $arrowDataFile = "" if not $arrowDataFile;
@@ -798,18 +810,20 @@ sub adjustRelativePaths {
     $noneDir = "$outputDir/$noneDir"                            if $noneDir !~ m/^\//;
     $uniprotIdDir = "$outputDir/$uniprotIdDir"                  if $uniprotIdDir !~ m/^\//;
     $uniprotDomainIdDir = "$outputDir/$uniprotDomainIdDir"      if $uniprotDomainIdDir and $uniprotDomainIdDir !~ m/^\//;
-    $uniref50IdDir = "$outputDir/$uniref50IdDir"                if $uniref50IdDir !~ m/^\//;
-    $uniref90IdDir = "$outputDir/$uniref90IdDir"                if $uniref90IdDir !~ m/^\//;
-    $warningFile = "$outputDir/$warningFile"                    if $warningFile !~ m/^\//;
-    $gnn = "$outputDir/$gnn"                                    if $gnn !~ m/^\//;
-    $ssnout = "$outputDir/$ssnout"                              if $ssnout !~ m/^\//;
-    $statsFile = "$outputDir/$statsFile"                        if $statsFile !~ m/^\//;
-    $clusterSizeFile = "$outputDir/$clusterSizeFile"            if $clusterSizeFile !~ m/^\//;
-    $swissprotClustersDescFile = "$outputDir/$swissprotClustersDescFile"    if $swissprotClustersDescFile !~ m/^\//;
-    $swissprotSinglesDescFile = "$outputDir/$swissprotSinglesDescFile"      if $swissprotSinglesDescFile !~ m/^\//;
-    $pfamhubfile = "$outputDir/$pfamhubfile"                    if $pfamhubfile !~ m/^\//;
-    $idOutputFile = "$outputDir/$idOutputFile"                  if $idOutputFile !~ m/^\//;
-    $idOutputDomainFile = "$outputDir/$idOutputDomainFile"      if $idOutputDomainFile !~ m/^\//;
+    $uniref50IdDir = "$outputDir/$uniref50IdDir"                if $uniref50IdDir and $uniref50IdDir !~ m/^\//;
+    $uniref50DomainIdDir = "$outputDir/$uniref50DomainIdDir"    if $uniref50DomainIdDir and $uniref50DomainIdDir !~ m/^\//;
+    $uniref90IdDir = "$outputDir/$uniref90IdDir"                if $uniref90IdDir and $uniref90IdDir !~ m/^\//;
+    $uniref90DomainIdDir = "$outputDir/$uniref90DomainIdDir"    if $uniref90DomainIdDir and $uniref90DomainIdDir !~ m/^\//;
+    $warningFile = "$outputDir/$warningFile"                    if $warningFile and $warningFile !~ m/^\//;
+    $gnn = "$outputDir/$gnn"                                    if $gnn and $gnn !~ m/^\//;
+    $ssnout = "$outputDir/$ssnout"                              if $ssnout and $ssnout !~ m/^\//;
+    $statsFile = "$outputDir/$statsFile"                        if $statsFile and $statsFile !~ m/^\//;
+    $clusterSizeFile = "$outputDir/$clusterSizeFile"            if $clusterSizeFile and $clusterSizeFile !~ m/^\//;
+    $swissprotClustersDescFile = "$outputDir/$swissprotClustersDescFile"    if $swissprotClustersDescFile and $swissprotClustersDescFile !~ m/^\//;
+    $swissprotSinglesDescFile = "$outputDir/$swissprotSinglesDescFile"      if $swissprotSinglesDescFile and $swissprotSinglesDescFile !~ m/^\//;
+    $pfamHubFile = "$outputDir/$pfamHubFile"                    if $pfamHubFile and $pfamHubFile !~ m/^\//;
+    $idOutputFile = "$outputDir/$idOutputFile"                  if $idOutputFile and $idOutputFile !~ m/^\//;
+    $idOutputDomainFile = "$outputDir/$idOutputDomainFile"      if $idOutputDomainFile and $idOutputDomainFile !~ m/^\//;
     $arrowDataFile = "$outputDir/$arrowDataFile"                if $arrowDataFile and $arrowDataFile !~ m/^\//;
     $pfamCoocTable = "$outputDir/$pfamCoocTable"                if $pfamCoocTable and $pfamCoocTable !~ m/^\//;
     $hubCountFile = "$outputDir/$hubCountFile"                  if $hubCountFile and $hubCountFile !~ m/^\//;
