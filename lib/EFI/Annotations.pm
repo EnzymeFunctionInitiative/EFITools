@@ -14,6 +14,7 @@ use constant FIELD_SEQ_SRC_VALUE_BLASTHIT => "BLASTHIT";
 use constant FIELD_SEQ_SRC_VALUE_BLASTHIT_FAMILY => "FAMILY+BLASTHIT";
 use constant FIELD_SEQ_KEY => "Sequence";
 use constant FIELD_SEQ_LEN_KEY => "Sequence_Length";
+use constant FIELD_SEQ_DOM_LEN_KEY => "Cluster_ID_Domain_Length";
 use constant FIELD_UNIREF_CLUSTER_ID_SEQ_LEN_KEY => "Cluster_ID_Sequence_Length";
 use constant FIELD_ID_ACC => "ACC";
 use constant FIELD_SWISSPROT_DESC => "Swissprot Description";
@@ -265,6 +266,7 @@ sub get_annotation_data {
     $annoData{"Description"}                = {order => $idx++, display => "Description"};
     $annoData{"Swissprot_Description"}      = {order => $idx++, display => FIELD_SWISSPROT_DESC};
     $annoData{"Sequence_Length"}            = {order => $idx++, display => "Sequence Length"};
+    $annoData{"Cluster_ID_Domain_Length"}   = {order => $idx++, display => "Cluster ID Domain Length"};
     $annoData{"Cluster_ID_Sequence_Length"} = {order => $idx++, display => "Cluster ID Sequence Length"};
     $annoData{"GN"}                         = {order => $idx++, display => "Gene Name"};
     $annoData{"NCBI_IDs"}                   = {order => $idx++, display => "NCBI IDs"};
@@ -359,6 +361,7 @@ sub get_attribute_type {
     my %intTypes = (
         "Cluster_ID_Sequence_Length" => 1,
         "Sequence_Length" => 1,
+        "Cluster_ID_Domain_Length" => 1,
         "UniRef50_Cluster_Size" => 1,
         "UniRef90_Cluster_Size" => 1,
         "UniRef100_Cluster_Size" => 1,
