@@ -1,0 +1,45 @@
+---
+abstract: 'Enzyme Function Initiative Tools'
+author:
+  - 'Nils Olberg <noberg@illinois.edu>'
+  - 'Daniel Davidson <danield@igb.illinios.edu>'
+  - 'David Slater <dslater@illinois.edu>'
+build_requires: {}
+dynamic_config: 0
+generated_by: 'Module::Build version 0.4005, CPAN::Meta::Converter version 2.143240'
+license: perl
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: '1.4'
+name: EFI
+requires:
+  Array::Utils: '0.5'
+  Capture::Tiny: '0.48'
+  DBD::SQLite: '1.27'
+  DBD::mysql: '4.013'
+  DBI: '1.609'
+  Data::Dumper: '2.161'
+  Exporter: '5.68'
+  File::Slurp: '9999.27'
+  Getopt::Long: '2.51'
+  IO::File: '1.39'
+  JSON: '2.15'
+  List::MoreUtils: '0.428'
+  List::Utils: '1.52'
+  Log::Message::Simple: '0.10'
+  Scaler::Util: '1.52'
+  Statistics::R: '0.34'
+  Storable: '2.56'
+  Test::More: '1.302167'
+  Time::HiRes: '1.9760'
+  XML::LibXML: '1.70'
+  XML::LibXML::Reader: '2.0201'
+  XML::Parser: '2.36'
+  XML::Writer: '0.606'
+  perl: v5.10.1
+resources:
+  bugtracker: https://github.com/EnzymeFunctionInitiative/EFITools/Issues
+  homepage: https://efi.igb.illinois.edu
+  license: http://dev.perl.org/licenses/
+  repository: https://github.com/EnzymeFunctionInitiative/EFITools
+version: '2'

@@ -1,0 +1,18 @@
+Build.PL
+lib/EFI.pm
+lib/EFI/Annotations.pm
+lib/EFI/CdHit/Parser.pm
+lib/EFI/CdHitParser.pm
+lib/EFI/Config.pm
+lib/EFI/Database.pm
+lib/EFI/Database/Schema.pm
+lib/EFI/Fasta/Headers.pm
+lib/EFI/IdMapping.pm
+lib/EFI/IdMapping/Builder.pm
+lib/EFI/IdMapping/Util.pm
+lib/EFI/Logging.pm
+lib/EFI/SchedulerApi.pm
+lib/EFI/Util.pm
+lib/EFI/Util/FileHandle.pm
+MANIFEST			This list of files
+README.md
