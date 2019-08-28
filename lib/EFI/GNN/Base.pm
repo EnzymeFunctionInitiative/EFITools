@@ -785,18 +785,20 @@ sub addFileActions {
     };
 
     $B->addAction("zip -jq $info->{ssn_out_zip} $info->{ssn_out}") if $info->{ssn_out} and $info->{ssn_out_zip};
+    $B->addAction("HMM_FASTA_DIR=\"\"");
+    $B->addAction("HMM_FASTA_DOMAIN_DIR=\"\"");
     &$writeGetFastaIf($info->{uniprot_node_data_dir}, $info->{uniprot_node_zip}, "cluster_All_UniProt_IDs.txt", $info->{uniprot_domain_node_data_dir}, $info->{fasta_data_dir}, $info->{fasta_domain_data_dir});
     &$writeGetFastaIf($info->{uniref90_node_data_dir}, $info->{uniref90_node_zip}, "cluster_All_UniRef90_IDs.txt", $info->{uniref90_domain_node_data_dir}, $info->{fasta_uniref90_data_dir}, $info->{fasta_uniref90_domain_data_dir});
     &$writeGetFastaIf($info->{uniref50_node_data_dir}, $info->{uniref50_node_zip}, "cluster_All_UniRef50_IDs.txt", $info->{uniref50_domain_node_data_dir}, $info->{fasta_uniref50_data_dir}, $info->{fasta_uniref50_domain_data_dir});
     &$writeBashZipIf($info->{uniprot_domain_node_data_dir}, $info->{uniprot_domain_node_zip}, "cluster_All_UniProt_Domain_IDs.txt");
     &$writeBashZipIf($info->{uniref50_domain_node_data_dir}, $info->{uniref50_domain_node_zip}, "cluster_All_UniRef50_Domain_IDs.txt");
     &$writeBashZipIf($info->{uniref90_domain_node_data_dir}, $info->{uniref90_domain_node_zip}, "cluster_All_UniRef90_Domain_IDs.txt");
-    &$writeBashZipIf($info->{fasta_data_dir}, $info->{fasta_zip}, "all.fasta");
-    &$writeBashZipIf($info->{fasta_domain_data_dir}, $info->{fasta_domain_zip}, "all.fasta");
-    &$writeBashZipIf($info->{fasta_uniref90_data_dir}, $info->{fasta_uniref90_zip}, "all.fasta");
-    &$writeBashZipIf($info->{fasta_uniref90_domain_data_dir}, $info->{fasta_uniref90_domain_zip}, "all.fasta");
-    &$writeBashZipIf($info->{fasta_uniref50_data_dir}, $info->{fasta_uniref50_zip}, "all.fasta");
-    &$writeBashZipIf($info->{fasta_uniref50_domain_data_dir}, $info->{fasta_uniref50_domain_zip}, "all.fasta");
+    &$writeBashZipIf($info->{fasta_data_dir}, $info->{fasta_zip}, "all.fasta", sub { $B->addAction("    HMM_FASTA_DIR=$info->{fasta_data_dir}"); });
+    &$writeBashZipIf($info->{fasta_domain_data_dir}, $info->{fasta_domain_zip}, "all.fasta", sub { $B->addAction("    HMM_FASTA_DOMAIN_DIR=$info->{fasta_domain_data_dir}"); });
+    &$writeBashZipIf($info->{fasta_uniref90_data_dir}, $info->{fasta_uniref90_zip}, "all.fasta", sub { $B->addAction("    HMM_FASTA_DIR=$info->{fasta_uniref90_data_dir}"); });
+    &$writeBashZipIf($info->{fasta_uniref90_domain_data_dir}, $info->{fasta_uniref90_domain_zip}, "all.fasta", sub { $B->addAction("    HMM_FASTA_DOMAIN_DIR=$info->{fasta_uniref90_domain_data_dir}"); });
+    &$writeBashZipIf($info->{fasta_uniref50_data_dir}, $info->{fasta_uniref50_zip}, "all.fasta", sub { $B->addAction("    HMM_FASTA_DIR=$info->{fasta_uniref50_data_dir}"); });
+    &$writeBashZipIf($info->{fasta_uniref50_domain_data_dir}, $info->{fasta_uniref50_domain_zip}, "all.fasta", sub { $B->addAction("    HMM_FASTA_DOMAIN_DIR=$info->{fasta_uniref50_domain_data_dir}"); });
     $B->addAction("zip -jq $info->{gnn_zip} $info->{gnn}") if $info->{gnn} and $info->{gnn_zip};
     $B->addAction("zip -jq $info->{pfamhubfile_zip} $info->{pfamhubfile}") if $info->{pfamhubfile_zip} and $info->{pfamhubfile};
     $B->addAction("zip -jq -r $info->{pfam_zip} $info->{pfam_dir} -i '*'") if $info->{pfam_zip} and $info->{pfam_dir};
@@ -805,6 +807,28 @@ sub addFileActions {
     $B->addAction("zip -jq -r $info->{all_split_pfam_zip} $info->{all_split_pfam_dir} -i '*'") if $info->{all_split_pfam_zip} and $info->{all_split_pfam_dir};
     $B->addAction("zip -jq -r $info->{none_zip} $info->{none_dir}") if $info->{none_zip} and $info->{none_dir};
     $B->addAction("zip -jq $info->{arrow_zip} $info->{arrow_file}") if $info->{arrow_zip} and $info->{arrow_file};
+
+    if ($info->{fasta_data_dir} and $info->{fasta_zip} and $info->{hmm_data_dir} and $info->{hmm_zip}) {
+        my $fastArg = $info->{hmm_fast} ? "-build-fast" : "";
+        my $logoFileArg = $info->{hmm_logo_list} ? "-logo-list $info->{hmm_logo_list}" : "";
+        my $relPathFullArg = $info->{hmm_rel_path} ? "-rel-hmm-path $info->{hmm_rel_path}/full" : "";
+        my $relPathDomainArg = $info->{hmm_rel_path} ? "-rel-hmm-path $info->{hmm_rel_path}/domain" : "";
+        $B->addAction("");
+        $B->addAction("if [[ -d \$HMM_FASTA_DIR ]]; then");
+        $B->addAction("    mkdir $info->{hmm_data_dir}/full");
+        $B->addAction("    mkdir $info->{hmm_data_dir}/full/normal");
+        $B->addAction("    mkdir $info->{hmm_data_dir}/full/fast") if $fastArg;
+        $B->addAction("    $info->{hmm_tool_path} -fasta-dir \$HMM_FASTA_DIR -hmm-dir $info->{hmm_data_dir}/full $fastArg $logoFileArg $relPathFullArg");
+        $B->addAction("    if [[ -d \$HMM_FASTA_DOMAIN_DIR ]]; then");
+        $B->addAction("        mkdir $info->{hmm_data_dir}/domain");
+        $B->addAction("        mkdir $info->{hmm_data_dir}/domain/normal");
+        $B->addAction("        mkdir $info->{hmm_data_dir}/domain/fast") if $fastArg;
+        $B->addAction("        $info->{hmm_tool_path} -fasta-dir \$HMM_FASTA_DOMAIN_DIR -hmm-dir $info->{hmm_data_dir}/domain $fastArg $logoFileArg $relPathDomainArg -domain");
+        $B->addAction("    fi");
+        $B->addAction("    cd $info->{hmm_data_dir} && zip -r $info->{hmm_zip} . -i '*'");
+        $B->addAction("fi");
+        $B->addAction("");
+    }
 }
 
 sub getColor {
