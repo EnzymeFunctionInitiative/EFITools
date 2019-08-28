@@ -149,7 +149,7 @@ my $jobId;
 
 
 my $jobName = "${jobNamePrefix}bigscape";
-my $jobScript = "jobName.sh";
+my $jobScript = "$jobName.sh";
 $B->jobName($jobName);
 $B->renderToFile($jobScript);
 $jobId = $SS->submit($jobScript);
