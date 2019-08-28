@@ -21,7 +21,7 @@ use EFI::GNN::Base;
 
 my ($ssnIn, $nbSize, $ssnOut, $cooc, $outputDir, $scheduler, $dryRun, $queue, $jobId);
 my ($statsFile, $clusterSizeFile, $swissprotClustersDescFile, $swissprotSinglesDescFile);
-my ($jobConfigFile, $domainMapFileName, $mapFileName, $extraRam);
+my ($jobConfigFile, $domainMapFileName, $mapFileName, $extraRam, $makeHmm);
 my $result = GetOptions(
     "ssn-in=s"                  => \$ssnIn,
     "ssn-out=s"                 => \$ssnOut,
@@ -38,6 +38,7 @@ my $result = GetOptions(
     "sp-singletons-desc=s"      => \$swissprotSinglesDescFile,
     "job-config=s"              => \$jobConfigFile,
     "extra-ram"                 => \$extraRam,
+    "generate-hmm=s"            => \$makeHmm,
 );
 
 my $usage = <<USAGE
@@ -60,6 +61,8 @@ usage: $0 -ssnin <filename>
                         SwissProt annotations
     -job-config         file specifying the parameters and files to use as input output for this job
     -extra-ram          use increased amount of memory
+    -generate-hmm       generate HMMs for each cluster using the FASTA files that are retreived
+                        set to 'fast' to generate normal and fast MUSCLE runs, otherwise use 'normal'
 
 The only required argument is -ssnin, all others have defaults.
 USAGE
@@ -111,6 +114,7 @@ $statsFile                  = "stats.txt"                       if not $statsFil
 $clusterSizeFile            = "cluster_sizes.txt"               if not $clusterSizeFile;
 $swissprotClustersDescFile  = "swissprot_clusters_desc.txt"     if not $swissprotClustersDescFile;
 $swissprotSinglesDescFile   = "swissprot_singletons_desc.txt"   if not $swissprotSinglesDescFile;
+my $fastHmm                 = ($makeHmm and $makeHmm eq "fast");
 
 my $jobNamePrefix = $jobId ? "${jobId}_" : "";
 
@@ -129,6 +133,7 @@ my $fastaUniRef90DataDir        = "$clusterDataPath/fasta-uniref90";
 my $fastaUniRef90DomainDataDir  = "$clusterDataPath/fasta-uniref90-domain";
 my $fastaUniRef50DataDir        = "$clusterDataPath/fasta-uniref50";
 my $fastaUniRef50DomainDataDir  = "$clusterDataPath/fasta-uniref50-domain";
+my $hmmDataDir                  = "$clusterDataPath/hmm";
 
 my $uniprotIdZip = "$outputPath/${ssnName}_UniProt_IDs.zip";
 my $uniprotDomainIdZip = "$outputPath/${ssnName}_UniProt_Domain_IDs.zip";
@@ -142,6 +147,7 @@ my $fastaUniRef90Zip = "$outputPath/${ssnName}_FASTA_UniRef90.zip";
 my $fastaUniRef90DomainZip = "$outputPath/${ssnName}_FASTA_UniRef90_Domain.zip";
 my $fastaUniRef50Zip = "$outputPath/${ssnName}_FASTA_UniRef50.zip";
 my $fastaUniRef50DomainZip = "$outputPath/${ssnName}_FASTA_UniRef50_Domain.zip";
+my $hmmZip = "$outputPath/${ssnName}_HMMs.zip";
 
 # The if statements apply to the mkdir cmd, not the die().
 my $mkPath = sub {
@@ -170,6 +176,8 @@ mkdir $outputPath or die "Unable to create output directory $outputPath: $!" if 
 &$mkPath($uniRef90DomainNodeDataDir) if not $ssnType or $ssnType eq "UniRef90" and $isDomain;
 &$mkPath($fastaUniRef90DataDir);
 &$mkPath($fastaUniRef90DomainDataDir) if not $ssnType or $ssnType eq "UniRef90" and $isDomain;
+
+&$mkPath($hmmDataDir) if $makeHmm;
 
 
 my $fileSize = 0;
@@ -247,6 +255,15 @@ if (not $ssnType or $ssnType eq "UniRef50") {
     }
 }
 
+if ($makeHmm) {
+    $fileInfo->{hmm_tool_path} = "$gntPath/build_hmm.pl";
+    $fileInfo->{hmm_data_dir} = &$absPath($hmmDataDir);
+    $fileInfo->{hmm_zip} = $hmmZip;
+    $fileInfo->{hmm_fast} = $fastHmm;
+    $fileInfo->{hmm_logo_list} = "$outputPath/hmm_logos.txt";
+    $fileInfo->{hmm_rel_path} = $hmmDataDir;
+}
+
 
 my $scriptArgs = 
     "-output-dir $outputPath " .
@@ -273,6 +290,11 @@ my $B = $SS->getBuilder();
 $B->resource(1, 1, "${ramReservation}gb");
 $B->addAction("module load $dbModule");
 $B->addAction("module load $gntModule");
+if ($makeHmm) {
+    $B->addAction("module load MUSCLE");
+    $B->addAction("module load HMMER");
+    $B->addAction("module load skylign");
+}
 $B->addAction("cd $outputPath");
 $B->addAction("$gntPath/unzip_file.pl -in $ssnInZip -out $ssnIn") if $ssnInZip =~ /\.zip/i;
 $B->addAction("$gntPath/cluster_gnn.pl $scriptArgs");
