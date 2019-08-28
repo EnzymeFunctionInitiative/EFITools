@@ -106,7 +106,7 @@ $arrowMeta{title} = $title;
 $arrowMeta{type} = $jobType;
 $arrowMeta{sequence} = readBlastSequence($blastSeq) if $blastSeq;
 
-my $resCode = saveData($dbFile, $accessionData, $colorUtil, \%arrowMeta, \@unmatchedIds, $idsMapped);
+my $resCode = saveData($dbFile, $accessionData, $colorUtil, \%arrowMeta, \@unmatchedIds, $idsMapped, \@inputIds);
 
 
 
@@ -119,10 +119,11 @@ sub saveData {
     my $metadata = shift;
     my $unmatched = shift;
     my $idsMapped = shift;
+    my $idsInOrder = shift;
 
     my $arrowTool = new EFI::GNN::Arrows(color_util => $colorUtil);
     my $clusterCenters = {}; # For the future, we might use this for ordering
-    $arrowTool->writeArrowData($data, $clusterCenters, $dbFile, $metadata);
+    $arrowTool->writeArrowData($data, $clusterCenters, $dbFile, $metadata, $idsInOrder);
     $arrowTool->writeUnmatchedIds($dbFile, $unmatched);
     $arrowTool->writeMatchedIds($dbFile, $idsMapped);
 

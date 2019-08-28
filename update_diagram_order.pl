@@ -54,7 +54,8 @@ while (my $row = $sth->fetchrow_hashref()) {
 my %clusterData;
 
 
-foreach my $clusterNum (keys %groupData) {
+my $clusterIndex = 0;
+foreach my $clusterNum (sort { $a <=> $b } keys %groupData) {
     my $runName = "cluster_$clusterNum";
     my $runDir = "$bigscapeDir/run/$runName";
     next if not -d $runDir;
@@ -90,11 +91,11 @@ foreach my $clusterNum (keys %groupData) {
 
     my $count = 0;
     foreach my $line (@data) {
-        my $sql = "UPDATE attributes SET sort_order = $count WHERE cluster_num = $clusterNum AND accession = '$line->[0]'";
+        my $sql = "UPDATE attributes SET sort_order = $count, cluster_index = $clusterIndex WHERE cluster_num = $clusterNum AND accession = '$line->[0]'";
         push @{$clusterData{$clusterNum}}, [$line->[0], $line->[1], $line->[2], $count];
-        print $sql, "\n";
         $dbh->do($sql);
         $count++;
+        $clusterIndex++;
     }
 }
 

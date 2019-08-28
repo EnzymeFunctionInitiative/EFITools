@@ -35,6 +35,7 @@ sub writeArrowData {
     my $clusterCenters = shift;
     my $file = shift;
     my $metadata = shift;
+    my $orderedIds = shift;
 
     unlink $file if -f $file;
 
@@ -100,7 +101,9 @@ sub writeArrowData {
         return $comp;
     };
     my @sortedIds = keys %$data;
-    if (scalar @sortedIds and exists $data->{$sortedIds[0]}->{attributes}->{cluster_num}) {
+    if (defined $orderedIds and ref $orderedIds eq "ARRAY" and scalar @$orderedIds == scalar @sortedIds) {
+        @sortedIds = @$orderedIds;
+    } elsif (scalar @sortedIds and exists $data->{$sortedIds[0]}->{attributes}->{cluster_num}) {
         @sortedIds = sort $sortFn @sortedIds;
     } else {
         @sortedIds = sort @sortedIds;
