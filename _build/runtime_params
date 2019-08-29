@@ -1,4 +1,6 @@
 do{ my $x = {
-       'install_base' => '/home/dslater/perl5'
+       'install_base' => '/home/dslater/perl5',
+       'destdir' => '/home/dslater/test',
+       'prefix' => '/home/dslater/test'
      };
 $x; }
