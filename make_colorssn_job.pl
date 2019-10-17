@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 
 BEGIN {
-    die "The efishared and efignn environments must be loaded before running this script" if not exists $ENV{EFISHARED} or not exists $ENV{EFIGNN};
+    die "The efishared and efignt environments must be loaded before running this script" if not exists $ENV{EFISHARED} or not exists $ENV{EFIGNN};
     use lib $ENV{EFISHARED};
 }
 
@@ -17,11 +17,13 @@ use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm checkNetworkType);
 use EFI::Config;
 use EFI::GNN::Base;
+use EFI::HMM::Job;
 
 
 my ($ssnIn, $nbSize, $ssnOut, $cooc, $outputDir, $scheduler, $dryRun, $queue, $jobId);
 my ($statsFile, $clusterSizeFile, $swissprotClustersDescFile, $swissprotSinglesDescFile);
-my ($jobConfigFile, $domainMapFileName, $mapFileName, $extraRam, $makeHmm);
+my ($jobConfigFile, $domainMapFileName, $mapFileName, $extraRam);
+my ($optMsaOption, $optAaThreshold, $optAaList, $optMinSeqMsa);
 my $result = GetOptions(
     "ssn-in=s"                  => \$ssnIn,
     "ssn-out=s"                 => \$ssnOut,
@@ -38,7 +40,10 @@ my $result = GetOptions(
     "sp-singletons-desc=s"      => \$swissprotSinglesDescFile,
     "job-config=s"              => \$jobConfigFile,
     "extra-ram"                 => \$extraRam,
-    "generate-hmm=s"            => \$makeHmm,
+    "opt-msa-option=s"          => \$optMsaOption,
+    "opt-aa-threshold=s"        => \$optAaThreshold,
+    "opt-aa-list=s"             => \$optAaList,
+    "opt-min-seq-msa=s"         => \$optMinSeqMsa,
 );
 
 my $usage = <<USAGE
@@ -105,6 +110,14 @@ if ($ssnInZip =~ /\.zip$/i) {
 
 my ($ssnType, $isDomain) = checkNetworkType($ssnInZip);
 
+if (not $optMsaOption) {
+    $optMsaOption = 0;
+}
+$optAaList = $optAaList ? $optAaList : "";
+if ($optMsaOption =~ m/CR/ and $optAaList !~ m/^[A-Z,]+$/) {
+    $optMsaOption = 0;
+}
+
 
 $outputDir                  = "output"                          if not $outputDir;
 $mapFileName                = "mapping_table.txt"               if not $mapFileName;
@@ -114,7 +127,6 @@ $statsFile                  = "stats.txt"                       if not $statsFil
 $clusterSizeFile            = "cluster_sizes.txt"               if not $clusterSizeFile;
 $swissprotClustersDescFile  = "swissprot_clusters_desc.txt"     if not $swissprotClustersDescFile;
 $swissprotSinglesDescFile   = "swissprot_singletons_desc.txt"   if not $swissprotSinglesDescFile;
-my $fastHmm                 = ($makeHmm and $makeHmm eq "fast");
 
 my $jobNamePrefix = $jobId ? "${jobId}_" : "";
 
@@ -177,7 +189,7 @@ mkdir $outputPath or die "Unable to create output directory $outputPath: $!" if 
 &$mkPath($fastaUniRef90DataDir);
 &$mkPath($fastaUniRef90DomainDataDir) if not $ssnType or $ssnType eq "UniRef90" and $isDomain;
 
-&$mkPath($hmmDataDir) if $makeHmm;
+&$mkPath($hmmDataDir) if $optMsaOption;
 
 
 my $fileSize = 0;
@@ -217,6 +229,9 @@ my $fileInfo = {
     fasta_data_dir => &$absPath($fastaUniProtDataDir),
     uniprot_node_zip => $uniprotIdZip,
     fasta_zip => $fastaZip,
+
+    domain_map_file => "${ssnName}_$domainMapFileName",
+    map_file => "${ssnName}_$mapFileName",
 };
 
 
@@ -255,33 +270,50 @@ if (not $ssnType or $ssnType eq "UniRef50") {
     }
 }
 
-if ($makeHmm) {
+if ($optMsaOption) {
     $fileInfo->{hmm_tool_path} = "$gntPath/build_hmm.pl";
+    $fileInfo->{hmm_tool_dir} = "$gntPath/hmm";
     $fileInfo->{hmm_data_dir} = &$absPath($hmmDataDir);
     $fileInfo->{hmm_zip} = $hmmZip;
-    $fileInfo->{hmm_fast} = $fastHmm;
     $fileInfo->{hmm_logo_list} = "$outputPath/hmm_logos.txt";
+    $fileInfo->{hmm_weblogo_list} = "$outputPath/weblogos.txt";
+    $fileInfo->{hmm_histogram_list} = "$outputPath/histograms.txt";
     $fileInfo->{hmm_rel_path} = $hmmDataDir;
+    $fileInfo->{hmm_count_aa_tool_path} = "$gntPath/count_aa.pl";
+    $fileInfo->{hmm_collect_id_tool_path} = "$gntPath/collect_aa_hmm_ids.pl";
+
+    $optAaThreshold = ($optAaThreshold and $optAaThreshold =~ m/^[0-9,\.]+$/) ? $optAaThreshold : 0;
+    $fileInfo->{hmm_consensus_threshold} = $optAaThreshold;
+    $fileInfo->{hmm_option} = $optMsaOption;
+    $fileInfo->{hmm_amino_acids} = [split(m/,/, $optAaList)];
+    my @colors = ("red", "blue", "orange", "DarkGreen", "Magenta", "Gray");
+    $fileInfo->{hmm_weblogo_colors} = \@colors;
+
+    $optMinSeqMsa = ($optMinSeqMsa and $optMinSeqMsa >= 1) ? $optMinSeqMsa : 5;
+    $fileInfo->{hmm_min_seq_msa} = $optMinSeqMsa;
+
+    $fileInfo->{output_path} = $outputPath;
+    $fileInfo->{cluster_size_file} = $clusterSizeFile;
 }
 
 
 my $scriptArgs = 
-    "-output-dir $outputPath " .
-    "-ssnin $ssnIn " .
-    "-ssnout $ssnOut " .
-    "-uniprot-id-dir $uniprotNodeDataDir " .
-    "-uniprot-domain-id-dir $uniprotDomainNodeDataDir " .
-    "-uniref50-id-dir $uniRef50NodeDataDir " .
-    "-uniref50-domain-id-dir $uniRef50DomainNodeDataDir " .
-    "-uniref90-id-dir $uniRef90NodeDataDir " .
-    "-uniref90-domain-id-dir $uniRef90DomainNodeDataDir " .
-    "-id-out ${ssnName}_$mapFileName " .
-    "-id-out-domain ${ssnName}_$domainMapFileName " .
-    "-config $configFile " .
-    "-stats \"$statsFile\" " .
-    "-cluster-sizes \"$clusterSizeFile\" " .
-    "-sp-clusters-desc \"$swissprotClustersDescFile\" " .
-    "-sp-singletons-desc \"$swissprotSinglesDescFile\" " .
+    " -output-dir $outputPath" .
+    " -ssnin $ssnIn" .
+    " -ssnout $ssnOut" .
+    " -uniprot-id-dir $uniprotNodeDataDir" .
+    " -uniprot-domain-id-dir $uniprotDomainNodeDataDir" .
+    " -uniref50-id-dir $uniRef50NodeDataDir" .
+    " -uniref50-domain-id-dir $uniRef50DomainNodeDataDir" .
+    " -uniref90-id-dir $uniRef90NodeDataDir" .
+    " -uniref90-domain-id-dir $uniRef90DomainNodeDataDir" .
+    " -id-out ${ssnName}_$mapFileName" .
+    " -id-out-domain ${ssnName}_$domainMapFileName" .
+    " -config $configFile" .
+    " -stats \"$statsFile\"" .
+    " -cluster-sizes \"$clusterSizeFile\"" .
+    " -sp-clusters-desc \"$swissprotClustersDescFile\"" .
+    " -sp-singletons-desc \"$swissprotSinglesDescFile\"" .
     ""
     ;
 
@@ -290,25 +322,31 @@ my $B = $SS->getBuilder();
 $B->resource(1, 1, "${ramReservation}gb");
 $B->addAction("module load $dbModule");
 $B->addAction("module load $gntModule");
-if ($makeHmm) {
-    $B->addAction("module load MUSCLE");
-    $B->addAction("module load HMMER");
-    $B->addAction("module load skylign");
-}
 $B->addAction("cd $outputPath");
 $B->addAction("$gntPath/unzip_file.pl -in $ssnInZip -out $ssnIn") if $ssnInZip =~ /\.zip/i;
 $B->addAction("$gntPath/cluster_gnn.pl $scriptArgs");
 EFI::GNN::Base::addFileActions($B, $fileInfo);
-$B->addAction("touch $outputPath/1.out.completed");
+if (not $optMsaOption) {
+    $B->addAction("touch $outputPath/1.out.completed");
+}
 
 my $jobName = "${jobNamePrefix}color_ssn";
 my $jobScript = "$outputPath/$jobName.sh";
 $B->jobName($jobName);
 $B->renderToFile($jobScript);
-
 $jobId = $SS->submit($jobScript);
 print "Color SSN job is:\n $jobId";
 
+if ($optMsaOption) {
+    $B = EFI::HMM::Job::makeJob($SS, $fileInfo, $jobId);
+    $B->addAction("touch $outputPath/1.out.completed");
+    $jobName = "${jobNamePrefix}hmm_and_stuff";
+    $jobScript = "$outputPath/$jobName.sh";
+    $B->jobName($jobName);
+    $B->renderToFile($jobScript);
+    $jobId = $SS->submit($jobScript);
+    print "HMM and stuff job is:\n $jobId";
+}
 
 
 sub getDefaults {
