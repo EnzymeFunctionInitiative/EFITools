@@ -16,7 +16,7 @@ use XML::LibXML::Reader;
 use Data::Dumper;
 
 use constant ALL_IDS => 1;          # Flag to indicate to return all IDs, not just the metanodes
-use constant METANODE_IDS => 2;     # Flag to indicate to return all IDs, not just the metanodes
+use constant METANODE_IDS => 2;     # Flag to indicate to return the list of IDs that match the visible nodes in the network
 use constant NO_DOMAIN => 4;        # Flag to indicate to return IDs stripped of domain info
 use constant INTERNAL => 8;         # Internal cluster ID, not cluster number
 
@@ -486,6 +486,7 @@ sub writeColorSsnNodes {
     my $writer = shift;
     my $gnnData = shift;
 
+    my %idCount;
     my %nodeCount;
     my $nodenames = $self->{network}->{id_label_map};
     my $constellations = $self->{network}->{constellations};
@@ -494,11 +495,12 @@ sub writeColorSsnNodes {
     my $singletonField = "Singleton Number";
     my $colorField = "node.fillColor";
     my $countField = "Cluster Sequence Count";
+    my $nodeCountField = "Cluster Node Count";
     my $nbFamField = "Neighbor Families";
     my $badNum = 999999;
     my $singleNum = 0;
 
-    my %skipFields = ($numField => 1, $colorField => 1, $countField => 1, $singletonField => 1, $nbFamField => 1);
+    my %skipFields = ($numField => 1, $colorField => 1, $countField => 1, $nodeCountField => 1, $singletonField => 1, $nbFamField => 1);
     $skipFields{"Present in ENA Database?"} = 1;
     $skipFields{"Genome Neighbors in ENA Database?"} = 1;
     $skipFields{"ENA Database Genome ID"} = 1;
@@ -516,18 +518,22 @@ sub writeColorSsnNodes {
 
         # In a previous step, we included singletons (historically they were excluded).
         if ($clusterNum) {
-            if (not exists $nodeCount{$clusterNum}) {
+            if (not exists $idCount{$clusterNum}) {
                 my $ids = $self->getIdsInCluster($clusterId, ALL_IDS|INTERNAL);
-                $nodeCount{$clusterNum} = scalar @$ids;
+                $idCount{$clusterNum} = scalar @$ids;
+            }
+            if (not exists $nodeCount{$clusterNum}) {
+                my $nodes = $self->getIdsInCluster($clusterId, METANODE_IDS|INTERNAL);
+                $nodeCount{$clusterNum} = scalar @$nodes;
             }
 
             $writer->startTag('node', 'id' => $nodeId, 'label' => $nodeLabel);
 
             # find color and add attribute
             my $color = "";
-            $color = $self->getColor($clusterNum) if $nodeCount{$clusterNum} > 1;
-            #$color = $self->{colors}->{$clusterNum} if $nodeCount{$clusterNum} > 1;
-            my $isSingleton = $nodeCount{$clusterNum} < 2;
+            $color = $self->getColor($clusterNum) if $idCount{$clusterNum} > 1;
+            #$color = $self->{colors}->{$clusterNum} if $idCount{$clusterNum} > 1;
+            my $isSingleton = $idCount{$clusterNum} < 2;
             my $clusterNumAttr = $clusterNum;
             my $fieldName = $numField;
             if ($isSingleton) {
@@ -549,7 +555,8 @@ sub writeColorSsnNodes {
 
                     if ($attrName and $attrName eq "Organism") { #TODO: need to make this a shared constant
                         writeGnnField($writer, $fieldName, 'integer', $clusterNumAttr);
-                        writeGnnField($writer, $countField, 'integer', $nodeCount{$clusterNum});
+                        writeGnnField($writer, $countField, 'integer', $idCount{$clusterNum});
+                        writeGnnField($writer, $nodeCountField, 'integer', $nodeCount{$clusterNum});
                         writeGnnField($writer, $colorField, 'string', $color);
                         if (not $self->{color_only}) {
                             $self->saveGnnAttributes($writer, $gnnData, $node);
@@ -585,7 +592,8 @@ sub writeColorSsnNodes {
 
             if (not $savedAttrs) {
                 writeGnnField($writer, $fieldName, 'integer', $clusterNumAttr);
-                writeGnnField($writer, $countField, 'integer', $nodeCount{$clusterNum});
+                writeGnnField($writer, $countField, 'integer', $idCount{$clusterNum});
+                writeGnnField($writer, $nodeCountField, 'integer', $nodeCount{$clusterNum});
                 writeGnnField($writer, $colorField, 'string', $color);
                 if (not $self->{color_only}) {
                     $self->saveGnnAttributes($writer, $gnnData, $node);
@@ -807,28 +815,6 @@ sub addFileActions {
     $B->addAction("zip -jq -r $info->{all_split_pfam_zip} $info->{all_split_pfam_dir} -i '*'") if $info->{all_split_pfam_zip} and $info->{all_split_pfam_dir};
     $B->addAction("zip -jq -r $info->{none_zip} $info->{none_dir}") if $info->{none_zip} and $info->{none_dir};
     $B->addAction("zip -jq $info->{arrow_zip} $info->{arrow_file}") if $info->{arrow_zip} and $info->{arrow_file};
-
-    if ($info->{fasta_data_dir} and $info->{fasta_zip} and $info->{hmm_data_dir} and $info->{hmm_zip}) {
-        my $fastArg = $info->{hmm_fast} ? "-build-fast" : "";
-        my $logoFileArg = $info->{hmm_logo_list} ? "-logo-list $info->{hmm_logo_list}" : "";
-        my $relPathFullArg = $info->{hmm_rel_path} ? "-rel-hmm-path $info->{hmm_rel_path}/full" : "";
-        my $relPathDomainArg = $info->{hmm_rel_path} ? "-rel-hmm-path $info->{hmm_rel_path}/domain" : "";
-        $B->addAction("");
-        $B->addAction("if [[ -d \$HMM_FASTA_DIR ]]; then");
-        $B->addAction("    mkdir $info->{hmm_data_dir}/full");
-        $B->addAction("    mkdir $info->{hmm_data_dir}/full/normal");
-        $B->addAction("    mkdir $info->{hmm_data_dir}/full/fast") if $fastArg;
-        $B->addAction("    $info->{hmm_tool_path} -fasta-dir \$HMM_FASTA_DIR -hmm-dir $info->{hmm_data_dir}/full $fastArg $logoFileArg $relPathFullArg");
-        $B->addAction("    if [[ -d \$HMM_FASTA_DOMAIN_DIR ]]; then");
-        $B->addAction("        mkdir $info->{hmm_data_dir}/domain");
-        $B->addAction("        mkdir $info->{hmm_data_dir}/domain/normal");
-        $B->addAction("        mkdir $info->{hmm_data_dir}/domain/fast") if $fastArg;
-        $B->addAction("        $info->{hmm_tool_path} -fasta-dir \$HMM_FASTA_DOMAIN_DIR -hmm-dir $info->{hmm_data_dir}/domain $fastArg $logoFileArg $relPathDomainArg -domain");
-        $B->addAction("    fi");
-        $B->addAction("    cd $info->{hmm_data_dir} && zip -r $info->{hmm_zip} . -i '*'");
-        $B->addAction("fi");
-        $B->addAction("");
-    }
 }
 
 sub getColor {

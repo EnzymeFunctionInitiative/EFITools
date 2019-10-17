@@ -56,7 +56,7 @@ my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $cooccurrence, $stat
     $uniprotIdDir, $uniprotDomainIdDir, $uniref50IdDir, $uniref90IdDir, $uniref50DomainIdDir, $uniref90DomainIdDir,
     $pfamCoocTable, $hubCountFile, $allPfamDir, $splitPfamDir, $allSplitPfamDir, $clusterSizeFile, $swissprotClustersDescFile,
     $swissprotSinglesDescFile, $parentDir, $renumberClusters, $disableCache, $skipIdMapping, $skipOrganism, $debug,
-    $outputDir,
+    $outputDir, $includeFragments,
 );
 
 my $result = GetOptions(
@@ -95,6 +95,7 @@ my $result = GetOptions(
     "disable-cache"         => \$disableCache,
     "skip-id-mapping"       => \$skipIdMapping,
     "skip-organism"         => \$skipOrganism,
+    "include-fragments"     => \$includeFragments,
     "debug"                 => \$debug,
 );
 
@@ -588,6 +589,9 @@ sub getClusterToIdMapping {
             (my $proteinId = $id) =~ s/:\d+:\d+$//;
             if ($ssnSeqSource) {
                 my $sql = "SELECT * FROM uniref WHERE accession = '$proteinId'";
+                if (not $includeFragments) {
+                    $sql = "SELECT U.* FROM uniref AS U LEFT JOIN annotations AS A ON U.accession = A.accession WHERE U.accession = '$proteinId' AND A.Fragment = 0";
+                }
                 my $sth = $dbh->prepare($sql);
                 $sth->execute;
                 while (my $row = $sth->fetchrow_hashref) {
@@ -595,8 +599,19 @@ sub getClusterToIdMapping {
                     $uniref90IdsClusterMap{$row->{uniref90_seed}} = $clNum if $ssnSeqSource >= 50;
                 }
             }
-            $uniprotIdsClusterMap{$proteinId} = $clNum;
-            $uniprotDomainIdsClusterMap{$id} = $clNum if $id ne $proteinId;
+            
+            my $addSeq = 1;
+            if (not $includeFragments) {
+                $addSeq = 1;
+                my $sql = "SELECT Fragment FROM annotations WHERE accession = '$proteinId' AND Fragment = 0";
+                my $sth = $dbh->prepare($sql);
+                $sth->execute;
+                $addSeq = $sth->fetchrow_hashref ? 1 : 0;
+            }
+            if ($addSeq) {
+                $uniprotIdsClusterMap{$proteinId} = $clNum;
+                $uniprotDomainIdsClusterMap{$id} = $clNum if $id ne $proteinId;
+            }
         }
     }
 
@@ -798,6 +813,8 @@ sub defaultParameters {
     $arrowDataFile = "" if not $arrowDataFile;
     $pfamCoocTable = "" if not $pfamCoocTable;
     $hubCountFile = "" if not $hubCountFile;
+
+    $includeFragments = defined($includeFragments);
 }
 
 
