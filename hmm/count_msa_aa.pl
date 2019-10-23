@@ -24,8 +24,7 @@ die "Need aa" if not $searchAa;
 die "Need count-file" if not $countFile;
 die "Need pct-file (% cons)" if not $pctFile;
 
-$conThreshold = 0 if not $conThreshold;
-$conThreshold = 100 * $conThreshold;
+$conThreshold = 1 if not $conThreshold;
 
 my @files = glob("$msaDir/*.afa");
 
@@ -77,20 +76,33 @@ sub parseLogo {
     open my $fh, $file or die "Unable to read logo $file: $!";
 
     my @aas = ("A", "C", "D", "E", "F", "G", "H", "I", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y");
+    my $idx = 0;
+    for (my $i = 0; $i < scalar @aas; $i++) {
+        $idx = $i and last if $aas[$i] eq $searchAa;
+    }
+
     # col# AAs Entropy Low High Weight
     while (<$fh>) {
         chomp;
         next if m/^#/;
         my ($colNum, @parts) = split(m/\t/);
+        $colNum =~ s/\D//g;
         @parts = @parts[0..19];
-        my ($max, $idx, $sum) = getMaxIndex(\@parts);
-        if ($aas[$idx] eq $searchAa) {
-            my $val = int($max * 100 / $numSeq + 0.5);
-            print "$file $max $numSeq $val\n";
-            if ($val >= $conThresh) {
-                push @data, [$colNum, $val];
-            }
+        
+        my $colVal = $parts[$idx];
+        my $pctVal = int($colVal * 100 / $numSeq + 0.5);
+        if ($pctVal >= $conThresh) {
+            push @data, [$colNum, $pctVal];
         }
+
+        #my ($max, $idx, $sum) = getMaxIndex(\@parts);
+        #if ($aas[$idx] eq $searchAa) {
+        #    my $val = int($max * 100 / $numSeq + 0.5);
+        #    print "$file $max $numSeq $val\n";
+        #    if ($val >= $conThresh) {
+        #        push @data, [$colNum, $val];
+        #    }
+        #}
     }
 
     close $fh;

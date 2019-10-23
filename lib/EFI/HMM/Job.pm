@@ -12,13 +12,15 @@ sub makeJob {
 
     return if not $info->{hmm_option};
 
+    my $isUniProtNetwork = $info->{ssn_type} ? $info->{ssn_type} eq "UniProt" : 0;
     my $logoListFile = $info->{hmm_logo_list};
     my $weblogoListFile = $info->{hmm_weblogo_list};
     my $histListFile = $info->{hmm_histogram_list};
+    my $alignListFile = $info->{hmm_alignment_list};
     my @types = getHmmTypes();
     @types = ("wpb");
-    my $consensusThreshold = $info->{hmm_consensus_threshold} ? $info->{hmm_consensus_threshold} : 0.8;
-    my @cons = split(m/,/, $consensusThreshold);
+    my $consensusThreshold = $info->{hmm_consensus_threshold} ? $info->{hmm_consensus_threshold} : 80;
+    my @cons = map { $_ < 1 ? $_*100 : $_ } split(m/,/, $consensusThreshold);
     my $appDir = $info->{hmm_tool_dir};
     my @aas = @{$info->{hmm_amino_acids}};
 
@@ -65,10 +67,6 @@ sub makeJob {
     $B->dependency(0, $depJobId);
     $B->setScriptAbortOnError(0); # don't abort on error
 
-    #TODO: $info->{hmm_min_seq_msa}
-    #TODO: "Cluster Node Count"
-    #TODO: histogram tabs
-
     #find DIR -type f -print0 | sed 's%/private_stores/gerlt/efi_test/results/14137/output/cluster-data/hmm/domain/align/%%g' | sed 's/\.afa//g' | xargs -n 1 -P 12  -0 -I % echo weblogo -D fasta -F png --resolution 300 --stacks-per-line 80 -f /private_stores/gerlt/efi_test/results/14137/output/cluster-data/hmm/domain/align/%.afa -o ~/junk/t/weblogo/%.png
     $B->addAction(<<SCRIPT
 module load MUSCLE
@@ -77,11 +75,11 @@ module load GhostScript
 module load HMMER
 module load skylign
 module load R
+module load CD-HIT
 
 export PYTHONPATH=\$PYTHONPATH:/home/n-z/noberg/lib/python
 export PATH=\$PATH:/home/n-z/noberg/bin
 if [[ -d $fastaDir ]]; then
-
 SCRIPT
     );
 
@@ -89,11 +87,32 @@ SCRIPT
     if ($info->{hmm_option} =~ m/HMM|CR|WEBLOGO/) {
         $B->addAction(<<SCRIPT
     mkdir -p $fullAlignDir
-    $appDir/get_cluster_count.pl --size-file $info->{output_path}/$info->{cluster_size_file} --count-file $fullCountFile --min-count $info->{hmm_min_seq_msa}
+SCRIPT
+        );
+
+        my $clusterSizeFile = "$info->{output_path}/$info->{cluster_size_file}";
+        if ($isUniProtNetwork) {
+            my $localFastaDir = "$fullOutDir/fasta-unique";
+            $clusterSizeFile = "$fullOutDir/unique_cluster_size.txt";
+            $B->addAction(<<SCRIPT
+    mkdir -p $localFastaDir
+    find $fastaDir -name 'cluster_*.fasta' -type f -print0 | sed 's%$fastaDir/\\([a-z_0-9]\\+\\)\\.fasta%\\1%g' | xargs -P $np -0 -I % cd-hit -c 1 -s 1 -i $fastaDir/%.fasta -o $localFastaDir/%.fasta -M 14900
+    $appDir/get_cluster_count.pl --fasta-dir $fastaDir --count-file $fullCountFile --min-count $info->{hmm_min_seq_msa}
+SCRIPT
+            );
+            $fastaDir = $localFastaDir;
+        } else {
+            $B->addAction(<<SCRIPT
+    $appDir/get_cluster_count.pl --size-file $clusterSizeFile --count-file $fullCountFile --min-count $info->{hmm_min_seq_msa}
+SCRIPT
+            );
+        }
+
+        $B->addAction(<<SCRIPT
 
     #MAKE MULTIPLE SEQUENCE ALIGNMENTs FOR FULL SEQUENCES
-    #find $fullAlignDir -name 'cluster_*.afa' -type f -print0 | sed 's%$fullAlignDir/\\([a-z_0-9]\\+\\)\\.afa%\\1%g' | xargs -P $np -0 -I % muscle -quiet -in $fullAlignDir/%.afa -out $fullAlignDir/%.afa
     cat $fullCountFile | xargs -P $np -I % muscle -quiet -in $fastaDir/cluster_%.fasta -out $fullAlignDir/cluster_%.afa
+    find $fullAlignDir -name 'cluster_*.afa' -type f | sed 's%$fullAlignDir/\\(cluster_\\([0-9]\\+\\)\\)\\.afa%\\2\\tfull\\tnormal\\t$info->{hmm_rel_path}/full/normal/align/\\1.afa%g' > $alignListFile
 
 SCRIPT
         );
@@ -103,10 +122,8 @@ SCRIPT
     if ($info->{hmm_option} =~ m/HMM/i) {
         $B->addAction(<<SCRIPT
     mkdir -p $fullOutDir/hmm
-    #find $fullAlignDir -name 'cluster_*.afa' -type f -print0 | sed 's%$fullAlignDir/\\([a-z_0-9]\\+\\)\\.afa%\\1%g' | xargs -P $np -0 -I % hmmbuild $fullOutDir/hmm/%.hmm $fullAlignDir/%.afa
-    #find $fullAlignDir -name 'cluster_*.afa' -type f -print0 | sed 's%$fullAlignDir/\\([a-z_0-9]\\+\\)\\.afa%\\1%g' | xargs -P $np -0 -I % $appDir/make_skylign_logo.pl --hmm $fullOutDir/hmm/%.hmm --json $fullOutDir/hmm/%.json --png $fullOutDir/hmm/%.png
     cat $fullCountFile | xargs -P $np -I % hmmbuild $fullOutDir/hmm/cluster_%.hmm $fullAlignDir/cluster_%.afa
-    cat $fullCountFile | xargs -P $np -I cluster_% $appDir/make_skylign_logo.pl --hmm $fullOutDir/hmm/cluster_%.hmm --json $fullOutDir/hmm/cluster_%.json --png $fullOutDir/hmm/cluster_%.png
+    cat $fullCountFile | xargs -P $np -I % $appDir/make_skylign_logo.pl --hmm $fullOutDir/hmm/cluster_%.hmm --json $fullOutDir/hmm/cluster_%.json --png $fullOutDir/hmm/cluster_%.png
     find $fullOutDir/hmm -name 'cluster_*.hmm' -type f | sed 's%$fullOutDir/hmm/\\(cluster_\\([0-9]\\+\\)\\)\\.hmm%\\2\\tfull\\tnormal\\t$info->{hmm_rel_path}/full/normal/hmm/\\1%g' > $logoListFile
 
 SCRIPT
@@ -118,8 +135,6 @@ SCRIPT
     if ($info->{hmm_option} =~ m/CR|WEBLOGO/i) {
         $B->addAction(<<SCRIPT
     mkdir -p $fullOutDir/weblogo
-    #find $fullAlignDir -name 'cluster_*.afa' -type f -print0 | sed 's%$fullAlignDir/\\([a-z_0-9]\\+\\)\\.afa%\\1%g' | xargs -P $np -0 -I % weblogo -D fasta -F png --resolution 300 --stacks-per-line 80 -f $fullAlignDir/%.afa -o $fullOutDir/weblogo/%.png $colorList
-    #find $fullAlignDir -name 'cluster_*.afa' -type f -print0 | sed 's%$fullAlignDir/\\([a-z_0-9]\\+\\)\\.afa%\\1%g' | xargs -P $np -0 -I % weblogo -D fasta -F logodata -f $fullAlignDir/%.afa -o $fullOutDir/weblogo/%.txt
     cat $fullCountFile | xargs -P $np -I % weblogo -D fasta -F png --resolution 300 --stacks-per-line 80 -f $fullAlignDir/cluster_%.afa -o $fullOutDir/weblogo/cluster_%.png $colorList
     cat $fullCountFile | xargs -P $np -I % weblogo -D fasta -F logodata -f $fullAlignDir/cluster_%.afa -o $fullOutDir/weblogo/cluster_%.txt
     find $fullOutDir/weblogo -name 'cluster_*.png' -type f | sed 's%$fullOutDir/weblogo/\\(cluster_\\([0-9]\\+\\)\\)\\.png%\\2\\tfull\\tnormal\\t$info->{hmm_rel_path}/full/normal/weblogo/\\1%g' > $weblogoListFile
@@ -131,17 +146,25 @@ SCRIPT
     ########## FULL - CONSENSUS RESIDUE
     if ($info->{hmm_option} =~ m/CR/i) {
         foreach my $aa (@aas) {
+            my $mergeCounts = "";
+            my $mergePercent = "";
             foreach my $ct (@cons) {
                 my $baseFile = "consensus_residue_${aa}_$ct";
                 my $listDir = "$fullOutDir/id_lists_${aa}_$ct";
                 $B->addAction(<<SCRIPT
     #CONSENSUS RESIDUE CALCULATION
-    $appDir/count_msa_aa.pl --msa-dir $fullAlignDir --logo-dir $fullOutDir/weblogo --aa $aa --count-file $fullOutDir/${baseFile}_counts.txt --pct-file $fullOutDir/${baseFile}_pct.txt --threshold $ct
+    $appDir/count_msa_aa.pl --msa-dir $fullAlignDir --logo-dir $fullOutDir/weblogo --aa $aa --count-file $fullOutDir/${baseFile}_position.txt --pct-file $fullOutDir/${baseFile}_percentage.txt --threshold $ct
     mkdir -p $listDir
-    $appDir/collect_aa_ids.pl --aa-count-file $fullOutDir/${baseFile}_counts.txt --output-dir $listDir --id-mapping $info->{output_path}/$info->{domain_map_file}
+    $appDir/collect_aa_ids.pl --aa-count-file $fullOutDir/${baseFile}_position.txt --output-dir $listDir --id-mapping $info->{output_path}/$info->{domain_map_file}
 SCRIPT
                 );
+                $mergeCounts .= " --position-file $ct=$fullOutDir/${baseFile}_position.txt";
+                $mergePercent .= " --percentage-file $ct=$fullOutDir/${baseFile}_percentage.txt";
             }
+            $B->addAction(<<SCRIPT
+    $appDir/make_summary_tables.pl --position-summary-file $fullOutDir/summary_consensus_residue_${aa}_position.txt --percentage-summary-file $fullOutDir/summary_consensus_residue_${aa}_percentage.txt $mergeCounts $mergePercent
+SCRIPT
+            );
         }
     }
     $B->addAction(""); #empty line
@@ -151,7 +174,7 @@ SCRIPT
         my $outDir = "$fullOutDir/hist-uniprot";
         $B->addAction(<<SCRIPT
     mkdir -p $outDir
-    find $info->{fasta_data_dir} -name 'cluster_*.fasta' -type f -print0 | sed 's%$info->{fasta_data_dir}/\\([a-z_0-9]\\+\\)\\.fasta%\\1%g' | xargs -P $np -0 -I % $appDir/make_length_histo.pl -seq-file $info->{fasta_data_dir}/%.fasta -histo-file $outDir/%.txt
+    find $fastaDir -name 'cluster_*.fasta' -type f -print0 | sed 's%$fastaDir/\\([a-z_0-9]\\+\\)\\.fasta%\\1%g' | xargs -P $np -0 -I % $appDir/make_length_histo.pl -seq-file $info->{fasta_data_dir}/%.fasta -histo-file $outDir/%.txt
     find $outDir -name '*.txt' -type f -not -empty -print0 | sed 's%\\($outDir/[a-z_0-9]\\+\\)\\.txt%\\1%g' | xargs -P $np -0 -I % Rscript $appDir/hist-length.r legacy %.txt %.png 0 'Full-UniProt' 700 315
     find $outDir -name '*.png' | sed 's%$outDir/\\(cluster_\\(domain\\)\\?_\\?\\([0-9]\\+\\)\\)\\.png%\\3\\tfull\\tuniprot\\t$info->{hmm_rel_path}/full/normal/hist-uniprot/\\1%g' >> $histListFile
 SCRIPT
@@ -208,11 +231,32 @@ SCRIPT
     if ($info->{hmm_option} =~ m/HMM|CR|WEBLOGO/) {
         $B->addAction(<<SCRIPT
     mkdir -p $domAlignDir
-    $appDir/get_cluster_count.pl --size-file $info->{output_path}/$info->{cluster_size_file} --count-file $domCountFile --min-count $info->{hmm_min_seq_msa}
+SCRIPT
+        );
+
+        my $clusterSizeFile = "$info->{output_path}/$info->{cluster_size_file}";
+        if ($isUniProtNetwork) {
+            my $localFastaDir = "$domOutDir/fasta-unique";
+            $clusterSizeFile = "$domOutDir/unique_cluster_size.txt";
+            $B->addAction(<<SCRIPT
+    mkdir -p $localFastaDir
+    find $fastaDomainDir -name 'cluster_*.fasta' -type f -print0 | sed 's%$fastaDomainDir/\\([a-z_0-9]\\+\\)\\.fasta%\\1%g' | xargs -P $np -0 -I % cd-hit -c 1 -s 1 -i $fastaDomainDir/%.fasta -o $localFastaDir/%.fasta -M 14900
+    $appDir/get_cluster_count.pl --fasta-dir $fastaDomainDir --count-file $domCountFile --min-count $info->{hmm_min_seq_msa}
+SCRIPT
+            );
+            $fastaDir = $localFastaDir;
+        } else {
+            $B->addAction(<<SCRIPT
+    $appDir/get_cluster_count.pl --size-file $clusterSizeFile --count-file $domCountFile --min-count $info->{hmm_min_seq_msa}
+SCRIPT
+            );
+        }
+
+        $B->addAction(<<SCRIPT
 
     #MAKE MULTIPLE SEQUENCE ALIGNMENTs FOR DOMAIN SEQUENCES
-    #find $fastaDomainDir -name 'cluster_*.fasta' -type f -print0 | sed 's%$fastaDomainDir/\\([a-z_0-9]\\+\\)\\.fasta%\\1%g' | xargs -P $np -0 -I % muscle -quiet -in $fastaDomainDir/%.fasta -out $domAlignDir/%.afa
     cat $domCountFile | xargs -P $np -I % muscle -quiet -in $fastaDomainDir/cluster_domain_%.fasta -out $domAlignDir/cluster_domain_%.afa
+    find $domAlignDir -name 'cluster_*.afa' -type f | sed 's%$domAlignDir/\\(cluster_domain_\\([0-9]\\+\\)\\)\\.afa%\\2\\tdomain\\tnormal\\t$info->{hmm_rel_path}/domain/align/\\1.afa%g' >> $alignListFile
 
 SCRIPT
         );
@@ -223,8 +267,6 @@ SCRIPT
         $B->addAction(<<SCRIPT
     #MAKE WEBLOGOs
     mkdir -p $domOutDir/weblogo
-    #find $domAlignDir -name 'cluster_*.afa' -type f -print0 | sed 's%$domAlignDir/\\([a-z_0-9]\\+\\)\\.afa%\\1%g' | xargs -P $np -0 -I % weblogo -D fasta -F png --resolution 300 --stacks-per-line 80 -f $domAlignDir/%.afa -o $domOutDir/weblogo/%.png $colorList
-    #find $domAlignDir -name 'cluster_*.afa' -type f -print0 | sed 's%$domAlignDir/\\([a-z_0-9]\\+\\)\\.afa%\\1%g' | xargs -P $np -0 -I % weblogo -D fasta -F logodata -f $domAlignDir/%.afa -o $domOutDir/weblogo/%.txt
     cat $domCountFile | xargs -P $np -I % weblogo -D fasta -F png --resolution 300 --stacks-per-line 80 -f $domAlignDir/cluster_domain_%.afa -o $domOutDir/weblogo/cluster_domain_%.png $colorList
     cat $domCountFile | xargs -P $np -I % weblogo -D fasta -F logodata -f $domAlignDir/cluster_domain_%.afa -o $domOutDir/weblogo/cluster_domain_%.txt
     find $domOutDir/weblogo -name 'cluster_*.png' -type f | sed 's%$domOutDir/weblogo/\\(cluster_\\(domain\\)\\?_\\?\\([0-9]\\+\\)\\)\\.png%\\3\\t\\2\\tnormal\\t$info->{hmm_rel_path}/domain/weblogo/\\1%g' >> $weblogoListFile
@@ -240,8 +282,6 @@ SCRIPT
             $B->addAction(<<SCRIPT
     #MAKE HMMs AND SKYLIGN LOGOs
     mkdir -p $typeDir
-    #find $domAlignDir -name 'cluster_*.afa' -type f -print0 | sed 's%$domAlignDir/\\([a-z_0-9]\\+\\)\\.afa%\\1%g' | xargs -P $np -0 -I % hmmbuild --$type $typeDir/%.hmm $domAlignDir/%.afa
-    #find $domAlignDir -name 'cluster_*.afa' -type f -print0 | sed 's%$domAlignDir/\\([a-z_0-9]\\+\\)\\.afa%\\1%g' | xargs -P $np -0 -I % $appDir/make_skylign_logo.pl --hmm $typeDir/%.hmm --json $typeDir/%.json --png $typeDir/%.png
     cat $domCountFile | xargs -P $np -I % hmmbuild --$type $typeDir/cluster_domain_%.hmm $domAlignDir/cluster_domain_%.afa
     cat $domCountFile | xargs -P $np -I % $appDir/make_skylign_logo.pl --hmm $typeDir/cluster_domain_%.hmm --json $typeDir/cluster_domain_%.json --png $typeDir/cluster_domain_%.png
     find $typeDir -name 'cluster_*.hmm' -type f | sed 's%$typeDir/\\(cluster_\\(domain\\)\\?_\\?\\([0-9]\\+\\)\\)\\.hmm%\\3\\t\\2\\t$type\\t$info->{hmm_rel_path}/domain/hmm/\\1%g' >> $logoListFile
@@ -254,32 +294,41 @@ SCRIPT
     ########## DOMAIN - CONSENSUS RESIDUE
     if ($info->{hmm_option} =~ m/CR/i) {
         foreach my $aa (@aas) {
+            my $mergeCounts = "";
+            my $mergePercent = "";
             foreach my $ct (@cons) {
                 my $baseFile = "consensus_residue_${aa}_$ct";
                 my $listDir = "$domOutDir/id_lists_${aa}_$ct";
                 $B->addAction(<<SCRIPT
     #CONSENSUS RESIDUE CALCULATION
-    $appDir/count_msa_aa.pl --msa-dir $domAlignDir --logo-dir $domOutDir/weblogo --aa $aa --count-file $domOutDir/${baseFile}_counts.txt --pct-file $domOutDir/${baseFile}_pct.txt --threshold $ct
+    $appDir/count_msa_aa.pl --msa-dir $domAlignDir --logo-dir $domOutDir/weblogo --aa $aa --count-file $domOutDir/${baseFile}_position.txt --pct-file $domOutDir/${baseFile}_percentage.txt --threshold $ct
     mkdir -p $listDir
-    $appDir/collect_aa_ids.pl --aa-count-file $domOutDir/${baseFile}_counts.txt --output-dir $listDir --id-mapping $info->{output_path}/$info->{domain_map_file}
+    $appDir/collect_aa_ids.pl --aa-count-file $domOutDir/${baseFile}_position.txt --output-dir $listDir --id-mapping $info->{output_path}/$info->{domain_map_file}
 SCRIPT
                 );
+                $mergeCounts .= " --position-file $ct=$domOutDir/${baseFile}_position.txt";
+                $mergePercent .= " --percentage-file $ct=$domOutDir/${baseFile}_percentage.txt";
             }
+            $B->addAction(<<SCRIPT
+    $appDir/make_summary_tables.pl --position-summary-file $domOutDir/summary_consensus_residue_${aa}_position.txt --percentage-summary-file $domOutDir/summary_consensus_residue_${aa}_percentage.txt $mergeCounts $mergePercent
+SCRIPT
+            );
         }
     }
     $B->addAction(""); #empty line
 
     ########## DOMAIN - LENGTH HISTOGRAM
     if ($info->{hmm_option} =~ m/HIST/i) {
-        my $outDir = "$domOutDir/hist-uniprot";
-        $B->addAction(<<SCRIPT
+        if ($info->{fasta_domain_data_dir}) {
+            my $outDir = "$domOutDir/hist-uniprot";
+            $B->addAction(<<SCRIPT
     mkdir -p $outDir
     find $info->{fasta_domain_data_dir} -name 'cluster_*.fasta' -type f -print0 | sed 's%$info->{fasta_domain_data_dir}/\\([a-z_0-9]\\+\\)\\.fasta%\\1%g' | xargs -P $np -0 -I % $appDir/make_length_histo.pl -seq-file $info->{fasta_domain_data_dir}/%.fasta -histo-file $outDir/%.txt
     find $outDir -name '*.txt' -type f -not -empty -print0 | sed 's%\\($outDir/[a-z_0-9]\\+\\)\\.txt%\\1%g' | xargs -P $np -0 -I % Rscript $appDir/hist-length.r legacy %.txt %.png 0 'Domain-UniProt' 700 315
     find $outDir -name '*.png' | sed 's%$outDir/\\(cluster_\\(domain\\)\\?_\\?\\([0-9]\\+\\)\\)\\.png%\\3\\tdomain\\tuniprot\\t$info->{hmm_rel_path}/domain/hist-uniprot/\\1%g' >> $histListFile
 SCRIPT
-        );
-        if ($info->{fasta_uniref90_domain_data_dir}) {
+            );
+        } elsif ($info->{fasta_uniref90_domain_data_dir}) {
             my $urType = "90";
             my $outDir = "$domOutDir/hist-uniref$urType";
             $B->addAction(<<SCRIPT
@@ -289,8 +338,7 @@ SCRIPT
     find $outDir -name '*.png' | sed 's%$outDir/\\(cluster_\\(domain\\)\\?_\\?\\([0-9]\\+\\)\\)\\.png%\\3\\tdomain\\tuniref90\\t$info->{hmm_rel_path}/domain/hist-uniref90/\\1%g' >> $histListFile
 SCRIPT
             );
-        }
-        if ($info->{fasta_uniref50_domain_data_dir}) {
+        } elsif ($info->{fasta_uniref50_domain_data_dir}) {
             my $urType = "50";
             my $outDir = "$domOutDir/hist-uniref$urType";
             $B->addAction(<<SCRIPT
