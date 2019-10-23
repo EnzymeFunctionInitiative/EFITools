@@ -235,9 +235,8 @@ my $fileInfo = {
 };
 
 
-# In some cases we can't determine the type of the file in advance, so we write out all possible cases.
 # The 'not $ssnType or' statement ensures that this happens.
-if (not $ssnType or $ssnType eq "UniProt" and $isDomain) {
+if ($isDomain) {
     $fileInfo->{uniprot_domain_node_data_dir} = &$absPath($uniprotDomainNodeDataDir);
     $fileInfo->{fasta_domain_data_dir} = &$absPath($fastaUniProtDomainDataDir);
     $fileInfo->{uniprot_domain_node_zip} = $uniprotDomainIdZip;
@@ -278,6 +277,7 @@ if ($optMsaOption) {
     $fileInfo->{hmm_logo_list} = "$outputPath/hmm_logos.txt";
     $fileInfo->{hmm_weblogo_list} = "$outputPath/weblogos.txt";
     $fileInfo->{hmm_histogram_list} = "$outputPath/histograms.txt";
+    $fileInfo->{hmm_alignment_list} = "$outputPath/alignments.txt";
     $fileInfo->{hmm_rel_path} = $hmmDataDir;
     $fileInfo->{hmm_count_aa_tool_path} = "$gntPath/count_aa.pl";
     $fileInfo->{hmm_collect_id_tool_path} = "$gntPath/collect_aa_hmm_ids.pl";
@@ -294,6 +294,7 @@ if ($optMsaOption) {
 
     $fileInfo->{output_path} = $outputPath;
     $fileInfo->{cluster_size_file} = $clusterSizeFile;
+    $fileInfo->{ssn_type} = $ssnType;
 }
 
 
