@@ -1,2 +1,7 @@
 blib
 Build
+efi.cfg
+efi.config
+tests/test.config
+tests/testEnvironment.sh
+*.bak
