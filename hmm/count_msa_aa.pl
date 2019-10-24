@@ -7,7 +7,7 @@ use Getopt::Long;
 use Data::Dumper;
 
 
-my ($searchAa, $msaDir, $logoDir, $countFile, $pctFile, $conThreshold);
+my ($searchAa, $msaDir, $logoDir, $countFile, $pctFile, $conThreshold, $nodeCountFile);
 my $result = GetOptions(
     "msa-dir=s"         => \$msaDir,
     "logo-dir=s"        => \$logoDir,
@@ -15,6 +15,7 @@ my $result = GetOptions(
     "count-file=s"      => \$countFile,
     "pct-file=s"        => \$pctFile,
     "threshold=s"       => \$conThreshold,
+    "node-count-file=s" => \$nodeCountFile,
 );
 
 
@@ -25,6 +26,11 @@ die "Need count-file" if not $countFile;
 die "Need pct-file (% cons)" if not $pctFile;
 
 $conThreshold = 1 if not $conThreshold;
+
+my %nodeCount;
+if ($nodeCountFile) {
+    loadNodeCountFile(\%nodeCount, $nodeCountFile);
+}
 
 my @files = glob("$msaDir/*.afa");
 
@@ -41,15 +47,16 @@ foreach my $msa (@files) {
     my $logoData = parseLogo($logo, $numSeq, $conThreshold);
 
     (my $clusterNum = $name) =~ s/^.*?(\d+).*?$/$1/;
-    push @data, {cluster_num => $clusterNum, num_seq => $numSeq, num_residue => scalar @$logoData, num_uniprot => 0, data => $logoData};
+    my $nodeCount = $nodeCount{$clusterNum} ? $nodeCount{$clusterNum} : 0;
+    push @data, {cluster_num => $clusterNum, num_seq => $numSeq, num_residue => scalar @$logoData, num_uniprot => $nodeCount, data => $logoData};
 }
 
 
 open my $countFh, ">", $countFile or die "Unable to write to count file $countFile: $!";
 open my $pctFh, ">", $pctFile or die "Unable to write to pct file $pctFile: $!";
 
-print $countFh join("\t", "Cluster Number", "#Residues", "#Sequences", "#UniProt", "#Positions..."), "\n";
-print $pctFh join("\t", "Cluster Number", "#Residues", "#Sequences", "#UniProt", "#Percentages..."), "\n";
+print $countFh join("\t", "Cluster number", "Number of residues", "Number of nodes in SSN", "Number of unique sequences", "Positions..."), "\n";
+print $pctFh join("\t", "Cluster number", "Number of residues", "Number of nodes in SSN", "Number of unique sequences", "Percentages..."), "\n";
 
 my @sorted = sort { $b->{num_residue} <=> $a->{num_residue} or $a->{cluster_num} <=> $b->{cluster_num} } @data;
 
@@ -57,12 +64,28 @@ foreach my $row (@sorted) {
     my @idx = map { $_->[0] } @{$row->{data}};
     my @vals = map { $_->[1] } @{$row->{data}};
     # If you change the number of cols here you need to modify collect_aa_ids.pl as well.
-    print $countFh join("\t", $row->{cluster_num}, $row->{num_residue}, $row->{num_seq}, $row->{num_uniprot}, @idx), "\n";
-    print $pctFh join("\t", $row->{cluster_num}, $row->{num_residue}, $row->{num_seq}, $row->{num_uniprot}, @vals), "\n";
+    print $countFh join("\t", $row->{cluster_num}, $row->{num_residue}, $row->{num_uniprot}, $row->{num_seq}, @idx), "\n";
+    print $pctFh join("\t", $row->{cluster_num}, $row->{num_residue}, $row->{num_uniprot}, $row->{num_seq}, @vals), "\n";
 }
 
 close $countFh;
 close $pctFh;
+
+
+sub loadNodeCountFile {
+    my $list = shift;
+    my $file = shift;
+
+    open my $fh, $file or die "unable to read file $file: $!";
+
+    while (<$fh>) {
+        chomp;
+        my ($num, $size) = split(m/\t/);
+        $list->{$num} = $size;
+    }
+
+    close $fh;
+}
 
 
 

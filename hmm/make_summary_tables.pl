@@ -46,7 +46,7 @@ foreach my $fileInfo (@posFiles) {
     chomp(my $header = scalar <$fh>); # discard first line
     if (not scalar @posHeader) {
         @posHeader = split(m/\t/, $header);
-        splice(@posHeader, 1, 0, "Cons%");
+        splice(@posHeader, 1, 0, "Percent conserved");
     }
 
     while (<$fh>) {
@@ -89,10 +89,6 @@ foreach my $fileInfo (@pctFiles) {
 }
 
 
-print Dumper(\%pctData);
-print Dumper(\%posData);
-
-
 my @clusterNumbers = sort { $a <=> $b } keys %rowInfo;
 
 open my $posOut, ">", $posSummaryFile or die "Unable to write to $posSummaryFile: $!";
@@ -112,24 +108,18 @@ foreach my $num (@clusterNumbers) {
 
     my @info = @{$rowInfo{$num}};
 
-    print "$num $minCons\n";
     my @minPos = @{$posData{$num}->{$minCons}};
     print $pctOut join("\t", $num, $minCons, @info, @minPos), "\n";
 
     my @consPct = sort { $b <=> $a } keys %{$posData{$num}};
     foreach my $pct (@consPct) {
         my $c = 0;
-        print Dumper($pctData{$num}->{$pct});
         my %pos = map { $_ => $c++ } @{$posData{$num}->{$pct}};
         my %pct = map { $_ => $pctData{$num}->{$pct}->[$pos{$_}] } @{$posData{$num}->{$pct}};
-        print "-------------------------------------------------------------------- $num $pct\n";
-        print Dumper(\%pos);
-        print "------------------------------\n";
-        print Dumper(\%pct);
         print $posOut join("\t", $num, $pct, @info);
         print $pctOut join("\t", $num, $pct, @info);
         foreach my $pos (@minPos) {
-            print $posOut "\t" . (exists $pos{$pos} ? $pos{$pos} : "");
+            print $posOut "\t" . (exists $pos{$pos} ? $pos : "");
             print $pctOut "\t" . (exists $pct{$pos} ? $pct{$pos} : "");
         }
         print $posOut "\n";
