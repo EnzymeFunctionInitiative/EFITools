@@ -1,8 +1,7 @@
 #!/usr/bin/env perl
 
-
-use warnings;
 use strict;
+use warnings;
 
 use Getopt::Long;
 
@@ -16,8 +15,8 @@ my $result = GetOptions(
 );
 
 
-die "Required -edge-file argument missing" if not -f $edgeIn;
-die "Required -seq-file argument missing" if not -f $seqIn;
+die "Required -edge-file argument missing" if not $edgeIn or not -f $edgeIn;
+die "Required -seq-file argument missing" if not $seqIn or not -f $seqIn;
 die "Required -stats-file argument missing" if not $statsFile or not -f $statsFile;
 
 my $numLines = `wc -l $edgeIn`;

@@ -1,19 +1,14 @@
 
 package EST::Setup;
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFI_SHARED};
-    use lib $ENV{EFI_SHARED};
-    die "Please load efiest before running this script" if not $ENV{EFI_EST};
-    use lib "$ENV{EFI_EST}/lib";
-    die "Environment variables not set properly: missing EFI_DB variable" if not exists $ENV{EFI_DB};
-}
-
 use strict;
 use warnings;
 
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use lib dirname(abs_path(__FILE__)) . "/../";
+
 use Getopt::Long qw(:config pass_through);
-use FindBin;
 use Data::Dumper;
 
 use EFI::Database;

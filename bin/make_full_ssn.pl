@@ -1,21 +1,10 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
-#version 0.9.1 Changed to using xml creation packages (xml::writer) instead of writing out xml myself
-#version 0.9.1 Removed dat file parser (not used anymore)
-#version 0.9.1 Remove a bunch of commented out stuff
-#version 0.9.2 no changes
-#version 0.9.5 added an xml comment that holds the database name, for future use with gnns and all around good practice
-#version 0.9.5 changed -log10E edge attribue to be named alignment_score
-
-#this program creates an xgmml with all nodes and edges
-
 use strict;
 use warnings;
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
 
 use List::MoreUtils qw{apply uniq any} ;
 use DBD::mysql;
@@ -23,11 +12,10 @@ use IO::File;
 use XML::Writer;
 use XML::LibXML;
 use Getopt::Long;
-use FindBin;
+
 use EFI::Config;
 use EFI::Annotations;
 
-use lib "$FindBin::Bin/lib";
 use AlignmentScore;
 
 

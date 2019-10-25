@@ -16,10 +16,10 @@
 # SUBJECT QUERY PCT_ID ALIGNMENT_LEN BIT_SCORE SUBJECT_LEN QUERY_LEN
 #
 
-use Getopt::Long;
 use strict;
 use warnings;
 
+use Getopt::Long;
 
 my ($inputBlast, $inputFasta, $outputBlast);
 my $result = GetOptions(

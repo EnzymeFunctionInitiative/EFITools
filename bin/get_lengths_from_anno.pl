@@ -3,18 +3,13 @@
 # This script reads the annotation file (struct.out) and outputs a file containing data
 # for a length histograph for ALL sequences, not just UniRef seed sequences.
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
-
 use strict;
 use warnings;
 
-use Getopt::Long;
 use FindBin;
-use lib "$FindBin::Bin/lib";
+use lib "$FindBin::Bin/../lib";
+
+use Getopt::Long;
 
 use FileUtil;
 use EFI::Database;

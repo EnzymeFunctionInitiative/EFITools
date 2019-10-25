@@ -33,6 +33,7 @@ sub new {
     $self->{echo_actions} = exists $args{echo_actions} ? $args{echo_actions} : 0;
     $self->{abort_script_on_action_fail} = exists $args{abort_script_on_action_fail} ? $args{abort_script_on_action_fail} : 1;
     $self->{extra_path} = $args{extra_path} ? $args{extra_path} : ""; # use this to add an export PATH=... to the top of every script
+    $self->{run_serial} = $args{run_serial} ? 1 : 0;
 
     return $self;
 }
@@ -115,6 +116,21 @@ sub addAction {
 sub render {
     my ($self, $fh) = @_;
 
+    if (not $self->{run_serial}) {
+        $self->renderSchedulerHeader($fh);
+    }
+
+    print $fh "export PATH=$self->{extra_path}:\$PATH\n" if $self->{extra_path};
+    print $fh "set -e\n" if $self->{abort_script_on_action_fail};
+
+    foreach my $action (@{$self->{actions}}) {
+        print $fh "$action\n";
+    }
+}
+
+sub renderSchedulerHeader {
+    my ($self, $fh) = @_;
+
     print $fh ("#!/bin/bash\n");
     my $pfx = $self->{sched_prefix};
     print $fh ("$pfx " . $self->{array} . "\n") if length($self->{array});
@@ -146,17 +162,14 @@ sub render {
             print $fh ("$pfx " . $self->{output_file_stderr} . ".stderr." . $self->{output_file_seq_num} . "\n");
         }
     }
-
-    print $fh "export PATH=$self->{extra_path}:\$PATH\n" if $self->{extra_path};
-    print $fh "set -e\n" if $self->{abort_script_on_action_fail};
-
-    foreach my $action (@{$self->{actions}}) {
-        print $fh "$action\n";
-    }
 }
 
 sub renderToFile {
-    my ($self, $filePath) = @_;
+    my ($self, $filePath, $comment) = @_;
+
+    $comment = $comment ? "$comment\n" : "";
+
+    my $openMode = $self->{run_serial} ? ">>" : ">";
 
     if ($self->{output_dir_base} && not $self->{output_file_stdout}) {
         (my $fileName = $filePath) =~ s{^.*/([^/]+)$}{$1};
@@ -165,12 +178,14 @@ sub renderToFile {
         $self->outputBaseFilepath($filePath);
     }
 
-    if (not $self->{dryrun}) {
-        open(FH, "> $filePath") or die "Unable to open job script file $filePath for writing: $!";
-        $self->render(\*FH);
-        close(FH);
-    } else {
+    if ($self->{dryrun}) {
+        print $comment;
         $self->render(\*STDOUT);
+    } else {
+        open my $fh, $openMode, $filePath or die "Unable to open job script file $filePath for writing: $!";
+        print $fh $comment;
+        $self->render($fh);
+        close $fh;
     }
 }
 
@@ -429,6 +444,8 @@ sub new {
         $self->{abort_script_on_action_fail} = $args{abort_script_on_action_fail};
     }
 
+    $self->{run_serial} = $args{run_serial} ? 1 : 0;
+
     return $self;
 }
 
@@ -437,6 +454,7 @@ sub getBuilder {
 
     my %args = ("dryrun" => $self->{dryrun});
     $args{extra_path} = $self->{extra_path} if $self->{extra_path};
+    $args{run_serial} = $self->{run_serial};
 
     my $b;
     if ($self->{type} == SLURM) {
@@ -460,7 +478,7 @@ sub submit {
     my ($self, $script) = @_;
 
     my $result = "1.biocluster\n";
-    if (not $self->{dryrun}) {
+    if (not $self->{dryrun} and not $self->{run_serial}) {
         my $submit = $self->{type} == SLURM ? "sbatch" : "qsub";
         $result = `$submit $script`;
 

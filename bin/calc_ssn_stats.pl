@@ -1,7 +1,10 @@
 #!/usr/bin/env perl
 
-use Getopt::Long;
 use strict;
+use warnings;
+
+use Getopt::Long;
+
 
 my ($runDir, $out);
 my $result = GetOptions(

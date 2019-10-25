@@ -1,13 +1,15 @@
 #!/usr/bin/env perl
 
 #program to re-add sequences removed by initial cdhit
-#version 0.9.3 Program created
 
 use strict;
+use warnings;
 
 use FindBin;
+use lib "$FindBin::Bin/../lib";
+
 use Getopt::Long;
-use lib "$FindBin::Bin/lib";
+
 use CdHitParser;
 
 
@@ -17,6 +19,11 @@ my $result = GetOptions(
     "blastin=s"     => \$blastin,
     "blastout=s"    => \$blastout
 );
+
+die "Need cluster" if not $cluster or not -f $cluster;
+die "Need blastin" if not $blastin or not -f $blastin;
+die "Need blastout" if not $blastout;
+
 
 #parse cluster file to get parent/child sequence associations
 

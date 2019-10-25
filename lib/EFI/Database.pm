@@ -71,19 +71,20 @@ sub stuff {
 
 
 sub tableExists {
-    my ($self, $tableName) = @_;
+    my ($self, $tableName, $dbhCache) = @_;
 
-    my $dbh = $self->getHandle();
+    my $dbh = $dbhCache ? $dbhCache : $self->getHandle();
 
     my $sth = $dbh->table_info('', '', '', 'TABLE');
     while (my (undef, undef, $name) = $sth->fetchrow_array()) {
         if ($tableName eq $name) {
-            $dbh->disconnect();
+            $dbh->disconnect() if not $dbhCache;
             return 1;
         }
     }
 
-    $dbh->disconnect();
+    $dbh->disconnect() if not $dbhCache;
+
     return 0;
 }
 
@@ -118,6 +119,29 @@ sub createTable {
 }
 
 
+# Private
+sub getVersion {
+    my ($self, $dbh) = @_;
+
+    if (exists $self->{db_version}) {
+        return $self->{db_version};
+    }
+
+    my $ver = 0;
+
+    if ($self->tableExists("version", $dbh)) {
+        my $sth = $dbh->prepare("SELECT * FROM version LIMIT 1");
+        $sth->execute();
+        my $row = $sth->fetchrow_hashref();
+        if ($row) {
+            $ver = $row->{db_version};
+        }
+    }
+
+    $self->{db_version} = $ver;
+
+    return $ver;
+}
 
 
 
@@ -139,12 +163,17 @@ sub createTable {
 sub getCommandLineConnString {
     my ($self) = @_;
 
-    my $connStr =
-        "mysql"
-        . " -u " . $self->{db}->{user}
-        . " -p"
-        . " -P " . $self->{db}->{port}
-        . " -h " . $self->{db}->{host};
+    my $connStr ="";
+    if ($self->{db}->{dbi} eq EFI::Config::DATABASE_MYSQL) {
+        $connStr =
+            "mysql"
+            . " -u " . $self->{db}->{user}
+            . " -p"
+            . " -P " . $self->{db}->{port}
+            . " -h " . $self->{db}->{host};
+    } else {
+        $connStr = "sqlite3 $self->{db}->{name}";
+    }
 
     return $connStr;
 }
@@ -153,15 +182,20 @@ sub getCommandLineConnString {
 sub getHandle {
     my ($self) = @_;
 
-    my $connStr =
-        "DBI:mysql" .
-        ":database=" . $self->{db}->{name} .
-        ":host=" . $self->{db}->{host} .
-        ":port=" . $self->{db}->{port};
-    $connStr .= ";mysql_local_infile=1" if $self->{load_infile};
-
-    my $dbh = DBI->connect($connStr, $self->{db}->{user}, $self->{db}->{password});
-    $dbh->{mysql_auto_reconnect} = 1;
+    my $dbh;
+    if ($self->{db}->{dbi} eq EFI::Config::DATABASE_MYSQL) {
+        my $connStr =
+            "DBI:mysql" .
+            ":database=" . $self->{db}->{name} .
+            ":host=" . $self->{db}->{host} .
+            ":port=" . $self->{db}->{port};
+        $connStr .= ";mysql_local_infile=1" if $self->{load_infile};
+    
+        $dbh = DBI->connect($connStr, $self->{db}->{user}, $self->{db}->{password});
+        $dbh->{mysql_auto_reconnect} = 1;
+    } else {
+        $dbh = DBI->connect("DBI:SQLite:dbname=$self->{db}->{name}","","");
+    }
 
     return $dbh;
 }

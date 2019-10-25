@@ -1,9 +1,8 @@
 
 package EST::Statistics;
 
-
-use warnings;
 use strict;
+use warnings;
 
 
 sub new {

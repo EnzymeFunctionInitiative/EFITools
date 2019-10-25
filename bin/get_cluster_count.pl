@@ -1,14 +1,14 @@
 #!/usr/bin/env perl
 
-#program to re-add sequences removed by initial cdhit
-#version 0.9.3 Program created
-
 use strict;
+use warnings;
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
 
 use List::MoreUtils qw(uniq);
-use FindBin;
 use Getopt::Long;
-use lib "$FindBin::Bin/lib";
+
 use CdHitParser;
 
 
@@ -20,7 +20,9 @@ my $result = GetOptions(
 );
 
 
-
+die "Need cluster input" if not $cluster or not -f $cluster;
+die "Need id input" if not $seqId;
+die "Need len input" if not $seqLen;
 
 my $cp = new CdHitParser();
 

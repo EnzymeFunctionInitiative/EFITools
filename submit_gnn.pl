@@ -1,16 +1,12 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
 use strict;
 use warnings;
 
 use FindBin;
-use Getopt::Long;
 use lib $FindBin::Bin . "/lib";
+
+use Getopt::Long;
 
 use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm checkNetworkType);
@@ -118,10 +114,10 @@ USAGE
 
 die $usage if not $ssnIn;
 
-if ((not defined $configFile or not -f $configFile) and not exists $ENV{EFICONFIG}) {
-    die "Either the configuration file or the EFICONFIG environment variable must be set\n$usage";
+if ((not defined $configFile or not -f $configFile) and not exists $ENV{EFI_CONFIG}) {
+    die "Either the configuration file or the EFI_CONFIG environment variable must be set\n$usage";
 } elsif (not $configFile) {
-    $configFile = $ENV{EFICONFIG};
+    $configFile = $ENV{EFI_CONFIG};
 }
 
 my $fullGntRun = defined $gnnOnly ? 0 : 1;
@@ -129,9 +125,9 @@ my $fullGntRun = defined $gnnOnly ? 0 : 1;
 die $usage . "\nERROR: missing queue parameter" if not $queue and $fullGntRun;
 
 
-my $toolpath = $ENV{'EFIGNN'};
-my $efiGnnMod = $ENV{'EFIGNNMOD'};
-my $efiDbMod = $ENV{'EFIDBMOD'};
+my $toolPath = "$FindBin::Bin/bin";
+my $toolMod = $ENV{EFI_TOOL_MOD};
+my $efiDbMod = $ENV{EFI_DB_MOD};
 my $outputDir = $baseDir ? $baseDir : $ENV{'PWD'};
 
 (my $inputFileBase = $ssnIn) =~ s%^.*/([^/]+)$%$1%;
@@ -289,7 +285,7 @@ if ($fullGntRun) {
 }
 
 
-print "gnn mod is:$efiGnnMod\n";
+print "gnn mod is:$toolMod\n";
 print "efidb mod is:$efiDbMod\n";
 print "ssnin is $ssnIn\n";
 print "n|nb-size is $nbSize\n";
@@ -370,7 +366,7 @@ my $ssnOutZip = "$outputDir/$ssnName.zip";
 my $jobNamePrefix = $jobId ? "${jobId}_" : "";
 
 
-my $cmdString = "$toolpath/cluster_gnn.pl " .
+my $cmdString = "$toolPath/cluster_gnn.pl " .
     "-output-dir \"$outputDir\" " .
     "-nb-size $nbSize " . 
     "-cooc \"$cooc\" " .
@@ -414,8 +410,8 @@ my $fileInfo = {
 
     output_path => $outputDir,
     config_file => $configFile,
-    fasta_tool_path => "$toolpath/get_fasta.pl",
-    cat_tool_path => "$toolpath/cat_files.pl",
+    fasta_tool_path => "$toolPath/get_fasta.pl",
+    cat_tool_path => "$toolPath/cat_files.pl",
 
     none_dir => &$absPath($noneDir),
     pfam_dir => &$absPath($pfamDir),
@@ -511,14 +507,14 @@ my $B = $SS->getBuilder();
 $B->resource(1, 1, "${ramReservation}gb");
 $B->addAction("source /etc/profile");
 $B->addAction("module load $efiDbMod");
-$B->addAction("module load $efiGnnMod");
+$B->addAction("module load $toolMod");
 $B->addAction("export BLASTDB=$outputDir/blast");
-$B->addAction("$toolpath/unzip_file.pl -in $ssnInZip -out $ssnIn") if $ssnInZip =~ /\.zip/i;
+$B->addAction("$toolPath/unzip_file.pl -in $ssnInZip -out $ssnIn") if $ssnInZip =~ /\.zip/i;
 $B->addAction($cmdString);
 if ($fullGntRun) {
     EFI::GNN::Base::addFileActions($B, $fileInfo);
 }
-$B->addAction("\n\n$toolpath/save_version.pl > $outputDir/gnn.completed");
+$B->addAction("\n\n$toolPath/save_version.pl > $outputDir/gnn.completed");
 $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
 
 $B->jobName("${jobNamePrefix}submit_gnn");

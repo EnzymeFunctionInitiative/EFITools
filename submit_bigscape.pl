@@ -1,22 +1,19 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
 use strict;
+use warnings;
 
 use FindBin;
-use Getopt::Long;
 use lib $FindBin::Bin . "/lib";
+
+use Getopt::Long;
 
 use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm);
 
 
 my ($diagramFile, $dryRun, $scheduler, $queue, $bigscapeDir, $clusterInfoFile, $updatedDiagram,
-    $bigscapeWindow, $configFile, $jobId);
+    $bigscapeWindow, $configFile, $efiJobId);
 my $result = GetOptions(
     "diagram-file=s"            => \$diagramFile,
     "updated-diagram-file=s"    => \$updatedDiagram,
@@ -26,7 +23,7 @@ my $result = GetOptions(
     "dryrun"                    => \$dryRun,
     "scheduler=s"               => \$scheduler,
     "queue=s"                   => \$queue,
-    "job-id=s"                  => \$jobId,
+    "job-id=s"                  => \$efiJobId,
     "config=s"                  => \$configFile,
 );
 
@@ -52,13 +49,10 @@ usage: $0 -diagram-file <filename> [-bigscape-dir <directory>] [-updated-diagram
 USAGE
 ;
 
-if (not $ENV{'EFIGNN'}) {
-    die "The efignt module must be loaded.";
-}
 
-if (not $ENV{"EFIDBMOD"}) {
-    die "The efidb module must be loaded.";
-}
+die "The efitools module must be loaded." if not $ENV{EFI_TOOL_MOD};
+die "The efidb module must be loaded." if not $ENV{EFI_DB_MOD};
+
 
 if ((not defined $configFile or not -f $configFile) and not exists $ENV{EFICONFIG}) {
     die "Either the configuration file or the EFICONFIG environment variable must be set\n$usage";
@@ -69,13 +63,13 @@ if ((not defined $configFile or not -f $configFile) and not exists $ENV{EFICONFI
 die "$usage" if not -f $diagramFile;
 
 $queue = "efi"                                  unless $queue =~ /\w/;
-$jobId = ""                                     unless defined $jobId;
+$efiJobId = ""                                  unless defined $efiJobId;
 
 
-my $toolpath = $ENV{"EFIGNN"};
-my $efiGnnMod = $ENV{"EFIGNNMOD"};
-my $blastDb = $ENV{"EFIDBPATH"} . "/combined.fasta";
-my $dbMod = $ENV{"EFIDBMOD"};
+my $toolPath = "$FindBin::Bin/bin";
+my $toolMod = $ENV{EFI_TOOL_MOD};
+my $blastDb = $ENV{EFI_DB_PATH} . "/combined.fasta";
+my $dbMod = $ENV{EFI_DB_MOD};
 
 if (not $bigscapeDir) {
     if ($diagramFile !~ m/\//) {
@@ -112,7 +106,7 @@ my %schedArgs = (type => $schedType, queue => $queue, resource => [1, 24, "50GB"
 $schedArgs{output_base_dirpath} = $logDir;
 
 
-my $jobNamePrefix = $jobId ? "${jobId}_" : "";
+my $jobNamePrefix = $efiJobId ? "${efiJobId}_" : "";
 
 my $SS = new EFI::SchedulerApi(%schedArgs);
 
@@ -124,9 +118,9 @@ $B->addAction("rm -rf $bigscapeDir/run") if (-d "$bigscapeDir/run");
 $B->addAction("mkdir -p $outputDir");
 $B->addAction("rm -f $errorFile");
 $B->addAction("touch $errorFile");
-$B->addAction("module load $efiGnnMod");
+$B->addAction("module load $toolMod");
 $B->addAction("module load $dbMod");
-$B->addAction("$toolpath/extract_ids_from_diagrams.pl -diagram-file $diagramFile -metadata-file $metaFile -output-dir $outputDir $bigscapeWindowArg");
+$B->addAction("$toolPath/extract_ids_from_diagrams.pl -diagram-file $diagramFile -metadata-file $metaFile -output-dir $outputDir $bigscapeWindowArg");
 $B->addAction("source /home/n-z/noberg/miniconda2/bin/activate /home/n-z/noberg/miniconda2/envs/bigscape");
 $B->addAction("date");
 $B->addAction("for dirName in \$( ls $outputDir ); do");
@@ -134,12 +128,12 @@ $B->addAction("    outDir=\"$outputDir/\$dirName\"");
 $B->addAction("    bsDir=\"$bigscapeDir/run/\$dirName\"");
 $B->addAction("    mkdir -p \$outDir");
 $B->addAction("    mkdir -p \$bsDir");
-$B->addAction("    $toolpath/get_fasta.pl -node-dir \$outDir -out-dir \$outDir -use-all-files");
-$B->addAction("    $toolpath/validate_fasta.pl -input-dir \$outDir -metadata-file \$outDir/$metaFile");
+$B->addAction("    $toolPath/get_fasta.pl -node-dir \$outDir -out-dir \$outDir -use-all-files");
+$B->addAction("    $toolPath/validate_fasta.pl -input-dir \$outDir -metadata-file \$outDir/$metaFile");
 $B->addAction("    python /home/n-z/noberg/bigscape/BiG-SCAPE/bigscape.py -i \$outDir -o \$bsDir --cores 24 --clans --clan_cutoff 0.95 0.95 --pfam_dir /home/n-z/noberg/bigscape/hmm --precomputed_fasta --no_classify --mix --run_name \$dirName");
 $B->addAction("done");
 $B->addAction("cp $diagramFile $updatedDiagram");
-$B->addAction("$toolpath/update_diagram_order.pl -diagram-file $updatedDiagram -bigscape-dir $bigscapeDir -cluster-file $clusterInfoFile -config $configFile");
+$B->addAction("$toolPath/update_diagram_order.pl -diagram-file $updatedDiagram -bigscape-dir $bigscapeDir -cluster-file $clusterInfoFile -config $configFile");
 $B->addAction("touch $jobCompletedFile");
 $B->addAction("date");
 

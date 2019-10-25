@@ -1,22 +1,17 @@
 #!/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
-#version 0.9.2 no changes to this file
-#version 0.9.5 fixed a bug in creating struct.out file where not all annotation information was being written
-
-use warnings;
 use strict;
+use warnings;
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
 
 use Getopt::Long;
 use List::MoreUtils qw{apply uniq any} ;
 use DBD::SQLite;
 use DBD::mysql;
 use File::Slurp;
-use FindBin;
+
 use EFI::Database;
 use EFI::Annotations;
 
@@ -30,7 +25,7 @@ my $result = GetOptions(
 );
 
 die "Command-line arguments are not valid: missing -config=config_file_path argument" if not defined $configFile or not -f $configFile;
-die "Environment variables not set properly: missing EFIDB variable" if not exists $ENV{EFIDB};
+die "Environment variables not set properly: missing EFI_DB variable" if not exists $ENV{EFI_DB};
 die "Missing database directory EFI_DB_DIR" if not exists $ENV{EFI_DB_DIR} or not -d $ENV{EFI_DB_DIR};
 
 my $dbDir = $ENV{EFI_DB_DIR};
@@ -41,10 +36,10 @@ my $dbh = $db->getHandle();
 
 
 open(STRUCT, ">$struct") or die "could not create struct file $struct\n";
-print "database $ENV{EFIDB}\n";
+print "database $ENV{EFI_DB}\n";
 
 my @accessions = ();
-my $perpass = $ENV{EFIPASS};
+my $perpass = 1000;
 my @taxids = split /,/, $taxid;
 
 foreach my $taxid (@taxids){

@@ -1,21 +1,17 @@
 #!/usr/bin/env perl      
 
-#version 0.9.3	Script Created
-#version 0.9.3	Script to write out tables for R, replacement for doing with perl (this is over 25X more effecient)
-#version 0.9.5	Fixed a problem where non text characters in SDF name would cause program to crash
-
 use strict;
+use warnings;
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
 
 use GD::Graph::boxplot;
 use GD;
 use Getopt::Long;
 use Statistics::R;
 use Data::Dumper;
-#use FileCache;
 
-#DEBUG:
-use FindBin;
-use lib "$FindBin::Bin/lib";
 use HandleCache;
 
 
@@ -29,6 +25,8 @@ my $result = GetOptions(
     "incfrac=f"     => \$incfrac,
     "evalue-file=s" => \$evalueFile, # Output evalues to a file if specified
 );
+
+die "Need blastout" if not $blastfile or not -f $blastfile;
 
 
 $evalueFile = (defined $evalueFile and $evalueFile) ? $evalueFile : "";
@@ -116,7 +114,7 @@ foreach my $wcLine (@align) {
         die "something is wrong, file does not have align in name $wcLine\n";
     }
 
-    (my $file = $wcLine) =~ s/^\s*(\d+)\s+([\w-\/.]+)$/$2/;
+    (my $file = $wcLine) =~ s/^\s*(\d+)\s+(.+)$/$2/;
     my $edgeCount = $1;
     (my $edgeNum = $file) =~ s/^.*?(\d+)$/$1/;
     (my $peridFile = $file) =~ s/align(\d+)/perid$1/;

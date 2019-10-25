@@ -2,7 +2,9 @@
 package EFI::IdMapping::Util;
 
 use strict;
-use lib "../../";
+use warnings;
+
+
 use Exporter;
 
 our @ISA        = qw(Exporter);

@@ -1,33 +1,11 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
-
-#version 1.0.0 added support for coloring SSNs only, and refactored code, and submits to queue.
-#version 0.2.4 hub and spoke node attribute update
-#version 0.2.3 paired pfams now in combined hub nodes
-#version 0.2.2 now warn if top level structures are not a node or an edge, a fix to allow cytoscape edited networks to function.
-#version 0.2.2 Changed supercluster node attribue in colored ssn from string to integer
-#version 0.2.2 Added SSN_Cluster_Size to stats table
-#version 0.2.2 Added column headers to stats table
-#version 0.03
-#added error checking on input values
-#improved performance of xgmml parsing by indexingg the dom
-#change mysql so that the session will restart if it ever disconnects
-#changed syntax -xgmml is not -ssnin
-#the graph names of the output xgmmls are now based off the graph name of the input xgmml
-#version 0.02
-#fixed issues that would prevent cytoscape exported xgmml files from working
-#version 0.01
-#initial version
-
 use strict;
 use warnings;
 
 use FindBin;
+use lib $FindBin::Bin . "/../lib";
+
 use Getopt::Long;
 use XML::LibXML;
 use IO qw(File);
@@ -41,8 +19,6 @@ use Storable;
 use Data::Dumper;
 
 use EFI::Util qw(checkNetworkType);
-
-use lib $FindBin::Bin . "/lib";
 use EFI::Database;
 use EFI::GNN;
 use EFI::GNN::Base;

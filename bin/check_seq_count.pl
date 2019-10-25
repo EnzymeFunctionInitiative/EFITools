@@ -3,6 +3,8 @@
 # Verify that the number of the clusters/nodes are within the limit specified.
 
 use strict;
+use warnings;
+
 use Getopt::Long;
 
 
@@ -13,7 +15,7 @@ my $result = GetOptions(
     "error-file=s"  => \$errorFile,
 );
 
-if (not -f $cluster) {
+if (not $cluster or not -f $cluster) {
     die "-cluster file_path argument must be provided.";
 }
 if (not $errorFile) {

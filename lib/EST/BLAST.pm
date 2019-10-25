@@ -1,14 +1,12 @@
 
 package EST::BLAST;
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFI_SHARED};
-    use lib $ENV{EFI_SHARED};
-}
-
-
-use warnings;
 use strict;
+use warnings;
+
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use lib dirname(abs_path(__FILE__)) . "/../";
 
 use Getopt::Long qw(:config pass_through);
 

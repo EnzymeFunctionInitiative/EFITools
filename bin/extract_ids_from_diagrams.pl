@@ -1,18 +1,11 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
-
 use strict;
+use warnings;
+
 use DBI;
 use Getopt::Long;
-use FindBin;
 
-use lib $FindBin::Bin . "/lib";
-use EFI::GNN::Arrows;
 
 my ($inputFile, $outputDir, $metaFile, $window);
 my $result = GetOptions(
@@ -33,7 +26,7 @@ $0 -diagram-file INPUT_FILE -output-dir OUTPUT_FILE -metadata-file METADATA_FILE
 
 USAGE
 
-die "$usage" if not -f $inputFile or not $outputDir;
+die "$usage" if not $inputFile or not -f $inputFile or not $outputDir;
 
 
 $window = 1000 if not defined $window or $window < 1;

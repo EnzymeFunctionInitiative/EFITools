@@ -1,26 +1,19 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "The efishared environment must be loaded before running this script" if not exists $ENV{EFISHARED};
-    die "The efidb environment must be loaded before running this script" if not exists $ENV{EFIDBPATH};
-    use lib $ENV{EFISHARED};
-}
-
 use strict;
 use warnings;
+
+use FindBin;
+use lib $FindBin::Bin . "/../lib";
 
 use Getopt::Long;
 use File::Slurp;
 use Scalar::Util qw(openhandle);
 use Capture::Tiny qw(:all);
-use FindBin;
-use lib $FindBin::Bin . "/lib";
 
 use EFI::Database;
 use EFI::GNN::Base;
 
-#$configfile=read_file($ENV{'EFICFG'}) or die "could not open $ENV{'EFICFG'}\n";
-#eval $configfile;
 
 my ($nodeDir, $fastaDir, $configFile, $useAllFiles, $domainFastaDir);
 my $result = GetOptions(
@@ -31,7 +24,7 @@ my $result = GetOptions(
     "config=s"          => \$configFile,
 );
 
-my $usage=<<USAGE
+my $usage = <<USAGE
 usage: $0 -data-dir <path_to_data_dir> -config <config_file>
     -node-dir       path to directory containing lists of IDs (one file/list per cluster number)
     -out-dir        path to directory to output fasta files to
@@ -47,7 +40,7 @@ USAGE
 ;
 
 
-if (not -d $nodeDir) {
+if (not $nodeDir or not -d $nodeDir) {
     die "The input data directory must be specified and exist.\n$usage";
 }
 if ($domainFastaDir and not $fastaDir) {
@@ -55,11 +48,14 @@ if ($domainFastaDir and not $fastaDir) {
 } elsif (not $fastaDir) {
     die "-out-dir must be specified.";
 }
-if ($configFile and not -f $configFile and not exists $ENV{EFICONFIG} and not -f $ENV{EFICONFIG}) {
+if ($configFile and not -f $configFile and not exists $ENV{EFI_CONFIG} and not -f $ENV{EFI_CONFIG}) {
     die "Config file required in environment or as a parameter.\n$usage"
 }
 
-$configFile = $ENV{EFICONFIG} if not $configFile or not -f $configFile;
+die "Need efidb module loaded" if not $ENV{EFI_DB_PATH};
+
+
+$configFile = $ENV{EFI_CONFIG} if not $configFile or not -f $configFile;
 
 
 mkdir $fastaDir or die "Unable to create $fastaDir: $!" if $fastaDir and not -d $fastaDir;
@@ -70,7 +66,7 @@ mkdir $domainFastaDir or die "Unable to create $fastaDir: $!" if $domainFastaDir
 my $db = new EFI::Database(config_file => $configFile);
 my $dbh = $db->getHandle();
 
-my $blastDbPath = $ENV{EFIDBPATH};
+my $blastDbPath = $ENV{EFI_DB_PATH};
 
 my $pattern;
 my $globPattern;

@@ -1,11 +1,14 @@
 #!/usr/bin/env perl
 
 use strict;
+use warnings;
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
 
 use List::MoreUtils qw(uniq);
-use FindBin;
 use Getopt::Long;
-use lib "$FindBin::Bin/lib";
+
 use CdHitParser;
 
 
@@ -18,6 +21,9 @@ my $result = GetOptions(
 
 
 $domain = "off" if not $domain;
+
+die "Need cluster" if not $cluster or not -f $cluster;
+die "Need struct" if not $annoFile;
 
 
 my $cp = new CdHitParser();

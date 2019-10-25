@@ -1,22 +1,10 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
-#version 0.9.1 Now using xml::writer to create xgmml instead of just writing out the data
-#version 0.9.1 Removed .dat parser (not used anymore)
-#version 0.9.1 Remove a lot of unused commented out lines
-#version 0.9.2 no changes
-#version 0.9.5 added an xml comment that holds the database name, for future use with gnns and all around good practice
-#version 0.9.5 changed -log10E edge attribue to be named alignment_score
-#version 0.9.5 changed sequence_length node attribute to be a list of integers instead of strings
-
-#this program is used to create repnode networks using information from cd-hit
-
-use warnings;
 use strict;
+use warnings;
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
 
 use Getopt::Long;
 use List::MoreUtils qw{apply uniq any} ;
@@ -24,9 +12,10 @@ use DBD::mysql;
 use IO::File;
 use XML::Writer;
 use XML::LibXML;
-use FindBin;
+
 use EFI::Config;
 use EFI::Annotations;
+
 
 my ($blast, $cdhit, $fasta, $struct, $outputFile, $title, $dbver, $maxNumEdges, $includeSeqs, $useMinEdgeAttr);
 my $result = GetOptions(

@@ -19,6 +19,9 @@ use constant {
     DATABASE_HOST               => "host",
     DATABASE_PORT               => "port",
     DATABASE_IP_RANGE           => "ip_range",
+    DATABASE_DBI                => "dbi",
+    DATABASE_MYSQL              => "mysql",
+    DATABASE_SQLITE3            => "sqlite3",
 
     IDMAPPING_SECTION           => "idmapping",
     IDMAPPING_TABLE_NAME        => "table_name",
@@ -100,6 +103,7 @@ sub parseConfig {
     $object->{db}->{host} = $cfg->val(DATABASE_SECTION, DATABASE_HOST, "localhost");
     $object->{db}->{port} = $cfg->val(DATABASE_SECTION, DATABASE_PORT, "3306");
     $object->{db}->{ip_range} = $cfg->val(DATABASE_SECTION, DATABASE_IP_RANGE, "");
+    $object->{db}->{dbi} = lc $cfg->val(DATABASE_SECTION, DATABASE_DBI, DATABASE_MYSQL);
 
     if (exists $ENV{&ENVIRONMENT_DB}) {
         $object->{db}->{name} = $ENV{&ENVIRONMENT_DB};
@@ -107,8 +111,10 @@ sub parseConfig {
         $object->{db}->{name} = $cfg->val(DATABASE_SECTION, DATABASE_NAME);
     }
 
-    croak getError(DATABASE_USER)                   if not defined $object->{db}->{user};
-    croak getError(DATABASE_PASSWORD)               if not defined $object->{db}->{password};
+    if ($object->{db}->{dbi} eq DATABASE_MYSQL) {
+        croak getError(DATABASE_USER)               if not defined $object->{db}->{user};
+        croak getError(DATABASE_PASSWORD)           if not defined $object->{db}->{password};
+    }
     croak getError(DATABASE_NAME)                   if not defined $object->{db}->{name};
     
     

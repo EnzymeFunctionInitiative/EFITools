@@ -1,15 +1,10 @@
 #!/usr/bin/env perl
 
-#BEGIN {
-#    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-#    use lib $ENV{EFISHARED};
-#}
-
-
 use strict;
-#use DBI;
+use warnings;
+
 use Getopt::Long;
-#use EFI::GNN::Arrows;
+
 
 my ($inputDir, $metaFile);
 my $result = GetOptions(
@@ -27,7 +22,7 @@ $0 -input-dir INPUT_DIR -metadata-file METADATA_FILE
 
 USAGE
 
-die "$usage" if not -d $inputDir or not -f $metaFile;
+die "$usage" if not $inputDir or not $metaFile or not -d $inputDir or not -f $metaFile;
 
 
 my @metadata;
@@ -45,7 +40,6 @@ close META;
 
 
 open METANEW, ">$metaFile.new" or die "Unable to open new metadata file $metaFile.new: $!";
-#open METANEW, ">/home/n-z/noberg/junk/meta.new" or die "Unable to open new metadata file $metaFile.new: $!";
 print METANEW $header, "\tbgc_size\trecord_count\n";
 
 foreach my $meta (@metadata) {

@@ -1,20 +1,18 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
-
 use strict;
+use warnings;
+
+use FindBin;
+use lib $FindBin::Bin . "/../lib";
+
 use DBI;
 use Getopt::Long;
-use FindBin;
-use lib $FindBin::Bin . "/lib";
 
 use EFI::GNN::Arrows;
 use EFI::GNN::ColorUtil;
 use EFI::Database;
+
 
 my ($inputFile, $bigscapeDir, $clusterFile, $configFile);
 my $result = GetOptions(
@@ -35,7 +33,7 @@ $0 -diagram-file INPUT_FILE -bigscape-dir DIRECTORY -config CONFIG_FILE [-cluste
 
 USAGE
 
-die "$usage" if not -f $inputFile or not -d $bigscapeDir;
+die "$usage" if not $inputFile or not -f $inputFile or not $bigscapeDir or not -d $bigscapeDir;
 
 
 my $dbh = DBI->connect("dbi:SQLite:dbname=$inputFile","","");

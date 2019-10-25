@@ -1,10 +1,5 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
 # This program creates bash scripts and submits them on clusters with torque schedulers, overview of steps below
 #   Step 1 fetch sequences and get annotations
 #       initial_import.sh       generates initial_import script that contains getsequence.pl and getannotation.pl or just getseqtaxid.pl if input was from taxid
@@ -53,15 +48,15 @@ use strict;
 use warnings;
 
 use FindBin;
-use Cwd qw(abs_path);
-use File::Basename;
+use lib "$FindBin::Bin/lib";
+
 use Getopt::Long;
 use POSIX qw(ceil);
+
 use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm getLmod);
 use EFI::Config qw(cluster_configure);
 
-use lib "$FindBin::Bin/lib";
 use Constants;
 
 
@@ -117,11 +112,11 @@ my $result = GetOptions(
     "exclude-fragments" => \$excludeFragments,
 );
 
-die "Environment variables not set properly: missing EFIDB variable" if not exists $ENV{EFIDB};
+die "Environment variables not set properly: missing EFIDB variable" if not exists $ENV{EFI_DB};
 
-my $efiEstTools = $ENV{EFIEST};
-my $efiEstMod = $ENV{EFIESTMOD};
-my $efiDbMod = $ENV{EFIDBMOD};
+my $toolPath = "$FindBin::Bin/bin";
+my $toolMod = $ENV{EFI_TOOL_MOD};
+my $dbMod = $ENV{EFI_DB_MOD};
 my $sortdir = '/scratch';
 
 #defaults and error checking for choosing of blast program
@@ -413,8 +408,8 @@ if ($fastaFileZip =~ /\.zip$/i) {
 mkdir $outputDir;
 
 # Write out the database version to a file
-$efiDbMod=~/(\d+)$/;
-print "database version is $1 of $efiDbMod\n";
+$dbMod=~/(\d+)$/;
+print "database version is $1 of $dbMod\n";
 system("echo $1 >$outputDir/database_version");
 
 # Set up the scheduler API so we can work with Torque or Slurm.
@@ -456,8 +451,8 @@ if ($pfam or $ipro or $ssf or $gene3d or ($fastaFile=~/\w+/ and !$taxid) or $acc
     my $maxFullFamOption = $maxFullFam ? "-max-full-fam-ur90 $maxFullFam" : "";
 
     $B->addAction("module load oldapps") if $oldapps;
-    $B->addAction("module load $efiDbMod");
-    $B->addAction("module load $efiEstMod");
+    $B->addAction("module load $dbMod");
+    $B->addAction("module load $toolMod");
     $B->addAction("cd $outputDir");
     $B->addAction("unzip -p $fastaFileZip > $fastaFile") if $fastaFileZip =~ /\.zip$/i;
     $B->addAction("unzip -p $accessionFileZip > $accessionFile") if $accessionFileZip =~ /\.zip$/i;
@@ -516,17 +511,17 @@ if ($pfam or $ipro or $ssf or $gene3d or ($fastaFile=~/\w+/ and !$taxid) or $acc
 
     push @args, "-exclude-fragments" if $excludeFragments;
 
-    $B->addAction("$efiEstTools/$retrScript " . join(" ", @args));
+    $B->addAction("$toolPath/$retrScript " . join(" ", @args));
 
     my @lenUniprotArgs = ("-struct $metadataFile", "-config $configFile");
     push @lenUniprotArgs, "-output $lenUniprotFile";
     push @lenUniprotArgs, "-expand-uniref" if $unirefVersion;
-    $B->addAction("$efiEstTools/get_lengths_from_anno.pl " . join(" ", @lenUniprotArgs));
+    $B->addAction("$toolPath/get_lengths_from_anno.pl " . join(" ", @lenUniprotArgs));
     
     if ($unirefVersion) {
         my @lenUnirefArgs = ("-struct $metadataFile", "-config $configFile");
         push @lenUnirefArgs, "-output $lenUnirefFile";
-        $B->addAction("$efiEstTools/get_lengths_from_anno.pl " . join(" ", @lenUnirefArgs));
+        $B->addAction("$toolPath/get_lengths_from_anno.pl " . join(" ", @lenUnirefArgs));
     }
 
     # Annotation retrieval (getannotations.pl) now happens in the SNN/analysis step.
@@ -546,10 +541,10 @@ if ($pfam or $ipro or $ssf or $gene3d or ($fastaFile=~/\w+/ and !$taxid) or $acc
 } elsif ($taxid) {
 
     $B->addAction("module load oldapps") if $oldapps;
-    $B->addAction("module load $efiDbMod");
-    $B->addAction("module load $efiEstMod");
+    $B->addAction("module load $dbMod");
+    $B->addAction("module load $toolMod");
     $B->addAction("cd $outputDir");
-    $B->addAction("$efiEstTools/get_sequences_by_tax_id.pl -fasta allsequences.fa -struct $structFile -taxid $taxid -config=$configFile");
+    $B->addAction("$toolPath/get_sequences_by_tax_id.pl -fasta allsequences.fa -struct $structFile -taxid $taxid -config=$configFile");
     if ($fastaFile=~/\w+/) {
         $fastaFile=~s/^-userfasta //;
         $B->addAction("cat $fastaFile >> allsequences.fa");
@@ -585,8 +580,8 @@ $B->mailEnd() if defined $cdHitOnly;
 if ($cdHitOnly) {
     $B->resource(1, 24, "10GB");
     $B->addAction("module load oldapps") if $oldapps;
-    $B->addAction("module load $efiDbMod");
-    $B->addAction("module load $efiEstMod");
+    $B->addAction("module load $dbMod");
+    $B->addAction("module load $toolMod");
     #$B->addAction("module load blast");
     $B->addAction("cd $outputDir");
 
@@ -598,7 +593,7 @@ if ($cdHitOnly) {
         my $sId = $seqId[$i];
         my $nParm = ($sId < 1 and $sLen < 1) ? "-n 2" : "";
         $B->addAction("cd-hit -d 0 $nParm -c $sId -s $sLen -i $allSeqFile -o $outputDir/sequences-$sId-$sLen.fa -M 20000 -n 2");
-        $B->addAction("$efiEstTools/get_cluster_count.pl -id $sId -len $sLen -cluster $outputDir/sequences-$sId-$sLen.fa.clstr >> $cdHitOnly");
+        $B->addAction("$toolPath/get_cluster_count.pl -id $sId -len $sLen -cluster $outputDir/sequences-$sId-$sLen.fa.clstr >> $cdHitOnly");
     }
     $B->addAction("touch  $outputDir/1.out.completed");
 
@@ -613,8 +608,8 @@ if ($cdHitOnly) {
 $B->resource(1, 1, "10gb");
 
 $B->addAction("module load oldapps") if $oldapps;
-$B->addAction("module load $efiDbMod");
-$B->addAction("module load $efiEstMod");
+$B->addAction("module load $dbMod");
+$B->addAction("module load $toolMod");
 #$B->addAction("module load blast");
 $B->addAction("cd $outputDir");
 
@@ -624,7 +619,7 @@ if ($multiplexing eq "on") {
 
     if ($manualCdHit) {
         $B->addAction(<<CMDS
-if $efiEstTools/check_seq_count.pl -max-seq $maxsequence -error-file $errorFile -cluster $filtSeqFile.clstr
+if $toolPath/check_seq_count.pl -max-seq $maxsequence -error-file $errorFile -cluster $filtSeqFile.clstr
 then
     echo "Sequence count OK"
 else
@@ -638,7 +633,7 @@ CMDS
     }
     # Add in CD-HIT attributes to SSN
     if ($noDemuxArg) {
-        $B->addAction("$efiEstTools/get_demux_ids.pl -struct $structFile -cluster $filtSeqFile.clstr -domain $domain");
+        $B->addAction("$toolPath/get_demux_ids.pl -struct $structFile -cluster $filtSeqFile.clstr -domain $domain");
     }
 } else {
     $B->addAction("cp $allSeqFile $filtSeqFile");
@@ -660,7 +655,7 @@ $B->resource(1, 1, "5gb");
 
 $B->dependency(0, $prevJobId);
 $B->addAction("mkdir -p $fracOutputDir");
-$B->addAction("$efiEstTools/split_fasta.pl -parts $np -tmp $fracOutputDir -source $filtSeqFile");
+$B->addAction("$toolPath/split_fasta.pl -parts $np -tmp $fracOutputDir -source $filtSeqFile");
 $B->jobName("${jobNamePrefix}fracfile");
 $B->renderToFile("$scriptDir/fracfile.sh");
 
@@ -678,8 +673,8 @@ $B = $S->getBuilder();
 $B->dependency(0, $prevJobId);
 $B->resource(1, 1, "5gb");
 $B->addAction("module load oldapps") if $oldapps;
-$B->addAction("module load $efiDbMod");
-$B->addAction("module load $efiEstMod");
+$B->addAction("module load $dbMod");
+$B->addAction("module load $toolMod");
 $B->addAction("cd $outputDir");
 if ($blast eq 'diamond' or $blast eq 'diamondsensitive') {
     $B->addAction("module load diamond");
@@ -715,8 +710,8 @@ $B->addAction("export BLASTDB=$outputDir");
 #$B->addAction("module load oldapps") if $oldapps;
 #$B->addAction("module load blast+");
 #$B->addAction("blastp -query  $fracOutputDir/fracfile-{JOB_ARRAYID}.fa  -num_threads 2 -db database -gapopen 11 -gapextend 1 -comp_based_stats 2 -use_sw_tback -outfmt \"6 qseqid sseqid bitscore evalue qlen slen length qstart qend sstart send pident nident\" -num_descriptions 5000 -num_alignments 5000 -out $blastOutputDir/blastout-{JOB_ARRAYID}.fa.tab -evalue $evalue");
-$B->addAction("module load $efiDbMod");
-$B->addAction("module load $efiEstMod");
+$B->addAction("module load $dbMod");
+$B->addAction("module load $toolMod");
 if ($blast eq "blast") {
     $B->addAction("module load oldapps") if $oldapps;
     #$B->addAction("module load blast");
@@ -791,9 +786,9 @@ $B->queue($memqueue);
 $B->resource(1, 1, "350gb");
 $B->dependency(0, $prevJobId);
 #$B->addAction("mv $blastFinalFile $outputDir/unsorted.blastfinal.tab");
-$B->addAction("$efiEstTools/alphabetize.pl -in $blastFinalFile -out $outputDir/alphabetized.blastfinal.tab -fasta $filtSeqFile");
+$B->addAction("$toolPath/alphabetize_blast_output.pl -in $blastFinalFile -out $outputDir/alphabetized.blastfinal.tab -fasta $filtSeqFile");
 $B->addAction("sort -T $sortdir -k1,1 -k2,2 -k5,5nr -t\$\'\\t\' $outputDir/alphabetized.blastfinal.tab > $outputDir/sorted.alphabetized.blastfinal.tab");
-$B->addAction("$efiEstTools/blastreduce-alpha.pl -blast $outputDir/sorted.alphabetized.blastfinal.tab -out $outputDir/unsorted.1.out");
+$B->addAction("$toolPath/reduce_blast_output.pl -blast $outputDir/sorted.alphabetized.blastfinal.tab -out $outputDir/unsorted.1.out");
 $B->addAction("sort -T $sortdir -k5,5nr -t\$\'\\t\' $outputDir/unsorted.1.out >$outputDir/1.out");
 $B->addAction("echo 67 > $progressFile");
 $B->jobName("${jobNamePrefix}blastreduce");
@@ -814,14 +809,14 @@ $B = $S->getBuilder();
 $B->dependency(0, $prevJobId);
 $B->resource(1, 1, "5gb");
 $B->addAction("module load oldapps") if $oldapps;
-$B->addAction("module load $efiDbMod");
-$B->addAction("module load $efiEstMod");
+$B->addAction("module load $dbMod");
+$B->addAction("module load $toolMod");
 if ($multiplexing eq "on" and not $manualCdHit and not $noDemuxArg) {
     $B->addAction("mv $outputDir/1.out $outputDir/mux.out");
-    $B->addAction("$efiEstTools/demux.pl -blastin $outputDir/mux.out -blastout $outputDir/1.out -cluster $filtSeqFile.clstr");
+    $B->addAction("$toolPath/demux.pl -blastin $outputDir/mux.out -blastout $outputDir/1.out -cluster $filtSeqFile.clstr");
 } else {
     $B->addAction("mv $outputDir/1.out $outputDir/mux.out");
-    $B->addAction("$efiEstTools/remove_dups.pl -in $outputDir/mux.out -out $outputDir/1.out");
+    $B->addAction("$toolPath/remove_duplicates.pl -in $outputDir/mux.out -out $outputDir/1.out");
 }
 
 #$B->addAction("rm $outputDir/*blastfinal.tab");
@@ -843,61 +838,13 @@ $B = $S->getBuilder();
 $B->dependency(0, $prevJobId);
 $B->resource(1, 1, "5gb");
         
-$B->addAction("$efiEstTools/calc_blast_stats.pl -edge-file $outputDir/1.out -seq-file $allSeqFile -unique-seq-file $filtSeqFile -seq-count-output $seqCountFile");
+$B->addAction("$toolPath/calc_blast_stats.pl -edge-file $outputDir/1.out -seq-file $allSeqFile -unique-seq-file $filtSeqFile -seq-count-output $seqCountFile");
 $B->jobName("${jobNamePrefix}conv_ratio");
 $B->renderToFile("$scriptDir/conv_ratio.sh");
 my $convRatioJob = $S->submit("$scriptDir/conv_ratio.sh");
 chomp $convRatioJob;
 print "Convergence ratio job is:\n $convRatioJob\n";
 my @convRatioJobLine=split /\./, $convRatioJob;
-
-
-
-########################################################################################################################
-# Removed in favor of R, comments kept in case someone ever wants to use the pure perl solution
-=pod Start comment
-#submit the quartiles scripts, should not run until filterjob is finished
-#nothing else depends on this scipt
-
-$B->queue($memqueue);
-$B->dependency(0, $prevJobId);
-$B->addAction("module load oldapps\n" if $oldapps);
-$B->addAction("module load $efiDbMod");
-$B->addAction("module load $efiEstMod");
-$B->addAction("$efiEstTools/quart-align.pl -blastout $outputDir/1.out -align $outputDir/alignment_length.png");
-$B->renderToFile("$scriptDir/quartalign.sh");
-
-my $quartalignjob = $S->submit("$scriptDir/quartalign.sh");
-chomp $quartalignjob;
-print "Quartile Align job is:\n $quartalignjob\n";
-
-
-$B->queue($memqueue);
-$B->dependency(0, $prevJobId);
-$B->addAction("#PBS -m e");
-$B->addAction("module load oldapps\n" if $oldapps);
-$B->addAction("module load $efiDbMod");
-$B->addAction("module load $efiEstMod");
-$B->addAction("$efiEstTools/quart-perid.pl -blastout $outputDir/1.out -pid $outputDir/percent_identity.png");
-$B->renderToFile("$scriptDir/quartpid.sh");
-
-my $quartpidjob = $S->submit("$scriptDir/quartpid.sh");
-chomp $quartpidjob;
-print "Quartiles Percent Identity job is:\n $quartpidjob\n";
-
-
-$B->queue($memqueue);
-$B->dependency(0, $prevJobId);
-$B->addAction("module load oldapps\n" if $oldapps);
-$B->addAction("module load $efiDbMod");
-$B->addAction("module load $efiEstMod");
-$B->addAction("$efiEstTools/simplegraphs.pl -blastout $outputDir/1.out -edges $outputDir/number_of_edges.png -fasta $allSeqFile -lengths $outputDir/length_histogram.png -incfrac $incfrac");
-$B->renderToFile("$scriptDir/simplegraphs.sh");
-
-my $simplegraphjob = $S->submit("$scriptDir/simplegraphs.sh");
-chomp $simplegraphjob;
-print "Simplegraphs job is:\n $simplegraphjob\n";
-=cut end comment
 
 
 ########################################################################################################################
@@ -913,8 +860,8 @@ $B->dependency(0, $prevJobId);
 $B->mailEnd();
 $B->setScriptAbortOnError(0); # don't abort on error
 $B->addAction("module load oldapps") if $oldapps;
-$B->addAction("module load $efiEstMod");
-$B->addAction("module load $efiDbMod");
+$B->addAction("module load $toolMod");
+$B->addAction("module load $dbMod");
 if (defined $LegacyGraphs) {
     my $evalueFile = "$outputDir/evalue.tab";
     my $defaultLengthFile = "$outputDir/length.tab";
@@ -924,7 +871,7 @@ if (defined $LegacyGraphs) {
     $B->addAction("module load $rMod");
     $B->addAction("mkdir -p $outputDir/rdata");
     # Lengths are retrieved in a previous step.
-    $B->addAction("$efiEstTools/Rgraphs.pl -blastout $outputDir/1.out -rdata  $outputDir/rdata -edges  $outputDir/edge.tab -fasta  $allSeqFile -incfrac $incfrac -evalue-file $evalueFile");
+    $B->addAction("$toolPath/make_graph_data.pl -blastout $outputDir/1.out -rdata  $outputDir/rdata -edges  $outputDir/edge.tab -fasta  $allSeqFile -incfrac $incfrac -evalue-file $evalueFile");
     $B->addAction("FIRST=`ls $outputDir/rdata/perid* 2>/dev/null | head -1`");
     $B->addAction("if [ -z \"\$FIRST\" ]; then");
     $B->addAction("    echo \"Graphs failed, there were no edges. Continuing without graphs.\"");
@@ -936,12 +883,12 @@ if (defined $LegacyGraphs) {
     $B->addAction("LAST=`ls $outputDir/rdata/perid*| tail -1`");
     $B->addAction("LAST=`head -1 \$LAST`");
     $B->addAction("MAXALIGN=`head -1 $outputDir/rdata/maxyal`");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/quart-align.r legacy $outputDir/rdata $outputDir/alignment_length.png \$FIRST \$LAST \$MAXALIGN $jobId");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/quart-align.r legacy $outputDir/rdata $outputDir/alignment_length_sm.png \$FIRST \$LAST \$MAXALIGN $jobId $smallWidth $smallHeight");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/quart-perid.r legacy $outputDir/rdata $outputDir/percent_identity.png \$FIRST \$LAST $jobId");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/quart-perid.r legacy $outputDir/rdata $outputDir/percent_identity_sm.png \$FIRST \$LAST $jobId $smallWidth $smallHeight");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/hist-edges.r legacy $outputDir/edge.tab $outputDir/number_of_edges.png $jobId");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/hist-edges.r legacy $outputDir/edge.tab $outputDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
+    $B->addAction("Rscript $toolPath/R/quart-align.r legacy $outputDir/rdata $outputDir/alignment_length.png \$FIRST \$LAST \$MAXALIGN $jobId");
+    $B->addAction("Rscript $toolPath/R/quart-align.r legacy $outputDir/rdata $outputDir/alignment_length_sm.png \$FIRST \$LAST \$MAXALIGN $jobId $smallWidth $smallHeight");
+    $B->addAction("Rscript $toolPath/R/quart-perid.r legacy $outputDir/rdata $outputDir/percent_identity.png \$FIRST \$LAST $jobId");
+    $B->addAction("Rscript $toolPath/R/quart-perid.r legacy $outputDir/rdata $outputDir/percent_identity_sm.png \$FIRST \$LAST $jobId $smallWidth $smallHeight");
+    $B->addAction("Rscript $toolPath/R/hist-edges.r legacy $outputDir/edge.tab $outputDir/number_of_edges.png $jobId");
+    $B->addAction("Rscript $toolPath/R/hist-edges.r legacy $outputDir/edge.tab $outputDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
     my %lenFiles = ($lenUniprotFile => {title => "", file => "length_histogram_uniprot"});
     $lenFiles{$lenUniprotFile}->{title} = "UniProt, Full Length" if $unirefVersion or $domain eq "on";
     $lenFiles{$lenUniprotDomFile} = {title => "UniProt, Domain", file => "length_histogram_uniprot_domain"} if $domain eq "on";
@@ -949,20 +896,20 @@ if (defined $LegacyGraphs) {
     $lenFiles{$lenUnirefDomFile} = {title => "UniRef$unirefVersion Cluster IDs, Domain", file => "length_histogram_uniref_domain"} if $unirefVersion and $domain eq "on";
     foreach my $file (keys %lenFiles) {
         my $title = $lenFiles{$file}->{title} ? "\"(" . $lenFiles{$file}->{title} . ")\"" : "\"\"";
-        $B->addAction("Rscript $efiEstTools/Rgraphs/hist-length.r legacy $file $outputDir/$lenFiles{$file}->{file}.png $jobId $title");
-        $B->addAction("Rscript $efiEstTools/Rgraphs/hist-length.r legacy $file $outputDir/$lenFiles{$file}->{file}_sm.png $jobId $title $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/hist-length.r legacy $file $outputDir/$lenFiles{$file}->{file}.png $jobId $title");
+        $B->addAction("Rscript $toolPath/R/hist-length.r legacy $file $outputDir/$lenFiles{$file}->{file}_sm.png $jobId $title $smallWidth $smallHeight");
     }
 } else {
     $B->addAction("module load $pythonMod");
-    $B->addAction("$efiEstTools/R-hdf-graph.py -b $outputDir/1.out -f $outputDir/rdata.hdf5 -a $allSeqFile -i $incfrac");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/quart-align.r hdf5 $outputDir/rdata.hdf5 $outputDir/alignment_length.png $jobId");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/quart-align.r hdf5 $outputDir/rdata.hdf5 $outputDir/alignment_length_sm.png $jobId $smallWidth $smallHeight");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/quart-perid.r hdf5 $outputDir/rdata.hdf5 $outputDir/percent_identity.png $jobId");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/quart-perid.r hdf5 $outputDir/rdata.hdf5 $outputDir/percent_identity_sm.png $jobId $smallWidth $smallHeight");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/hist-length.r hdf5 $outputDir/rdata.hdf5 $outputDir/length_histogram.png $jobId");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/hist-length.r hdf5 $outputDir/rdata.hdf5 $outputDir/length_histogram_sm.png $jobId $smallWidth $smallHeight");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/hist-edges.r hdf5 $outputDir/rdata.hdf5 $outputDir/number_of_edges.png $jobId");
-    $B->addAction("Rscript $efiEstTools/Rgraphs/hist-edges.r hdf5 $outputDir/rdata.hdf5 $outputDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
+    $B->addAction("$toolPath/make_hdf5_graph_data.py -b $outputDir/1.out -f $outputDir/rdata.hdf5 -a $allSeqFile -i $incfrac");
+    $B->addAction("Rscript $toolPath/R/quart-align.r hdf5 $outputDir/rdata.hdf5 $outputDir/alignment_length.png $jobId");
+    $B->addAction("Rscript $toolPath/R/quart-align.r hdf5 $outputDir/rdata.hdf5 $outputDir/alignment_length_sm.png $jobId $smallWidth $smallHeight");
+    $B->addAction("Rscript $toolPath/R/quart-perid.r hdf5 $outputDir/rdata.hdf5 $outputDir/percent_identity.png $jobId");
+    $B->addAction("Rscript $toolPath/R/quart-perid.r hdf5 $outputDir/rdata.hdf5 $outputDir/percent_identity_sm.png $jobId $smallWidth $smallHeight");
+    $B->addAction("Rscript $toolPath/R/hist-length.r hdf5 $outputDir/rdata.hdf5 $outputDir/length_histogram.png $jobId");
+    $B->addAction("Rscript $toolPath/R/hist-length.r hdf5 $outputDir/rdata.hdf5 $outputDir/length_histogram_sm.png $jobId $smallWidth $smallHeight");
+    $B->addAction("Rscript $toolPath/R/hist-edges.r hdf5 $outputDir/rdata.hdf5 $outputDir/number_of_edges.png $jobId");
+    $B->addAction("Rscript $toolPath/R/hist-edges.r hdf5 $outputDir/rdata.hdf5 $outputDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
 }
 $B->addAction("touch  $outputDir/1.out.completed");
 if ($removeTempFiles) {

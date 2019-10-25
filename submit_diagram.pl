@@ -1,15 +1,12 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
 use strict;
+use warnings;
 
 use FindBin;
-use Getopt::Long;
 use lib $FindBin::Bin . "/lib";
+
+use Getopt::Long;
 
 use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm);
@@ -72,29 +69,25 @@ if (not -f $diagramZipFile and not $blastSeq and not -f $idFile and not -f $fast
     die "$usage";
 }
 
-if (not $ENV{'EFIGNN'}) {
-    die "The efignt module must be loaded.";
-}
-
-if (not $ENV{"EFIDBMOD"}) {
-    die "The efidb module must be loaded.";
-}
+die "The efitools module must be loaded." if not $ENV{EFI_TOOL_MOD};
+die "The efidb module must be loaded." if not $ENV{EFI_DB_MOD};
 
 my $blastMod = $legacy ? "blast" : "BLAST";
 if ($blastSeq and $outputFile) {
-    if (not $ENV{"BLASTDB"}) {
+    if (not $ENV{BLASTDB}) {
         die "The $blastMod module must be loaded.";
-    } elsif (not $ENV{"EFIDBPATH"}) {
+    } elsif (not $ENV{EFI_DB_PATH}) {
         die "The efidb module must be loaded.";
     }
 }
 
 
 my $outputDir = $ENV{PWD};
-my $toolpath = $ENV{"EFIGNN"};
-my $efiGnnMod = $ENV{"EFIGNNMOD"};
-my $blastDb = $ENV{"EFIDBPATH"} . "/combined.fasta";
-my $dbMod = $ENV{"EFIDBMOD"};
+
+my $toolPath = "$FindBin::Bin/bin";
+my $toolMod = $ENV{EFI_TOOL_MOD};
+my $blastDb = $ENV{EFI_DB_PATH} . "/combined.fasta";
+my $dbMod = $ENV{EFI_DB_MOD};
 
 
 $diagramZipFile = "$outputDir/$diagramZipFile"  if $diagramZipFile and $diagramZipFile !~ /^\//;
@@ -129,7 +122,7 @@ my $titleArg = $title ? "-title \"$title\"" : "";
 my $B = $SS->getBuilder();
 $B->addAction("rm -f $stderrFile");
 $B->addAction("touch $stderrFile");
-$B->addAction("module load $efiGnnMod");
+$B->addAction("module load $toolMod");
 $B->addAction("module load $dbMod");
 
 my $jobId;
@@ -190,9 +183,9 @@ else {
     ###################################################################################################
     # This job simply unzips the file.
     if ($diagramZipFile =~ m/\.zip$/i) {
-        $B->addAction("$toolpath/unzip_file.pl -in $diagramZipFile -out $outputFile -out-ext sqlite 2> $stderrFile");
+        $B->addAction("$toolPath/unzip_file.pl -in $diagramZipFile -out $outputFile -out-ext sqlite 2> $stderrFile");
     }
-    $B->addAction("$toolpath/check_diagram_version.pl -db-file $outputFile -version $diagramVersion -version-file $outputDir/diagram.version");
+    $B->addAction("$toolPath/check_diagram_version.pl -db-file $outputFile -version $diagramVersion -version-file $outputDir/diagram.version");
     addBashErrorCheck($B, 1, $outputFile);
 }
 

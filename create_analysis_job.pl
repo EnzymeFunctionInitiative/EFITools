@@ -1,10 +1,5 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
 #version 0.9.2 no changes
 #version 0.9.7 added options and code for working with Slurm scheduler
 
@@ -21,12 +16,13 @@ use strict;
 use warnings;
 
 use FindBin;
+use lib "$FindBin::Bin/lib";
+
 use Getopt::Long;
 use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm);
 use EFI::Config qw(cluster_configure);
 
-use lib "$FindBin::Bin/lib";
 use Constants;
 
 
@@ -61,21 +57,21 @@ my $result = GetOptions(
     "config"                => \$configFile,        # config file path, if not given will look for EFICONFIG env var
 );
 
-die "The efiest and efidb environments must be loaded in order to run $0" if not $ENV{EFIEST} or not $ENV{EFIESTMOD} or not $ENV{EFIDBMOD};
+die "The efiest and efidb environments must be loaded in order to run $0" if not $ENV{EFI_TOOL_MOD} or not $ENV{EFI_DB_MOD};
 die "The Perl environment must be loaded in order to run $0" if $ENV{LOADEDMODULES} !~ m/\bperl\b/i; # Ensure that the Perl module is loaded (e.g. module load Perl)
 
-my $toolpath = $ENV{EFIEST};
-my $efiEstMod = $ENV{EFIESTMOD};
-my $efiDbMod = $ENV{EFIDBMOD};
+my $toolPath = "$FindBin::Bin/bin";
+my $toolMod = $ENV{EFI_TOOL_MOD};
+my $dbMod = $ENV{EFI_DB_MOD};
 (my $perlMod = $ENV{LOADEDMODULES}) =~ s/^.*\b(perl)\b.*$/$1/i;
 
 my $dbver = "";
-if (-f "$relativeGenerateDir/database_version") {
+if ($relativeGenerateDir and -f "$relativeGenerateDir/database_version") {
     $dbver = `head -1 $relativeGenerateDir/database_version`;
     chomp $dbver;
 }
 if (not $dbver) {
-    ($dbver = $efiDbMod) =~ s/\D//g;
+    ($dbver = $dbMod) =~ s/\D//g;
 }
 
 $minlen = 0                 unless defined $minlen;
@@ -209,9 +205,9 @@ mkdir $analysisDir or die "could not make analysis folder $analysisDir\n" if not
 $B = $S->getBuilder();
 $B->resource(1, 1, "5gb");
 $B->addAction("module load $perlMod");
-$B->addAction("module load $efiEstMod");
-$B->addAction("module load $efiDbMod");
-$B->addAction("$toolpath/get_annotations.pl -out $filteredAnnoFile $unirefOption $lenArgs $userHeaderFileOption $annoSpecOption -config=$configFile");
+$B->addAction("module load $toolMod");
+$B->addAction("module load $dbMod");
+$B->addAction("$toolPath/get_annotations.pl -out $filteredAnnoFile $unirefOption $lenArgs $userHeaderFileOption $annoSpecOption -config=$configFile");
 $B->jobName("${jobNamePrefix}get_annotations");
 $B->renderToFile("$analysisDir/get_annotations.sh");
 my $annojob = $S->submit("$analysisDir/get_annotations.sh", $dryrun);
@@ -231,11 +227,11 @@ $B->dependency(0, $annoDep) if $annoDep;
 $B->resource(1, 1, "5gb");
 $B->addAction("module load $perlMod");
 if ($customClusterDir and $customClusterFile) {
-    $B->addAction("$toolpath/filter_custom.pl -blastin $generateDir/1.out -blastout $filteredBlastFile -custom-cluster-file $analysisDir/$customClusterFile");
+    $B->addAction("$toolPath/filter_ssn_seq_custom.pl -blastin $generateDir/1.out -blastout $filteredBlastFile -custom-cluster-file $analysisDir/$customClusterFile");
     $B->addAction("cp $generateDir/allsequences.fa $analysisDir/sequences.fa");
 } else {
     my $domMetaArg = ($unirefVersion and $hasDomain) ? "-domain-meta $filteredAnnoFile" : "";
-    $B->addAction("$toolpath/filter_blast.pl -blastin $generateDir/1.out -blastout $filteredBlastFile -fastain $generateDir/allsequences.fa -fastaout $analysisDir/sequences.fa -filter $filter -minval $minval -maxlen $maxlen -minlen $minlen $domMetaArg");
+    $B->addAction("$toolPath/filter_ssn_seq_blast_results.pl -blastin $generateDir/1.out -blastout $filteredBlastFile -fastain $generateDir/allsequences.fa -fastaout $analysisDir/sequences.fa -filter $filter -minval $minval -maxlen $maxlen -minlen $minlen $domMetaArg");
 }
 if ($hasParent) {
     $B->addAction("cp $parentDir/*.png $baseAnalysisDir/");
@@ -256,12 +252,12 @@ my @filterjobline = split /\./, $filterjob;
 $B = $S->getBuilder();
 $B->dependency(0, $filterjobline[0]);
 $B->resource(1, 1, "10gb");
-$B->addAction("module load $efiEstMod");
+$B->addAction("module load $toolMod");
 $B->addAction("module load $perlMod");
 my $outFile = "$analysisDir/${safeTitle}full_ssn.xgmml";
 my $seqsArg = $includeSeqs ? "-include-sequences" : "";
 my $useMinArg = $useMinEdgeAttr ? "-use-min-edge-attr" : "";
-$B->addAction("$toolpath/xgmml_100_create.pl -blast=$filteredBlastFile -fasta $analysisDir/sequences.fa -struct $filteredAnnoFile -out $outFile -title=\"$title\" -maxfull $maxfull -dbver $dbver $seqsArg $useMinArg");
+$B->addAction("$toolPath/make_full_ssn.pl -blast=$filteredBlastFile -fasta $analysisDir/sequences.fa -struct $filteredAnnoFile -out $outFile -title=\"$title\" -maxfull $maxfull -dbver $dbver $seqsArg $useMinArg");
 $B->addAction("zip -j $outFile.zip $outFile");
 $B->jobName("${jobNamePrefix}fullxgmml");
 $B->renderToFile("$analysisDir/fullxgmml.sh");
@@ -281,7 +277,7 @@ $B = $S->getBuilder();
 $B->jobArray("40,45,50,55,60,65,70,75,80,85,90,95,100");
 $B->dependency(0, $filterjobline[0]);
 $B->resource(1, 1, "10gb");
-$B->addAction("module load $efiEstMod");
+$B->addAction("module load $toolMod");
 #$B->addAction("module load cd-hit");
 $B->addAction("CDHIT=\$(echo \"scale=2; {JOB_ARRAYID}/100\" |bc -l)");
 if ($cdhitOpt eq "sb" or $cdhitOpt eq "est+") {
@@ -303,7 +299,7 @@ if ($cdhitOpt ne "sb") {
 
 $B->addAction("cd-hit $wordOption $lengthOverlapOption -i $analysisDir/sequences.fa -o $analysisDir/cdhit\$CDHIT -c \$CDHIT -d 0 $algoOption $bandwidthOption");
 $outFile = "$analysisDir/${safeTitle}repnode-\${CDHIT}_ssn.xgmml";
-$B->addAction("$toolpath/xgmml_create_all.pl -blast $filteredBlastFile -cdhit $analysisDir/cdhit\$CDHIT.clstr -fasta $analysisDir/sequences.fa -struct $filteredAnnoFile -out $outFile -title=\"$title\" -dbver $dbver -maxfull $maxfull $seqsArg $useMinArg");
+$B->addAction("$toolPath/make_repnode_ssn.pl -blast $filteredBlastFile -cdhit $analysisDir/cdhit\$CDHIT.clstr -fasta $analysisDir/sequences.fa -struct $filteredAnnoFile -out $outFile -title=\"$title\" -dbver $dbver -maxfull $maxfull $seqsArg $useMinArg");
 $B->addAction("zip -j $outFile.zip $outFile");
 $B->jobName("${jobNamePrefix}cdhit");
 $B->renderToFile("$analysisDir/cdhit.sh");
@@ -321,7 +317,7 @@ my @repnodejobline = split /\./, $repnodejob;
 $B = $S->getBuilder();
 $B->resource(1, 1, "1gb");
 $B->dependency(1, $repnodejobline[0]);
-$B->addAction("module load $efiEstMod");
+$B->addAction("module load $toolMod");
 $B->addAction("sleep 5");
 $B->jobName("${jobNamePrefix}fix");
 $B->renderToFile("$analysisDir/fix.sh");
@@ -340,8 +336,8 @@ $B->dependency(0, $fulljobline[0] . ":" . $fixjobline[0]);
 $B->resource(1, 1, "5gb");
 #$B->dependency(0, $fulljobline[0]); 
 $B->mailEnd();
-$B->addAction("module load $efiEstMod");
-$B->addAction("$toolpath/stats.pl -run-dir $analysisDir -out $analysisDir/stats.tab");
+$B->addAction("module load $toolMod");
+$B->addAction("$toolPath/calc_ssn_stats.pl -run-dir $analysisDir -out $analysisDir/stats.tab");
 $B->jobName("${jobNamePrefix}stats");
 $B->renderToFile("$analysisDir/stats.sh");
 

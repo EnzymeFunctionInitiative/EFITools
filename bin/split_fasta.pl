@@ -1,12 +1,10 @@
 #!/usr/bin/env perl
 
-#version 0.5.0  fixed a problem where one less file was created if number of sequences were around the value of np
-#version 0.8.1  rewrote program to use an array of filehandles instead of chopping into parts.
-#version 0.9.0  made program more generic so that it can split up any fasta file into N parts, useful for generating pdb blast info
+use strict;
+use warnings;
 
 use Getopt::Long;
 
-use strict;
 
 my ($source, $parts, $outputDir);
 my $result = GetOptions (
@@ -14,9 +12,9 @@ my $result = GetOptions (
     "parts=i"  => \$parts,
     "tmp=s"    => \$outputDir);
 
-die "Input sequence file to split up not valid or not provided" if not -f $source;
+die "Input sequence file to split up not valid or not provided" if not $source or not -f $source;
 die "Number of parts to split paramter not provided" if not $parts;
-die "Output directory not provided" if not -d $outputDir;
+die "Output directory not provided" if not $outputDir or not -d $outputDir;
 
 
 #open all the filehandles and store them in an arry of $parts elements
@@ -36,7 +34,7 @@ while (<SEQUENCES>){
 #  print "$arrayid\n"; #for troubleshooting
     my $line = $_;
     if($line =~ /^>/ and $sequence ne ""){
-        print {@filehandles[$arrayid]} $sequence;
+        print {$filehandles[$arrayid]} $sequence;
         $sequence = $line;
         $arrayid++;
         if($arrayid >= scalar @filehandles){
@@ -48,6 +46,6 @@ while (<SEQUENCES>){
 }
 close SEQUENCES;
 
-print {@filehandles[$arrayid]} $sequence;
+print {$filehandles[$arrayid]} $sequence;
 
 

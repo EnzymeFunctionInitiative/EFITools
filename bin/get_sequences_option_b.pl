@@ -1,21 +1,15 @@
 #!/bin/env perl
 
-
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFI_SHARED};
-    use lib $ENV{EFI_SHARED};
-}
-
 use strict;
 use warnings;
 
-use Getopt::Long;
 use FindBin;
+use lib "$FindBin::Bin/../lib";
+
+use Getopt::Long;
 use Data::Dumper;
+
 use EFI::Annotations;
-
-use lib "$FindBin::Bin/lib";
-
 use EST::Setup;
 use EST::Family;
 

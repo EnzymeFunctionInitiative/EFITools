@@ -3,6 +3,7 @@ package EFI::Annotations;
 
 use strict;
 use constant UNIREF_ONLY => 1;
+use constant REPNODE_ONLY => 2;
 
 # Use these rather than the ones in EFI::Config
 use constant FIELD_SEQ_SRC_KEY => "Sequence_Source";
@@ -180,6 +181,7 @@ sub build_annotations {
     $tab .= "\n\tSpecies\t" . merge_anno_rows(\@rows, "Species") if &$attrFunc("Species");
     $tab .= "\n\tCAZY\t" . merge_anno_rows(\@rows, "Cazy") if &$attrFunc("CAZY");
     $tab .= "\n\tNCBI_IDs\t" . join(",", @$ncbiIds) if $ncbiIds and &$attrFunc("NCBI_IDs");
+    $tab .= "\n\tFragment\t" . merge_anno_rows(\@rows, "Fragment", {0 => "complete", 1 => "fragment"}) if &$attrFunc("Fragment");
     # UniRef is added elsewhere
     #$tab .= "\n\tUniRef50\t" . $row->{"UniRef50_Cluster"} if $row->{"UniRef50_Cluster"};
     #$tab .= "\n\tUniRef90\t" . $row->{"UniRef90_Cluster"} if $row->{"UniRef90_Cluster"};
@@ -231,8 +233,12 @@ sub parse_interpro {
 sub merge_anno_rows {
     my $rows = shift;
     my $field = shift;
+    my $typeSpec = shift || {};
 
-    my $value = join($AnnoRowSep, map { $_->{$field} } @$rows);
+    my $value = join($AnnoRowSep,
+        map { 
+            exists $typeSpec->{$_->{$field}} ? $typeSpec->{$_->{$field}} : $_->{$field}
+        } @$rows);
     return $value;
 }
 
@@ -304,6 +310,7 @@ sub get_annotation_data {
     $annoData{"ACC_CDHIT_COUNT"}            = {order => $idx++, display => "CD-HIT Cluster Size"};
     $annoData{"Sequence"}                   = {order => $idx++, display => "Sequence"};
     $annoData{"User_IDs_in_Cluster"}        = {order => $idx++, display => "User IDs in Cluster"};
+    $annoData{"Fragment"}                   = {order => $idx++, display => "Sequence Status"};
 
     return \%annoData;
 }
@@ -387,22 +394,28 @@ sub is_expandable_attr {
     $self->{anno} = get_annotation_data() if not exists $self->{anno};
 
     my $result = 0;
-    if (not $flag) {
+    if (not $flag or $flag == flag_repnode_only()) {
         $result = (
             $attr eq FIELD_ID_ACC       or $attr eq $self->{anno}->{"ACC"}->{display}               or 
             $attr eq "ACC_CDHIT"        or $attr eq $self->{anno}->{"ACC_CDHIT"}->{display}
         );
     }
-    $result = ($result or (
-        $attr eq FIELD_UNIREF50_IDS     or $attr eq $self->{anno}->{"UniRef50_IDs"}->{display}  or 
-        $attr eq FIELD_UNIREF90_IDS     or $attr eq $self->{anno}->{"UniRef90_IDs"}->{display}  or 
-        $attr eq FIELD_UNIREF100_IDS    or $attr eq $self->{anno}->{"UniRef100_IDs"}->{display}     
-    ));
+    if (not $flag or $flag == flag_uniref_only()) {
+        $result = ($result or (
+            $attr eq FIELD_UNIREF50_IDS     or $attr eq $self->{anno}->{"UniRef50_IDs"}->{display}  or 
+            $attr eq FIELD_UNIREF90_IDS     or $attr eq $self->{anno}->{"UniRef90_IDs"}->{display}  or 
+            $attr eq FIELD_UNIREF100_IDS    or $attr eq $self->{anno}->{"UniRef100_IDs"}->{display}     
+        ));
+    }
     return $result;
 }
 
 sub flag_uniref_only {
     return UNIREF_ONLY;
+}
+
+sub flag_repnode_only {
+    return REPNODE_ONLY;
 }
 
 # Returns the SwissProt description, if any, from an XML node in an SSN.
