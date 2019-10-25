@@ -4,7 +4,9 @@ use strict;
 use warnings;
 
 use FindBin;
-use lib $FindBin::Bin . "/lib";
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use lib abs_path("$FindBin::Bin/../lib");
 
 use Getopt::Long;
 
@@ -60,7 +62,7 @@ USAGE
 ;
 
 my $dbModule = $ENV{EFI_DB_MOD};
-my $toolPath = "$FindBin::Bin/bin";
+my $toolPath = abs_path("$FindBin::Bin/../sbin");
 my $toolModule = $ENV{EFI_TOOL_MOD};
 
 if (not exists $ENV{EFI_CONFIG}) {

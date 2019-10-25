@@ -4,7 +4,9 @@ use strict;
 use warnings;
 
 use FindBin;
-use lib $FindBin::Bin . "/lib";
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use lib abs_path("$FindBin::Bin/../lib");
 
 use Getopt::Long;
 
@@ -125,7 +127,7 @@ my $fullGntRun = defined $gnnOnly ? 0 : 1;
 die $usage . "\nERROR: missing queue parameter" if not $queue and $fullGntRun;
 
 
-my $toolPath = "$FindBin::Bin/bin";
+my $toolPath = abs_path("$FindBin::Bin/../sbin");
 my $toolMod = $ENV{EFI_TOOL_MOD};
 my $efiDbMod = $ENV{EFI_DB_MOD};
 my $outputDir = $baseDir ? $baseDir : $ENV{'PWD'};

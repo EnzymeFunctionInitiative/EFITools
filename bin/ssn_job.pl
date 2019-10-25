@@ -48,7 +48,9 @@ use strict;
 use warnings;
 
 use FindBin;
-use lib "$FindBin::Bin/lib";
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use lib abs_path("$FindBin::Bin/../lib");
 
 use Getopt::Long;
 use POSIX qw(ceil);
@@ -114,7 +116,7 @@ my $result = GetOptions(
 
 die "Environment variables not set properly: missing EFIDB variable" if not exists $ENV{EFI_DB};
 
-my $toolPath = "$FindBin::Bin/bin";
+my $toolPath = abs_path("$FindBin::Bin/../sbin");
 my $toolMod = $ENV{EFI_TOOL_MOD};
 my $dbMod = $ENV{EFI_DB_MOD};
 my $sortdir = '/scratch';

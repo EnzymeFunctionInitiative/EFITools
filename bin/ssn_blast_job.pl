@@ -1,21 +1,19 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
-use warnings;
 use strict;
+use warnings;
 
 use FindBin;
-use File::Basename;
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use lib abs_path("$FindBin::Bin/../lib");
+
 use Getopt::Long;
+
 use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm getLmod);
 use EFI::Config qw(cluster_configure);
 
-use lib $FindBin::Bin . "/lib";
 use BlastUtil;
 
 
@@ -53,16 +51,16 @@ my $result = GetOptions(
     "db-type=s"         => \$dbType, # uniprot, uniref50, uniref90  default to uniprot
 );
 
-die "Environment variables not set properly: missing EFIDB variable" if not exists $ENV{EFIDB};
+die "Environment variables not set properly: missing EFIDB variable" if not exists $ENV{EFI_DB};
 
-my $efiEstTools = $ENV{EFIEST};
-my $efiEstMod = $ENV{EFIESTMOD};
-my $efiDbMod = $ENV{EFIDBMOD};
-my $databaseDir = $ENV{EFIDBPATH};
-my $dbVer = $ENV{EFIDB};
+my $toolPath = abs_path("$FindBin::Bin/../sbin/");
+my $toolMod = $ENV{EFI_TOOL_MOD};
+my $dbMod = $ENV{EFI_DB_MOD};
+my $dbDir = $ENV{EFI_DB_PATH};
+my $dbVer = $ENV{EFI_DB};
 
 if (not $configFile or not -f $configFile) {
-    $configFile = $ENV{EFICONFIG};
+    $configFile = $ENV{EFI_CONFIG};
 }
 
 die "-config file argument is required" if not $configFile or not -f $configFile;
@@ -84,7 +82,7 @@ if ($dbType and ($dbType eq "uniref50" or $dbType eq "uniref90")) {
 }
 $dbName .= ($excludeFragments ? "_nf" : "") . ".fasta";
 
-my $blastDb = "$databaseDir/$dbName";
+my $blastDb = "$dbDir/$dbName";
 my $perpass = 1000;
 my $incfrac = 1; # was 0.95
 my $maxhits = 5000;
@@ -206,8 +204,8 @@ my $B = $S->getBuilder();
 #TODO: handle fragment database
 $B->setScriptAbortOnError(0); # Disable SLURM aborting on errors, since we want to catch the BLAST error and report it to the user nicely
 $B->resource(1, 1, "70gb");
-$B->addAction("module load $efiEstMod");
-$B->addAction("module load $efiDbMod");
+$B->addAction("module load $toolMod");
+$B->addAction("module load $dbMod");
 $B->addAction("cd $outputDir");
 $B->addAction("blastall -p blastp -i $outputDir/query.fa -d $blastDb -m 8 -e $evalue -b $maxBlastResults -o $outputDir/initblast.out");
 $B->addAction("OUT=\$?");
@@ -254,10 +252,10 @@ push @args, "-exclude-fragments" if $excludeFragments;
 $B = $S->getBuilder();
 $B->dependency(0, $dependencyId); 
 $B->resource(1, 1, "5gb");
-$B->addAction("module load $efiEstMod");
-$B->addAction("module load $efiDbMod");
+$B->addAction("module load $toolMod");
+$B->addAction("module load $dbMod");
 $B->addAction("cd $outputDir");
-$B->addAction("$efiEstTools/get_sequences_option_a.pl " . join(" ", @args));
+$B->addAction("$toolPath/get_sequences_option_a.pl " . join(" ", @args));
 $B->jobName("${jobNamePrefix}get_seq_meta");
 $B->renderToFile("$scriptDir/get_sequences.sh");
 
@@ -272,8 +270,8 @@ $dependencyId = getJobId($submitResult);
 $B = $S->getBuilder();
 $B->dependency(0, $dependencyId);
 $B->resource(1, 1, "5gb");
-$B->addAction("module load $efiEstMod");
-$B->addAction("module load $efiDbMod");
+$B->addAction("module load $toolMod");
+$B->addAction("module load $dbMod");
 #  $B->addAction("module load blast");
 $B->addAction("cd $outputDir");
 if ($multiplexing eq "on") {
@@ -297,7 +295,7 @@ $B = $S->getBuilder();
 
 $B->dependency(0, $dependencyId);
 $B->resource(1, 1, "5gb");
-$B->addAction("module load $efiEstMod");
+$B->addAction("module load $toolMod");
 $B->addAction("mkdir $blastOutDir");
 $B->addAction("NP=$np");
 $B->addAction("sleep 10"); # Here to avoid a syncing issue we had with the grep on the next line.
@@ -314,7 +312,7 @@ $B->addAction("elif [ \$NSEQ -le 1200 ]; then");
 $B->addAction("    NP=16");
 $B->addAction("fi");
 $B->addAction("echo \"Using \$NP parts with \$NSEQ sequences\"");
-$B->addAction("$efiEstTools/split_fasta.pl -parts \$NP -tmp $blastOutDir -source $filtSeqFile");
+$B->addAction("$toolPath/split_fasta.pl -parts \$NP -tmp $blastOutDir -source $filtSeqFile");
 $B->jobName("${jobNamePrefix}fracfile");
 $B->renderToFile("$scriptDir/fracfile.sh");
 
@@ -328,8 +326,8 @@ my $fracJobId = getJobId($submitResult);
 $B = $S->getBuilder();
 $B->dependency(0, $dependencyId);
 $B->resource(1, 1, "5gb");
-$B->addAction("module load $efiEstMod");
-$B->addAction("module load $efiDbMod");
+$B->addAction("module load $toolMod");
+$B->addAction("module load $dbMod");
 $B->addAction("cd $outputDir");
 $B->addAction("formatdb -i $filtSeqFilename -n database -p T -o T ");
 $B->jobName("${jobNamePrefix}createdb");
@@ -346,11 +344,11 @@ $B = $S->getBuilder();
 $B->jobArray("1-$np"); # We reserve $np slots.  However, due to the new way that fracefile works, some of those may complete immediately.
 $B->resource(1, 1, "10gb");
 $B->dependency(0, $createDbJobId . ":" . $fracJobId);
-$B->addAction("module load $efiEstMod");
+$B->addAction("module load $toolMod");
 $B->addAction("export BLASTDB=$outputDir");
 #$B->addAction("module load blast+");
 #$B->addAction("blastp -query  $blastOutDir/fracfile-{JOB_ARRAYID}.fa  -num_threads 2 -db database -gapopen 11 -gapextend 1 -comp_based_stats 2 -use_sw_tback -outfmt \"6 qseqid sseqid bitscore evalue qlen slen length qstart qend sstart send pident nident\" -num_descriptions 5000 -num_alignments 5000 -out $blastOutDir/blastout-{JOB_ARRAYID}.fa.tab -evalue $evalue");
-$B->addAction("module load $efiDbMod");
+$B->addAction("module load $dbMod");
 $B->addAction("INFILE=\"$blastOutDir/fracfile-{JOB_ARRAYID}.fa\"");
 $B->addAction("if [[ -f \$INFILE && -s \$INFILE ]]; then");
 $B->addAction("    blastall -p blastp -i \$INFILE -d $outputDir/database -m 8 -e $famEvalue -b $blasthits -o $blastOutDir/blastout-{JOB_ARRAYID}.fa.tab");
@@ -388,11 +386,11 @@ $B = $S->getBuilder();
 $B->queue($memqueue);
 $B->dependency(0, $dependencyId); 
 $B->resource(1, 1, "300gb");
-$B->addAction("module load $efiEstMod");
+$B->addAction("module load $toolMod");
 #$B->addAction("mv $outputDir/blastfinal.tab $outputDir/unsorted.blastfinal.tab");
-$B->addAction("$efiEstTools/alphabetize_blast_output.pl -in $outputDir/blastfinal.tab -out $outputDir/alphabetized.blastfinal.tab -fasta $filtSeqFile");
+$B->addAction("$toolPath/alphabetize_blast_output.pl -in $outputDir/blastfinal.tab -out $outputDir/alphabetized.blastfinal.tab -fasta $filtSeqFile");
 $B->addAction("sort -T $sortdir -k1,1 -k2,2 -k5,5nr -t\$\'\\t\' $outputDir/alphabetized.blastfinal.tab > $outputDir/sorted.alphabetized.blastfinal.tab");
-$B->addAction("$efiEstTools/reduce_blast_output.pl -blast $outputDir/sorted.alphabetized.blastfinal.tab -fasta $filtSeqFile -out $outputDir/unsorted.1.out");
+$B->addAction("$toolPath/reduce_blast_output.pl -blast $outputDir/sorted.alphabetized.blastfinal.tab -fasta $filtSeqFile -out $outputDir/unsorted.1.out");
 $B->addAction("sort -T $sortdir -k5,5nr -t\$\'\\t\' $outputDir/unsorted.1.out >$outputDir/1.out");
 $B->jobName("${jobNamePrefix}blastreduce");
 $B->renderToFile("$scriptDir/blastreduce.sh");
@@ -409,13 +407,13 @@ $B = $S->getBuilder();
 $B->queue($memqueue);
 $B->dependency(0, $dependencyId); 
 $B->resource(1, 1, "5gb");
-$B->addAction("module load $efiEstMod");
+$B->addAction("module load $toolMod");
 if ($multiplexing eq "on") {
     $B->addAction("mv $outputDir/1.out $outputDir/mux.out");
-    $B->addAction("$efiEstTools/demux.pl -blastin $outputDir/mux.out -blastout $outputDir/1.out -cluster $filtSeqFile.clstr");
+    $B->addAction("$toolPath/demux.pl -blastin $outputDir/mux.out -blastout $outputDir/1.out -cluster $filtSeqFile.clstr");
 } else {
     $B->addAction("mv $outputDir/1.out $outputDir/mux.out");
-    $B->addAction("$efiEstTools/remove_duplicates.pl -in $outputDir/mux.out -out $outputDir/1.out");
+    $B->addAction("$toolPath/remove_duplicates.pl -in $outputDir/mux.out -out $outputDir/1.out");
 }
 #$B->addAction("rm $outputDir/*blastfinal.tab");
 #$B->addAction("rm $outputDir/mux.out");
@@ -435,7 +433,7 @@ $B = $S->getBuilder();
 $B->dependency(0, $dependencyId);
 $B->resource(1, 1, "5gb");
 $B->addAction("NSEQ=`grep \\> $filtSeqFile | wc -l`");
-$B->addAction("$efiEstTools/calc_blast_stats.pl -edge-file $outputDir/1.out -seq-file $allSeqFile -unique-seq-file $filtSeqFile -seq-count-output $seqCountFile");
+$B->addAction("$toolPath/calc_blast_stats.pl -edge-file $outputDir/1.out -seq-file $allSeqFile -unique-seq-file $filtSeqFile -seq-count-output $seqCountFile");
 $B->jobName("${jobNamePrefix}conv_ratio");
 $B->renderToFile("$scriptDir/conv_ratio.sh");
 chomp(my $convRatioJob = $S->submit("$scriptDir/conv_ratio.sh"));
@@ -452,27 +450,27 @@ $B->queue($memqueue);
 $B->dependency(0, $dependencyId); 
 $B->resource(1, 1, "100gb");
 $B->mailEnd();
-$B->addAction("module load $efiEstMod");
-$B->addAction("module load $efiDbMod");
+$B->addAction("module load $toolMod");
+$B->addAction("module load $dbMod");
 $B->addAction("module load $gdMod");
 $B->addAction("module load $perlMod");
 $B->addAction("module load $rMod");
 $B->addAction("mkdir $outputDir/rdata");
-$B->addAction("$efiEstTools/make_graph_data.pl -blastout $outputDir/1.out -rdata  $outputDir/rdata -edges  $outputDir/edge.tab -fasta  $allSeqFile -length  $outputDir/length.tab -incfrac $incfrac -evalue-file $evalueFile");
+$B->addAction("$toolPath/make_graph_data.pl -blastout $outputDir/1.out -rdata  $outputDir/rdata -edges  $outputDir/edge.tab -fasta  $allSeqFile -length  $outputDir/length.tab -incfrac $incfrac -evalue-file $evalueFile");
 $B->addAction("FIRST=`ls $outputDir/rdata/perid*| head -1`");
 $B->addAction("FIRST=`head -1 \$FIRST`");
 $B->addAction("LAST=`ls $outputDir/rdata/perid*| tail -1`");
 $B->addAction("LAST=`head -1 \$LAST`");
 $B->addAction("MAXALIGN=`head -1 $outputDir/rdata/maxyal`");
-$B->addAction("Rscript $efiEstTools/R/quart-align.r legacy $outputDir/rdata $outputDir/alignment_length.png \$FIRST \$LAST \$MAXALIGN $jobId");
-$B->addAction("Rscript $efiEstTools/R/quart-align.r legacy $outputDir/rdata $outputDir/alignment_length_sm.png \$FIRST \$LAST \$MAXALIGN $jobId $smallWidth $smallHeight");
-$B->addAction("Rscript $efiEstTools/R/quart-perid.r legacy $outputDir/rdata $outputDir/percent_identity.png \$FIRST \$LAST $jobId");
-$B->addAction("Rscript $efiEstTools/R/quart-perid.r legacy $outputDir/rdata $outputDir/percent_identity_sm.png \$FIRST \$LAST $jobId $smallWidth $smallHeight");
-$B->addAction("Rscript $efiEstTools/R/hist-edges.r legacy $outputDir/edge.tab $outputDir/number_of_edges.png $jobId");
-$B->addAction("Rscript $efiEstTools/R/hist-edges.r legacy $outputDir/edge.tab $outputDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
+$B->addAction("Rscript $toolPath/R/quart-align.r legacy $outputDir/rdata $outputDir/alignment_length.png \$FIRST \$LAST \$MAXALIGN $jobId");
+$B->addAction("Rscript $toolPath/R/quart-align.r legacy $outputDir/rdata $outputDir/alignment_length_sm.png \$FIRST \$LAST \$MAXALIGN $jobId $smallWidth $smallHeight");
+$B->addAction("Rscript $toolPath/R/quart-perid.r legacy $outputDir/rdata $outputDir/percent_identity.png \$FIRST \$LAST $jobId");
+$B->addAction("Rscript $toolPath/R/quart-perid.r legacy $outputDir/rdata $outputDir/percent_identity_sm.png \$FIRST \$LAST $jobId $smallWidth $smallHeight");
+$B->addAction("Rscript $toolPath/R/hist-edges.r legacy $outputDir/edge.tab $outputDir/number_of_edges.png $jobId");
+$B->addAction("Rscript $toolPath/R/hist-edges.r legacy $outputDir/edge.tab $outputDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
 my $lenHistText = "\" \"";
-$B->addAction("Rscript $efiEstTools/R/hist-length.r legacy $outputDir/length.tab $outputDir/length_histogram.png $jobId $lenHistText");
-$B->addAction("Rscript $efiEstTools/R/hist-length.r legacy $outputDir/length.tab $outputDir/length_histogram_sm.png $jobId $lenHistText $smallWidth $smallHeight");
+$B->addAction("Rscript $toolPath/R/hist-length.r legacy $outputDir/length.tab $outputDir/length_histogram.png $jobId $lenHistText");
+$B->addAction("Rscript $toolPath/R/hist-length.r legacy $outputDir/length.tab $outputDir/length_histogram_sm.png $jobId $lenHistText $smallWidth $smallHeight");
 $B->addAction("touch  $outputDir/1.out.completed");
 $B->jobName("${jobNamePrefix}graphs");
 $B->renderToFile("$scriptDir/graphs.sh");

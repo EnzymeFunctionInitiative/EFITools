@@ -1,8 +1,5 @@
 #!/usr/bin/env perl
 
-#version 0.9.2 no changes
-#version 0.9.7 added options and code for working with Slurm scheduler
-
 #this program will analyze data from a folder created in the generatedata step, the most important parts being the 1.out and struct.out files
 
 #this program creates scripts and submits them on clusters with torque schedulers
@@ -16,7 +13,9 @@ use strict;
 use warnings;
 
 use FindBin;
-use lib "$FindBin::Bin/lib";
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use lib abs_path("$FindBin::Bin/../lib");
 
 use Getopt::Long;
 use EFI::SchedulerApi;
@@ -60,7 +59,7 @@ my $result = GetOptions(
 die "The efiest and efidb environments must be loaded in order to run $0" if not $ENV{EFI_TOOL_MOD} or not $ENV{EFI_DB_MOD};
 die "The Perl environment must be loaded in order to run $0" if $ENV{LOADEDMODULES} !~ m/\bperl\b/i; # Ensure that the Perl module is loaded (e.g. module load Perl)
 
-my $toolPath = "$FindBin::Bin/bin";
+my $toolPath = abs_path("$FindBin::Bin/../sbin");
 my $toolMod = $ENV{EFI_TOOL_MOD};
 my $dbMod = $ENV{EFI_DB_MOD};
 (my $perlMod = $ENV{LOADEDMODULES}) =~ s/^.*\b(perl)\b.*$/$1/i;
