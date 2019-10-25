@@ -15,8 +15,8 @@ usage: get_fasta.pl -input file_containing_input_ids -output output_file
 USAGE
 ;
 
-my $blastDbPath = $ENV{EFIDBPATH};
-die "No EFIDBPATH environment variable provided." if not $blastDbPath;
+my $blastDbPath = $ENV{EFI_DB_PATH};
+die "No EFI_DB_PATH environment variable provided." if not $blastDbPath;
 die "Input file does not exist." if not -f $inputFile;
 
 print "Using blast database: $blastDbPath\n";

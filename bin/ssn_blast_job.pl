@@ -51,7 +51,7 @@ my $result = GetOptions(
     "db-type=s"         => \$dbType, # uniprot, uniref50, uniref90  default to uniprot
 );
 
-die "Environment variables not set properly: missing EFIDB variable" if not exists $ENV{EFI_DB};
+die "Environment variables not set properly: missing EFI_DB variable" if not exists $ENV{EFI_DB};
 
 my $toolPath = abs_path("$FindBin::Bin/../sbin/");
 my $toolMod = $ENV{EFI_TOOL_MOD};

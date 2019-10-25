@@ -1,26 +1,14 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
 use strict;
+use warnings;
 
-
-if (not exists $ENV{BLASTDB}) {
-    print "The BLASTDB environment variable must be present. Did you forget to \"module load BLAST\" before running this program?\n";
-    exit(1);
-}
-if (not exists $ENV{EFIDBHOME}) {
-    print "The EFIDBHOME environment variable must be present. Did you forget to \"module load efidb\" before running this program?\n";
-    exit(1);
-}
-
-
-use Getopt::Long;
 use FindBin;
 use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use lib abs_path("$FindBin::Bin/../lib");
+
+use Getopt::Long;
 
 use EFI::SchedulerApi;
 use EFI::Util qw(getSchedulerType usesSlurm);
@@ -118,15 +106,10 @@ if (not $WorkingDir) {
     }
 }
 
-if (not $dbName and not ($buildEna or $doDownload or $buildCountsOnly)) {
-    print "The -db-name parameter is required.\n";
-    exit(1);
-}
-
-if (not $queue and not ($sql or $doDownload or $buildCountsOnly)) {
-    print "The -queue parameter is required.\n";
-    exit(1);
-}
+die "The BLASTDB environment variable must be present. Did you forget to \"module load BLAST\" before running this program?\n" if not exists $ENV{BLASTDB};
+die "The EFI_DB_HOME environment variable must be present. Did you forget to \"module load efidb\" before running this program?\n" if not exists $ENV{EFI_DB_HOME};
+die "The --db-name parameter is required.\n" if not $dbName and not ($buildEna or $doDownload or $buildCountsOnly);
+die "The --queue parameter is required.\n" if not $queue and not ($sql or $doDownload or $buildCountsOnly);
 
 
 $doPdbBlast = defined $doPdbBlast;
@@ -134,7 +117,7 @@ $dbType = "mysql" if not $dbType;
 
 
 # Various directories and files.
-my $DbSupport = $ENV{EFIDBHOME} . "/support";
+my $DbSupport = $ENV{EFI_DB_HOME} . "/support";
 $WorkingDir = abs_path($WorkingDir);
 my $ScriptDir = $FindBin::Bin;
 my $BuildDir = "$WorkingDir/build";

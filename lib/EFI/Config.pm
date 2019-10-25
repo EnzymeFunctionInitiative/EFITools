@@ -42,8 +42,8 @@ use constant {
     TAX_SECTION                 => "taxonomy",
     TAX_REMOTE_URL              => "remote_url",
 
-    ENVIRONMENT_DB              => "EFIDB",
-    ENVIRONMENT_CONFIG          => "EFICONFIG",
+    ENVIRONMENT_DB              => "EFI_DB",
+    ENVIRONMENT_CONFIG          => "EFI_CONFIG",
 };
 
 use constant NO_ACCESSION_MATCHES_FILENAME => "no_accession_matches.txt";
