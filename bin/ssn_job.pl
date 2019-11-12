@@ -59,7 +59,7 @@ use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm getLmod);
 use EFI::Config qw(cluster_configure);
 
-use Constants;
+use EFI::Constants;
 
 
 my ($np, $queue, $outputDirName, $evalue, $incfrac, $ipro, $pfam, $accessionId, $accessionFile, $taxid);

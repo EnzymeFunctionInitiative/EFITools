@@ -1,0 +1,52 @@
+[database]
+user=
+password=
+host=
+port=
+ip_range=
+uniref90_db=uniref90.fasta
+uniref50_db=uniref50.fasta
+uniprot_db=combined.fasta
+db_home=
+
+; The database name and DBI and BLAST database path can be overridden by the environment.
+dbi=mysql
+name=
+blast_db_dir=
+diamond_db_dir=
+
+[cluster]
+np=48
+queue=
+mem_queue=
+scheduler=slurm
+
+; Anytime the "est-std" environment is requested by the scripts, the following directives are inserted
+; into the job script.
+; These are used to add environment variables to job scripts, and are directly inserted into the job script files (use source ... or module load)
+[environment.est-std]
+module load efidb/ip76
+module load BLAST
+module load Perl
+module load CD-HIT
+
+; Anytime the "est-graphs" environment is requested by the scripts, the following directives are inserted
+; into the job script.
+; These are used to add environment variables to job scripts, and are directly inserted into the job script files (use source ... or module load)
+[environment.est-graphs]
+module load GD
+module load R
+
+[environment.est-graphs-v2]
+module load HDF5
+module load Python
+
+[environment.est-diamond]
+module load DIAMOND
+
+[environment.est-blast+]
+module load BLAST+
+
+[environment.est-color]
+module load efiest/efitools/devlocal
+

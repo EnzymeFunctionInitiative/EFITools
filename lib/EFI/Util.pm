@@ -11,6 +11,10 @@ $VERSION     = 1.00;
 @EXPORT_OK   = qw(usesSlurm getSchedulerType getLmod defaultScheduler validateConfigFile checkNetworkType);
 
 
+use constant SCHEDULER_SLURM => "slurm";
+use constant SCHEDULER_PBS => "pbs";
+
+
 sub usesSlurm {
     my $usesSlurm = `which sbatch 2>/dev/null`;
     if (length $usesSlurm > 0) {
@@ -22,15 +26,22 @@ sub usesSlurm {
 
 sub getSchedulerType {
     my $scheduler = shift;
-    if ($scheduler and $scheduler eq "torque") {
-        return "torque";
+    $scheduler = autoDetectScheduler() if not $scheduler;
+    if ($scheduler eq SCHEDULER_SLURM or $scheduler eq SCHEDULER_PBS) {
+        return $scheduler;
     } else {
-        return defaultScheduler();
+        return "";
     }
 }
 
+sub autoDetectScheduler {
+    return SCHEDULER_SLURM if `command -v sbatch`;
+    return SCHEDULER_PBS if `command -v qsub`;
+    return defaultScheduler();
+}
+
 sub defaultScheduler {
-    return "slurm";
+    return SCHEDULER_SLURM;
 }
 
 sub getLmod {

@@ -14,7 +14,7 @@ use EFI::SchedulerApi;
 use EFI::Util qw(getSchedulerType usesSlurm);
 use EFI::Util::FileHandle;
 use EFI::Database;
-use EFI::Config qw(cluster_configure);
+use EFI::Config qw(database_configure);
 
 use constant BUILD_ENA => 2;
 use constant BUILD_COUNTS => 4;
@@ -187,7 +187,7 @@ my $DoSubmit = not defined $noSubmit;
 
 # Get info from the configuration file.
 my $config = {};
-cluster_configure($config, %dbArgs);
+database_configure($config, %dbArgs);
 my $UniprotLocation = $config->{build}->{uniprot_url};
 my $InterproLocation = $config->{build}->{interpro_url};
 my $TaxonomyLocation = $config->{tax}->{remote_url};

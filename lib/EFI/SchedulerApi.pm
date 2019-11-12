@@ -28,7 +28,7 @@ sub new {
     $self->{output_file_seq_num_array} = "";
     $self->{arrayid_var_name} = "";
     $self->{other_config} = [];
-    $self->{dryrun} = exists $args{dryrun} ? $args{dryrun} : 0;
+    $self->{dry_run} = ($args{dryrun} or $args{dry_run}) ? 1 : 0;
     # Echo the first part of all acctions
     $self->{echo_actions} = exists $args{echo_actions} ? $args{echo_actions} : 0;
     $self->{abort_script_on_action_fail} = exists $args{abort_script_on_action_fail} ? $args{abort_script_on_action_fail} : 1;
@@ -178,7 +178,7 @@ sub renderToFile {
         $self->outputBaseFilepath($filePath);
     }
 
-    if ($self->{dryrun}) {
+    if ($self->{dry_run}) {
         print $comment;
         $self->render(\*STDOUT);
     } else {
@@ -422,10 +422,10 @@ sub new {
     push(@{ $self->{resource} }, 1) if scalar @{ $self->{resource} } < 2;
     push(@{ $self->{resource} }, "20gb") if scalar @{ $self->{resource} } < 3;
 
-    if (exists $args{dryrun}) {
-        $self->{dryrun} = $args{dryrun};
+    if (exists $args{dryrun} or $args{dry_run}) {
+        $self->{dry_run} = $args{dry_run};
     } else {
-        $self->{dryrun} = 0;
+        $self->{dry_run} = 0;
     }
 
     if (exists $args{default_working_dir}) {
@@ -452,7 +452,7 @@ sub new {
 sub getBuilder {
     my ($self) = @_;
 
-    my %args = ("dryrun" => $self->{dryrun});
+    my %args = ("dry_run" => $self->{dry_run});
     $args{extra_path} = $self->{extra_path} if $self->{extra_path};
     $args{run_serial} = $self->{run_serial};
 
@@ -478,7 +478,7 @@ sub submit {
     my ($self, $script) = @_;
 
     my $result = "1.biocluster\n";
-    if (not $self->{dryrun} and not $self->{run_serial}) {
+    if (not $self->{dry_run} and not $self->{run_serial}) {
         my $submit = $self->{type} == SLURM ? "sbatch" : "qsub";
         $result = `$submit $script`;
 

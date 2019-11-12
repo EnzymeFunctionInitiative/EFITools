@@ -68,15 +68,19 @@ sub setupConfig {
     #die "Require output sequence metadata file" if not $metaOutput;
     #die "Require output sequence stats file" if not $statsOutput;
     
-    my $db = new EFI::Database(config_file_path => $configFile);
+    my $config = EFI::Config::parseConfigFile($configFile);
+    my $db = new EFI::Database(config_file_path => $config);
     my $dbh = $db->getHandle();
     
     my $familyConfig = EST::Family::loadFamilyParameters();
-    
+
     my $fastaDb = "$ENV{EFI_DB_DIR}/$ENV{EFI_UNIPROT_DB}";
-    $batchSize = $batchSize ? $batchSize : ($ENV{EFI_PASS} ? $ENV{EFI_PASS} : 1000);
-    $minSeqLen = $minSeqLen ? $minSeqLen : 0;
-    $maxSeqLen = $maxSeqLen ? $maxSeqLen : 1000000;
+
+    my $defaultBatchSize = 1000;
+    my $defaultMaxSeqLen = 1000000;
+    $batchSize = $batchSize // $defaultBatchSize;
+    $minSeqLen = $minSeqLen // 0;
+    $maxSeqLen = $maxSeqLen // $defaultMaxSeqLen;
 
     my %seqArgs = (
         seq_output_file => $seqOutput,

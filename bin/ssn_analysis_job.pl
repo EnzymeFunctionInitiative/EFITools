@@ -22,7 +22,7 @@ use EFI::SchedulerApi;
 use EFI::Util qw(usesSlurm);
 use EFI::Config qw(cluster_configure);
 
-use Constants;
+use EFI::Constants;
 
 
 my ($filter, $minval, $queue, $relativeGenerateDir, $maxlen, $minlen, $title, $maxfull, $jobId, $lengthOverlap,

@@ -38,17 +38,15 @@ sub hasUniRef {
 # Look on the command line @ARGV for family configuration parameters.
 sub loadFamilyParameters {
     my ($ipro, $pfam, $gene3d, $ssf);
-    my ($useDomain, $fraction, $maxSequence, $maxFullFam);
+    my ($useDomain, $fraction);
     my ($unirefVersion);
     my ($domainFamily, $domainRegion, $excludeFragments);
 
     my $result = GetOptions(
-        "ipro=s"                => \$ipro,
+        "ipro|interpro=s"       => \$ipro,
         "pfam=s"                => \$pfam,
         "gene3d=s"              => \$gene3d,
         "ssf=s"                 => \$ssf,
-        "max-sequence=s"        => \$maxSequence,
-        "max-full-fam-ur90=i"   => \$maxFullFam,
         "domain=s"              => \$useDomain,
         "domain-family=s"       => \$domainFamily, # Option D
         "domain-region=s"       => \$domainRegion, # Option D
@@ -81,8 +79,6 @@ sub loadFamilyParameters {
     $config->{fraction} =       (defined $fraction and $fraction !~ m/\D/ and $fraction > 0) ? $fraction : 1;
     $config->{use_domain} =     (defined $useDomain and $useDomain eq "on");
     $config->{uniref_version} = defined $unirefVersion ? $unirefVersion : "";
-    $config->{max_seq} =        defined $maxSequence ? $maxSequence : 0;
-    $config->{max_full_fam} =   defined $maxFullFam ? $maxFullFam : 0;
     $config->{domain_family} =  ($config->{use_domain} and defined $domainFamily) ? $domainFamily : "";
     $config->{domain_region} =  ($config->{domain_family} and $domainRegion) ? $domainRegion : "";
     $config->{exclude_fragments}    = $excludeFragments;

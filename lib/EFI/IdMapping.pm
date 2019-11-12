@@ -10,7 +10,7 @@ use lib dirname(abs_path(__FILE__)) . "/../";
 
 use DBI;
 use Log::Message::Simple qw[:STD :CARP];
-use EFI::Config qw(cluster_configure);
+use EFI::Config qw(database_configure);
 use EFI::SchedulerApi;
 use EFI::Database;
 use EFI::IdMapping::Util;
@@ -23,9 +23,9 @@ sub new {
     my $self = {};
     bless($self, $class);
 
-    cluster_configure($self, %args);
+    database_configure($self, %args);
 
-    # $self->{db} is defined by cluster_configure
+    # $self->{db} is defined by database_configure
     $self->{db_obj} = new EFI::Database(%args);
 
     $self->{dbh} = $self->{db_obj}->getHandle();

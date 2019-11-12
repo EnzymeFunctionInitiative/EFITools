@@ -1,5 +1,5 @@
 
-package Constants;
+package EFI::Constants;
 
 use strict;
 use warnings;

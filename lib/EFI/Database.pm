@@ -5,16 +5,16 @@ use strict;
 use DBI;
 use Log::Message::Simple qw[:STD :CARP];
 require 'Config.pm';
-use EFI::Config qw(cluster_configure);
+use EFI::Config qw(database_configure);
 
 
 sub new {
     my ($class, %args) = @_;
 
-    my $self = {};
+    my $self = {db => {}};
     bless($self, $class);
 
-    cluster_configure($self, %args);
+    $self->{db} = database_configure($args{config_file_path});
 
     if (exists $args{load_infile}) {
         $self->{load_infile} = $args{load_infile};
@@ -183,7 +183,11 @@ sub getHandle {
     my ($self) = @_;
 
     my $dbh;
-    if ($self->{db}->{dbi} eq EFI::Config::DATABASE_MYSQL) {
+    if ($self->{db}->{dbi} eq EFI::Config::DATABASE_SQLITE3) {
+        print "Using SQLite3 database\n";
+        $dbh = DBI->connect("DBI:SQLite:dbname=$self->{db}->{name}","","");
+    } else {
+        print "Using MySQL/MariaDB database\n";
         my $connStr =
             "DBI:mysql" .
             ":database=" . $self->{db}->{name} .
@@ -193,9 +197,7 @@ sub getHandle {
     
         $dbh = DBI->connect($connStr, $self->{db}->{user}, $self->{db}->{password});
         $dbh->{mysql_auto_reconnect} = 1;
-    } else {
-        $dbh = DBI->connect("DBI:SQLite:dbname=$self->{db}->{name}","","");
-    }
+    } 
 
     return $dbh;
 }
