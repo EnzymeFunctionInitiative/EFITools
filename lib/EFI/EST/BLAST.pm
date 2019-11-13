@@ -1,5 +1,5 @@
 
-package EST::BLAST;
+package EFI::EST::BLAST;
 
 use strict;
 use warnings;
@@ -10,7 +10,7 @@ use lib dirname(abs_path(__FILE__)) . "/../";
 
 use Getopt::Long qw(:config pass_through);
 
-use parent qw(EST::Base);
+use parent qw(EFI::EST::Base);
 
 our $INPUT_SEQ_ID = "zINPUTSEQ";
 our $INPUT_SEQ_TYPE = "INPUT";

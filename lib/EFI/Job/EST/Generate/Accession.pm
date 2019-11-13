@@ -26,6 +26,7 @@ sub new {
     my $parms = {};
     my $result = GetOptions(
         $parms,
+        #uniref-version is also used from the family structure
         "domain:s", # Also in Family
         "domain-family=s",
         "domain-region=s",
@@ -36,7 +37,7 @@ sub new {
     my ($conf, $errors) = validateOptions($parms, $self);
 
     $self->{conf}->{accession} = $conf->{accession};
-    $self->{conf}->{domain} = $conf->{domain};
+    $self->{conf}->{domain} = $conf->{domain} if $conf->{domain};
 
     push @{$self->{startup_errors}}, @$errors;
 
@@ -50,8 +51,8 @@ sub validateOptions {
 
     my @errors;
 
-    my $conf = {domain => {}, accession => {}};
-    if ($parms->{domain} and $parms->{domain} eq "on") {
+    my $conf = {accession => {}};
+    if (defined $parms->{domain} and $parms->{domain} ne "off") {
         $conf->{domain}->{family} = $parms->{"domain-family"} // "";
         $conf->{domain}->{region} = $parms->{"domain-region"} // "";
     }
@@ -77,9 +78,9 @@ sub getInitialImportArgs {
 
     my @args;
     if ($conf->{domain} and $conf->{domain}->{family}) {
-        push @args, "-domain-family $conf->{domain}->{family}";
+        push @args, "--domain-family $conf->{domain}->{family}";
         if ($conf->{domain}->{region} eq "cterminal" or $conf->{domain}->{region} eq "nterminal") {
-            push @args, "-domain-region $conf->{domain}->{region}";
+            push @args, "--domain-region $conf->{domain}->{region}";
         }
     }
 
@@ -107,9 +108,9 @@ sub addInitialImportFileActions {
     my $B = shift;
 
     my $file = $self->{conf}->{accession}->{id_list_file};
-    $B->addAcction("unzip -p $file.zip > $file") if $self->{conf}->{accession}->{file_is_zipped};
-    $B->addAcction("dos2unix -q $file");
-    $B->addAcction("mac2unix -q $file");
+    $B->addAction("unzip -p $file.zip > $file") if $self->{conf}->{accession}->{file_is_zipped};
+    $B->addAction("dos2unix -q $file");
+    $B->addAction("mac2unix -q $file");
 }
 
 

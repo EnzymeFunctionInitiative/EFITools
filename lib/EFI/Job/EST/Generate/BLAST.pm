@@ -98,8 +98,8 @@ sub getInitialBlastJob {
 
     my $outputDir = $self->getOutputDir();
     my $queryFile = "$outputDir/$conf->{query_file}";
-    my $blastDb = "DIR/$conf->{db_name}";
-    #TODO: handle DIR
+    my $blastDir = $self->getBlastDbDir();
+    my $blastDb = "$blastDir/$conf->{db_name}";
 
     EFI::Util::BLAST::save_input_sequence($queryFile, $conf->{sequence}, $conf->{input_id});
     

@@ -10,7 +10,7 @@ use lib "$FindBin::Bin/../lib";
 
 use Getopt::Long;
 
-use CdHitParser;
+use EFI::Util::CdHitParser;
 
 
 my ($cluster, $blastin, $blastout);
@@ -33,7 +33,7 @@ open CLUSTER, $cluster or die "cannot open cdhit cluster file $cluster\n";
 open BLASTIN, $blastin or die "cannot open blast input file $blastin\n";
 open BLASTOUT, ">$blastout" or die "cannnot write to blast output file $blastout\n";
 
-my $cp = new CdHitParser(verbose => 1);
+my $cp = new EFI::Util::CdHitParser(verbose => 1);
 
 #%tree=();
 

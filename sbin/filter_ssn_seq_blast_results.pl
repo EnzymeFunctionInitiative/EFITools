@@ -8,7 +8,7 @@ use lib "$FindBin::Bin/../lib";
 
 use Getopt::Long;
 
-use AlignmentScore;
+use EFI::Util::AlignmentScore;
 
 
 my ($inputBlast, $outputBlast, $filter, $minLen, $maxLen, $minVal, $inputFasta, $outputFasta, $domainLenMeta);

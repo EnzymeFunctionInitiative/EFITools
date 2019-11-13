@@ -1,5 +1,5 @@
 
-package EST::Sequence;
+package EFI::EST::Sequence;
 
 
 use warnings;
@@ -10,14 +10,14 @@ use Cwd qw(abs_path);
 use File::Basename qw(dirname);
 use lib dirname(abs_path(__FILE__)) . "/../";
 
-use EST::LengthHistogram;
+use EFI::LengthHistogram;
 
 
 sub new {
     my $class = shift;
     my %args = @_;
 
-    # Called from EST::Setup, so we assume the inputs are valid
+    # Called from EFI::EST::Setup, so we assume the inputs are valid
 
     my $self = {};
     $self->{output_file} = $args{seq_output_file};
@@ -40,7 +40,7 @@ sub retrieveAndSaveSequences {
     my $userSeq = shift;
     my $unirefMap = shift || {};
 
-    my $histo = new EST::LengthHistogram;
+    my $histo = new EFI::LengthHistogram;
 
     my @ids = keys %$ids;
     map { push(@ids, $_) if not exists $ids->{$_} and not exists $unirefMap->{$_}; } keys %$userIds;

@@ -10,8 +10,9 @@ use Getopt::Long;
 use Data::Dumper;
 
 use EFI::Annotations;
-use EST::Setup;
-use EST::Family;
+use EFI::EST::Setup;
+use EFI::EST::Family;
+use EFI::LengthHistogram;
 
 
 my ($familyConfig, $dbh, $configFile, $seqObj, $accObj, $metaObj, $statsObj, $otherConfig) = setupConfig();
@@ -29,7 +30,7 @@ $statsObj->configureSourceTypes(
 );
 
 
-my $famData = new EST::Family(dbh => $dbh, db_version => $otherConfig->{db_version});
+my $famData = new EFI::EST::Family(dbh => $dbh, db_version => $otherConfig->{db_version});
 $famData->configure($familyConfig);
 
 $famData->retrieveFamilyAccessions();
@@ -49,7 +50,7 @@ my $mergedMetadata = $metaObj->saveSequenceMetadata($familyMetadata, $userMetada
 $statsObj->saveSequenceStatistics($mergedMetadata, {}, $familyStats, {});
 
 if ($otherConfig->{uniprot_domain_length_file}) {
-    my $histo = new EST::LengthHistogram;
+    my $histo = new EFI::LengthHistogram;
     $histo->addData($familyFullDomainIds);
     $histo->saveToFile($otherConfig->{uniprot_domain_length_file});
 }

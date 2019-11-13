@@ -1,5 +1,5 @@
 
-package EST::Statistics;
+package EFI::EST::Statistics;
 
 use strict;
 use warnings;

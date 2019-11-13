@@ -1,5 +1,5 @@
 
-package EST::Metadata;
+package EFI::EST::Metadata;
 
 
 use warnings;

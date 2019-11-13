@@ -24,7 +24,7 @@ sub new {
     my $self = {};
     bless($self, $class);
 
-    database_configure($self, %args);
+    $self->{db} = database_configure($args{config_file_path});
 
     $self->{build_dir} = $args{build_dir};
     $self->{input_dir} = $args{build_dir} . "/../input";

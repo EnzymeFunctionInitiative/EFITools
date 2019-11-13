@@ -10,10 +10,10 @@ use Getopt::Long;
 use Data::Dumper;
 
 use EFI::Annotations;
-use EST::Setup;
-use EST::Family;
-use EST::Accession;
-use EST::LengthHistogram;
+use EFI::EST::Setup;
+use EFI::EST::Family;
+use EFI::EST::Accession;
+use EFI::LengthHistogram;
 
 
 my ($familyConfig, $dbh, $configFile, $seqObj, $accObj, $metaObj, $statsObj, $otherConfig) = setupConfig();
@@ -36,7 +36,7 @@ my $unirefMap = {};
 my $familyFullDomainIds = undef; # Used when domain and uniref are enabled
 
 if (exists $familyConfig->{data}) {
-    my $famData = new EST::Family(dbh => $dbh);
+    my $famData = new EFI::EST::Family(dbh => $dbh);
     $famData->configure($familyConfig);
     $famData->retrieveFamilyAccessions();
     $familyIds = $famData->getSequenceIds();
@@ -47,12 +47,12 @@ if (exists $familyConfig->{data}) {
 }
 
 
-my %accessionArgs = EST::Accession::getAccessionCmdLineArgs();
+my %accessionArgs = EFI::EST::Accession::getAccessionCmdLineArgs();
 $accessionArgs{domain_family} = $familyConfig->{config}->{domain_family};
 $accessionArgs{domain_region} = $familyConfig->{config}->{domain_region};
 $accessionArgs{uniref_version} = $familyConfig->{config}->{uniref_version};
 $accessionArgs{exclude_fragments} = $familyConfig->{config}->{exclude_fragments};
-my $accessionData = new EST::Accession(dbh => $dbh, config_file_path => $configFile);
+my $accessionData = new EFI::EST::Accession(dbh => $dbh, config_file_path => $configFile);
 $accessionData->configure(%accessionArgs);
 $accessionData->parseFile();
 
@@ -67,9 +67,9 @@ my $mergedMetadata = $metaObj->saveSequenceMetadata($familyMetadata, $userMetada
 $statsObj->saveSequenceStatistics($mergedMetadata, $userMetadata, $familyStats, $userStats);
 
 if ($otherConfig->{uniprot_domain_length_file}) {
-    my $histo = new EST::LengthHistogram;
+    my $histo = new EFI::EST::LengthHistogram;
     my $userUnirefIds = $accessionData->getUserUniRefIds(); # This structure includes the UniRef cluster IDs in addition to cluster members.
-    my $ids = EST::IdList::mergeIds($familyFullDomainIds, $userUnirefIds);
+    my $ids = EFI::EST::IdList::mergeIds($familyFullDomainIds, $userUnirefIds);
     $histo->addData($ids);
     $histo->saveToFile($otherConfig->{uniprot_domain_length_file});
 }

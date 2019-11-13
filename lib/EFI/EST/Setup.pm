@@ -1,5 +1,5 @@
 
-package EST::Setup;
+package EFI::EST::Setup;
 
 use strict;
 use warnings;
@@ -12,11 +12,11 @@ use Getopt::Long qw(:config pass_through);
 use Data::Dumper;
 
 use EFI::Database;
-use EST::Sequence;
-use EST::Metadata;
-use EST::IdList;
-use EST::Statistics;
-use EST::Family;
+use EFI::EST::Sequence;
+use EFI::EST::Metadata;
+use EFI::EST::IdList;
+use EFI::EST::Statistics;
+use EFI::EST::Family;
 
 
 use Exporter;
@@ -72,7 +72,7 @@ sub setupConfig {
     my $db = new EFI::Database(config_file_path => $config);
     my $dbh = $db->getHandle();
     
-    my $familyConfig = EST::Family::loadFamilyParameters();
+    my $familyConfig = EFI::EST::Family::loadFamilyParameters();
 
     my $fastaDb = "$ENV{EFI_DB_DIR}/$ENV{EFI_UNIPROT_DB}";
 
@@ -110,10 +110,10 @@ sub setupConfig {
     $otherConfig{uniprot_domain_length_file} = $uniprotDomLenOutput if $uniprotDomLenOutput and $unirefDomLenOutput;
     $otherConfig{db_version} = $db->getVersion($dbh);
 
-    my $accObj = new EST::IdList(%accArgs);
-    my $seqObj = new EST::Sequence(%seqArgs);
-    my $metaObj = new EST::Metadata(%metaArgs);
-    my $statsObj = new EST::Statistics(%statsArgs);
+    my $accObj = new EFI::EST::IdList(%accArgs);
+    my $seqObj = new EFI::EST::Sequence(%seqArgs);
+    my $metaObj = new EFI::EST::Metadata(%metaArgs);
+    my $statsObj = new EFI::EST::Statistics(%statsArgs);
 
     return ($familyConfig, $dbh, $configFile, $seqObj, $accObj, $metaObj, $statsObj, \%otherConfig);
 }

@@ -16,7 +16,7 @@ use Getopt::Long;
 use EFI::Config;
 use EFI::Annotations;
 
-use AlignmentScore;
+use EFI::Util::AlignmentScore;
 
 
 my ($inputBlast, $inputFasta, $annoFile, $outputSsn, $title, $maxNumEdges, $dbver, $includeSeqs, $useMinEdgeAttr);

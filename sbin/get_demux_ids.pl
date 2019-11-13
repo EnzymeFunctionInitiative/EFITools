@@ -9,7 +9,7 @@ use lib "$FindBin::Bin/../lib";
 use List::MoreUtils qw(uniq);
 use Getopt::Long;
 
-use CdHitParser;
+use EFI::Util::CdHitParser;
 
 
 my ($cluster, $domain, $annoFile);
@@ -26,7 +26,7 @@ die "Need cluster" if not $cluster or not -f $cluster;
 die "Need struct" if not $annoFile;
 
 
-my $cp = new CdHitParser();
+my $cp = new EFI::Util::CdHitParser();
 
 #parse cluster file to get parent/child sequence associations
 open CLUSTER, $cluster or die "cannot open cdhit cluster file $cluster\n";

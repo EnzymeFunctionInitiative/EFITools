@@ -1,6 +1,6 @@
 
 
-package EST::IdList;
+package EFI::EST::IdList;
 
 
 sub new {

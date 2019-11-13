@@ -1,5 +1,5 @@
 
-package EFI::CdHitParser;
+package EFI::Util::CdHitParser;
 
 use strict;
 
@@ -43,7 +43,10 @@ sub parse_line {
 
 sub trim_name {
     my $name = shift;
-    return substr($name, 0, 19);
+    return $name;
+    # At one point we were truncating the name. I have no idea why this was happeneing, and it caused
+    # problems later -- the node IDs for edges were truncated in some cases when the domain option was.
+    #return substr($name, 0, 19);
 }
 
 sub finish {
@@ -75,22 +78,6 @@ sub get_clusters {
 
     return keys %{ $self->{tree} };
 }
-
-sub parse_file {
-    my $self = shift;
-    my $clusterFile = shift;
-
-    #parse cluster file to get parent/child sequence associations
-    open CLUSTER, $clusterFile or die "cannot open cdhit cluster file $clusterFile: $!";
-    
-    while (<CLUSTER>) {
-        $self->parse_line($_);
-    }
-    $self->finish;
-    
-    close CLUSTER;
-}
-
 
 1;
 

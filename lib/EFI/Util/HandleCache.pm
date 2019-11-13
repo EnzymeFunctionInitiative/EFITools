@@ -1,5 +1,5 @@
 
-package HandleCache;
+package EFI::Util::HandleCache;
 
 
 sub new {

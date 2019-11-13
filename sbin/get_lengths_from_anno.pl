@@ -11,9 +11,9 @@ use lib "$FindBin::Bin/../lib";
 
 use Getopt::Long;
 
-use FileUtil;
+use EFI::Util::FileUtil;
 use EFI::Database;
-use EST::LengthHistogram;
+use EFI::LengthHistogram;
 
 
 
@@ -48,7 +48,7 @@ my $dbh = $db->getHandle();
 
 
 # Contains the attributes for each UniRef cluster ID
-my $annoMap = FileUtil::read_struct_file($annoFile);
+my $annoMap = EFI::Util::FileUtil::read_struct_file($annoFile);
 my @metaIds = grep m/^[^z]/, keys %$annoMap;
 my @unkIds = grep m/^z/, keys %$annoMap; # unknown IDs (e.g. zzz*)
 
@@ -65,7 +65,7 @@ if ($expandUniref) {
 }
 
 
-my $histo = new EST::LengthHistogram(incfrac => $incfrac);
+my $histo = new EFI::LengthHistogram(incfrac => $incfrac);
 
 while (@metaIds) {
     my @batch = splice(@metaIds, 0, 50);

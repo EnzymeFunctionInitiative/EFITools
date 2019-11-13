@@ -1,5 +1,5 @@
 
-package FileUtil;
+package EFI::Util::FileUtil;
 
 
 sub read_length_file {

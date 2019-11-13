@@ -10,9 +10,9 @@ use Getopt::Long;
 use Data::Dumper;
 
 use EFI::Annotations;
-use EST::Setup;
-use EST::Family;
-use EST::BLAST;
+use EFI::EST::Setup;
+use EFI::EST::Family;
+use EFI::EST::BLAST;
 
 
 my ($familyConfig, $dbh, $configFile, $seqObj, $accObj, $metaObj, $statsObj) = setupConfig();
@@ -34,7 +34,7 @@ my $familyStats = {};
 my $unirefMap = {};
 
 if (exists $familyConfig->{data}) {
-    my $famData = new EST::Family(dbh => $dbh);
+    my $famData = new EFI::EST::Family(dbh => $dbh);
     $famData->configure($familyConfig);
     $famData->retrieveFamilyAccessions();
     $familyIds = $famData->getSequenceIds();
@@ -44,8 +44,8 @@ if (exists $familyConfig->{data}) {
 }
 
 
-my %blastArgs = EST::BLAST::getBLASTCmdLineArgs();
-my $blastData = new EST::BLAST();
+my %blastArgs = EFI::EST::BLAST::getBLASTCmdLineArgs();
+my $blastData = new EFI::EST::BLAST();
 $blastData->configure(%blastArgs);
 $blastData->parseFile();
 
@@ -56,7 +56,7 @@ my $userStats = $blastData->getStatistics();
 my $userSeq = $blastData->getQuerySequence();
 
 my $inputIdSource = {};
-$inputIdSource->{$EST::BLAST::INPUT_SEQ_ID} = $EST::BLAST::INPUT_SEQ_TYPE;
+$inputIdSource->{$EFI::EST::BLAST::INPUT_SEQ_ID} = $EFI::EST::BLAST::INPUT_SEQ_TYPE;
 
 
 #map { print "B\t$_\n"; } keys %$userIds;

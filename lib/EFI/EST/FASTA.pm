@@ -1,5 +1,5 @@
 
-package EST::FASTA;
+package EFI::EST::FASTA;
 
 use strict;
 use warnings;
@@ -11,7 +11,7 @@ use lib dirname(abs_path(__FILE__)) . "/../";
 use Data::Dumper;
 use Getopt::Long qw(:config pass_through);
 
-use parent qw(EST::Base);
+use parent qw(EFI::EST::Base);
 
 
 use EFI::Fasta::Headers;

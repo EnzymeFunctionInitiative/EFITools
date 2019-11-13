@@ -1,5 +1,5 @@
 
-package EST::Accession;
+package EFI::EST::Accession;
 
 use strict;
 use warnings;
@@ -14,7 +14,7 @@ use List::MoreUtils qw(uniq);
 
 use EFI::IdMapping;
 
-use parent qw(EST::Base);
+use parent qw(EFI::EST::Base);
 
 
 sub new {
@@ -94,7 +94,7 @@ sub parseFile {
 
     $self->{data}->{ids} = \%rawIds;
 
-    my $idMapper = new EFI::IdMapping(config_file_path => $self->{config_file_path});
+    my $idMapper = new EFI::IdMapping(config_file_path => $self->{config_file_path}, uniprot_check => 1);
     $self->reverseLookupManualAccessions($idMapper);
 
     if ($self->{config}->{exclude_fragments}) {

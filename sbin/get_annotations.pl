@@ -14,7 +14,7 @@ use EFI::Config;
 use EFI::Annotations;
 use EFI::IdMapping::Util;
 
-use FileUtil;
+use EFI::Util::FileUtil;
 
 
 
@@ -71,7 +71,7 @@ if ($unirefVersion) {
 }
 
 
-my $idMeta = FileUtil::read_struct_file($metaFileIn);
+my $idMeta = EFI::Util::FileUtil::read_struct_file($metaFileIn);
 
 my $unirefLenFiltWhere = "";
 my $sqlLenField = EFI::Annotations::FIELD_SEQ_LEN_KEY;

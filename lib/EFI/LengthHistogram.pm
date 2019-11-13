@@ -1,5 +1,5 @@
 
-package EST::LengthHistogram;
+package EFI::LengthHistogram;
 
 use strict;
 use warnings;

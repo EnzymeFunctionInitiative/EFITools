@@ -12,7 +12,7 @@ use Getopt::Long;
 use Statistics::R;
 use Data::Dumper;
 
-use HandleCache;
+use EFI::Util::HandleCache;
 
 
 my ($blastfile, $edgesFile, $lenhist, $rdata, $fasta, $incfrac, $evalueFile);
@@ -44,7 +44,7 @@ my %metadata;
 my %evalueEdges;
 
 
-my $hc = new HandleCache(basedir => $rdata);;
+my $hc = new EFI::Util::HandleCache(basedir => $rdata);;
 
 #my $LenHistFH = cacheout($lenhist) or die "could not write to length histogram file ($lenhist): $!\n";
 #my $EdgesFH = cacheout($edgesFile) or die "could not wirte to edges file ($edgesFile): $!\n";

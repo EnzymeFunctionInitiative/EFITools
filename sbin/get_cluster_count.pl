@@ -9,7 +9,7 @@ use lib "$FindBin::Bin/../lib";
 use List::MoreUtils qw(uniq);
 use Getopt::Long;
 
-use CdHitParser;
+use EFI::Util::CdHitParser;
 
 
 my ($cluster, $seqId, $seqLen);
@@ -24,7 +24,7 @@ die "Need cluster input" if not $cluster or not -f $cluster;
 die "Need id input" if not $seqId;
 die "Need len input" if not $seqLen;
 
-my $cp = new CdHitParser();
+my $cp = new EFI::Util::CdHitParser();
 
 #parse cluster file to get parent/child sequence associations
 open CLUSTER, $cluster or die "cannot open cdhit cluster file $cluster\n";

@@ -323,6 +323,12 @@ sub addDatabaseEnvVars {
 }
 
 
+sub getBlastDbDir {
+    my $self = shift;
+    return $self->{db}->{blast}->{blast_db_dir};
+}
+
+
 sub addBlastEnvVars {
     my $self = shift;
     my $B = shift;
@@ -331,7 +337,8 @@ sub addBlastEnvVars {
     $type = "uniprot" if not $type or $type ne "uniref50" and $type ne "uniref90";
     my $varName = uc($type);
 
-    $B->addAction("export EFI_DB_DIR=" . $self->{db}->{blast}->{blast_db_dir});
+    my $dbDir = $self->getBlastDbDir();
+    $B->addAction("export EFI_DB_DIR=$dbDir");
     my $name = $self->{db}->{blast}->{"${type}_db"} // "";
     #TODO: handle error if the db doesn't exist
     $B->addAction("export EFI_${varName}_DB=$name");
