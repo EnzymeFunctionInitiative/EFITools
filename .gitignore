@@ -1,4 +1,7 @@
 efi.cfg
 efi.config
+efi.conf
 tests/test.config
 tests/testEnvironment.sh
+test/tmp
+
