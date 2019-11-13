@@ -1,15 +1,13 @@
 #!/usr/bin/perl -w
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
 use strict;
 
 use Cwd;
 use FindBin;
 use Getopt::Long;
+
+use lib "$FindBin::Bin/../../lib";
+
 use EFI::IdMapping::Builder;
 use EFI::Database;
 

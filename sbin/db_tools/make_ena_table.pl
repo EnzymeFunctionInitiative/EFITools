@@ -1,10 +1,5 @@
 #!/usr/bin/env perl
 
-BEGIN {
-    die "Please load efishared before runing this script" if not $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
 #example
 #make_ena_table.pl -embl /home/mirrors/embl/Release_XXX -pro enaOutDir/pro.tab -fun enaOutDir/fun.tab -env enaOutDir/env.tab
 #                  -com enaOutDir/com.tab -pfam EFI_DB/PFAM.tab
@@ -23,6 +18,7 @@ use FindBin;
 use Getopt::Long;
 use List::MoreUtils qw{apply uniq any} ;
 
+use lib "$FindBin::Bin/../../lib";
 use lib "$FindBin::Bin/lib";
 
 use IdMappingFile;
