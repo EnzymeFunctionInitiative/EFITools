@@ -50,3 +50,8 @@ module load BLAST+
 [environment.est-color]
 module load efiest/efitools/devlocal
 
+[environment.build]
+module load BLAST
+module load Perl
+module load libxml2
+

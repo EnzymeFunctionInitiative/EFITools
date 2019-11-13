@@ -5,16 +5,15 @@ use warnings;
 
 use FindBin;
 use Cwd qw(abs_path);
-use File::Basename qw(dirname);
-use lib abs_path("$FindBin::Bin/../lib");
-
 use Getopt::Long;
+
+use lib "$FindBin::Bin/../../lib";
 
 use EFI::SchedulerApi;
 use EFI::Util qw(getSchedulerType usesSlurm);
 use EFI::Util::FileHandle;
 use EFI::Database;
-use EFI::Config qw(database_configure);
+use EFI::Config qw(database_configure parseConfigFile);
 
 use constant BUILD_ENA => 2;
 use constant BUILD_COUNTS => 4;
@@ -29,12 +28,12 @@ my $skipIfExists = 0;
 my $scheduler = "";
 my $queue;
 my $configFile;
+my $buildConfigFile;
 my $sql;
 my $batchMode;
 my $noSubmit;
 my $dbName;
 my $buildEna;
-my $Legacy;
 my $enaDir;
 my $buildCountsOnly;
 my $doPdbBlast;
@@ -46,10 +45,10 @@ my $result = GetOptions("dir=s"         => \$WorkingDir,
                         "log=s"         => \$logFile,
                         "dry-run|dryrun"    => \$dryRun,
                         "exists"        => \$skipIfExists,
-                        "bc1"           => \$Legacy,        # configures the scripts to work with biocluster 1 instead of biocluster 2
                         "scheduler=s"   => \$scheduler,     # to set the scheduler to slurm
                         "queue=s"       => \$queue,
                         "config=s"      => \$configFile,
+                        "build-config=s"    => \$buildConfigFile,
                         "sql"           => \$sql,           # only output the SQL commands for importing data. no other args are required to use this option.
                         "no-prompt"     => \$batchMode,     # run without the GOLD version prompt
                         "no-submit"     => \$noSubmit,      # create the job scripts but don't submit them
@@ -64,33 +63,34 @@ my $result = GetOptions("dir=s"         => \$WorkingDir,
 
 my $usage = <<USAGE;
 Usage: $0
-    -dir=working_dir [-download -interactive -log=log_file -dryrun -exists -scheduler=scheduler
-    -queue=queue -config=config_file -sql -no-prompt -no-submit -db-name=database_name -build-ena]
+    --dir=working_dir [-download --interactive --log=log_file --dryrun --exists --scheduler=scheduler
+    --queue=queue --config=config_file --sql --no-prompt --no-submit --db-name=database_name --build-ena]
 
-    -download       only create the script for downloading the input files
-    -build-ena      build the ENA database table only, db-name must already be created and idmapping table
+    --download      only create the script for downloading the input files
+    --build-ena     build the ENA database table only, db-name must already be created and idmapping table
                     must have been imported into the database
-    -sql            only output sql commands used for importing data into database, nothing else is done
-    -build-counts   build the family count table that needs to be imported into the EFI web server database
+    --sql           only output sql commands used for importing data into database, nothing else is done
+    --build-counts  build the family count table that needs to be imported into the EFI web server database
                     (not the database that the rest of the files here get imported into)
 
-    -dir            directory to create build structure and download/build database tables in
-    -ena-dir        the directory that contains the ENA mirror (should have folders pro, std, etc. in it)
-    -db-name        the name of the database to create/use
-    
-    -log            path to log file (defaults to build directory)
-    -dryrun         don't do anything, just display all commands to be executed to the console
-    -exists         skip any output or intermediate files that already exist
-    -no-prompt      don't prompt the user to confirm the GOLD data version
-    -no-submit      create all of the job files but don't submit them
+    --dir           directory to create build structure and download/build database tables in
+    --ena-dir       the directory that contains the ENA mirror (should have folders pro, std, etc. in it)
+    --db-name       the name of the database to create/use
+     
+    --log           path to log file (defaults to build directory)
+    --dryrun        don't do anything, just display all commands to be executed to the console
+    --exists        skip any output or intermediate files that already exist
+    --no-prompt     don't prompt the user to confirm the GOLD data version
+    --no-submit     create all of the job files but don't submit them
 
-    -bc1            configure the scripts to work with biocluster1 instead of biocluster 2
-    -scheduler      specify the scheduler to use (defaults to slurm, can be torque)
-    -queue          the cluster queue to use for computation
+    --bc1           configure the scripts to work with biocluster1 instead of biocluster 2
+    --scheduler     specify the scheduler to use (defaults to slurm, can be torque)
+    --queue         the cluster queue to use for computation
 
-    -db-type        type of database to write SQL commands for (optional); mysql or sqlite
+    --db-type       type of database to write SQL commands for (optional); mysql or sqlite
 
-    -config         path to configuration file (defaults to EFICONFIG env var, if present)
+    --config        path to EFI database configuration file 
+    --build-config  path to EFI build configuration file 
 
 USAGE
 
@@ -106,18 +106,33 @@ if (not $WorkingDir) {
     }
 }
 
-die "The BLASTDB environment variable must be present. Did you forget to \"module load BLAST\" before running this program?\n" if not exists $ENV{BLASTDB};
-die "The EFI_DB_HOME environment variable must be present. Did you forget to \"module load efidb\" before running this program?\n" if not exists $ENV{EFI_DB_HOME};
-die "The --db-name parameter is required.\n" if not $dbName and not ($buildEna or $doDownload or $buildCountsOnly);
-die "The --queue parameter is required.\n" if not $queue and not ($sql or $doDownload or $buildCountsOnly);
 
+$configFile = "$FindBin::Bin/../../conf/efi.conf" if not $configFile;
+my $config = parseConfigFile($configFile);
+my $dbConfig = database_configure($configFile);
 
 $doPdbBlast = defined $doPdbBlast;
 $dbType = "mysql" if not $dbType;
+$queue = $config->{cluster}->{queue} if not $queue and $config->{cluster}->{queue};
+my $dbHome = $dbConfig->{db_home} // $ENV{EFI_DB_HOME} // "";
+
+die "The BLASTDB environment variable must be present. Did you forget to \"module load BLAST\" before running this program?" if not exists $ENV{BLASTDB} and $doPdbBlast;
+die "The EFI database home variable must be present either through argument or present in config file." if not $dbHome;
+die "The --db-name parameter is required." if not $dbName and not ($buildEna or $doDownload or $buildCountsOnly);
+die "The --queue parameter is required." if not $queue and not ($sql or $doDownload or $buildCountsOnly);
+
+
+$buildConfigFile = "$FindBin::Bin/../../conf/build.conf" if not $buildConfigFile;
+die "The --build-config file parameter must be specified" if not $buildConfigFile or not -f $buildConfigFile;
+
+my $buildConfig = parseConfigFile($buildConfigFile);
+
+
+
 
 
 # Various directories and files.
-my $DbSupport = $ENV{EFI_DB_HOME} . "/support";
+my $DbSupport = "$dbHome/support";
 $WorkingDir = abs_path($WorkingDir);
 my $ScriptDir = $FindBin::Bin;
 my $BuildDir = "$WorkingDir/build";
@@ -127,12 +142,6 @@ my $CompletedFlagFile = "$BuildDir/progress/completed";
 my $LocalSupportDir = "$BuildDir/support";
 my $CombinedDir = "$BuildDir/combined";
 my $PdbBuildDir = "$BuildDir/pdbblast";
-my $DbMod = $ENV{EFIDBMOD};
-my $EstMod = $ENV{EFIESTMOD};
-$Legacy = defined $Legacy ? 1 : 0;
-my $PerlMod = $Legacy ? "perl" : "Perl";
-my $BlastMod = $Legacy ? "blast" : "BLAST";
-my $DiamondMod = "DIAMOND/0.9.24-IGB-gcc-8.2.0"; # This needs to match the lmod version
 
 
 # Number of processors to use for the blast job.
@@ -147,8 +156,6 @@ mkdir $LocalSupportDir if not -d $LocalSupportDir;
 mkdir $CombinedDir if not -d $CombinedDir;
 mkdir $PdbBuildDir if not -d $PdbBuildDir;
 mkdir "$PdbBuildDir/output" if not -d "$PdbBuildDir/output";
-
-$configFile = $ENV{EFICONFIG} if not $configFile and exists $ENV{EFICONFIG};
 
 
 # Setup logging. Also redirect stderr to console stdout.
@@ -169,7 +176,6 @@ $buildOptions = $buildOptions | BUILD_COUNTS if $buildCountsOnly;
 
 my %dbArgs;
 $dbArgs{config_file_path} = $configFile if (defined $configFile and -f $configFile);
-my $DB = new EFI::Database(%dbArgs);
 
 
 # Output the sql commands necessary for creating the database and importing the data, then exit.
@@ -186,13 +192,11 @@ my $DoSubmit = not defined $noSubmit;
 
 
 # Get info from the configuration file.
-my $config = {};
-database_configure($config, %dbArgs);
-my $UniprotLocation = $config->{build}->{uniprot_url};
-my $InterproLocation = $config->{build}->{interpro_url};
-my $TaxonomyLocation = $config->{tax}->{remote_url};
-my $IpRange = $config->{db}->{ip_range};
-my $DbUser = $config->{db}->{user};
+my $UniprotLocation = $buildConfig->{build}->{uniprot_url};
+my $InterproLocation = $buildConfig->{build}->{interpro_url};
+my $TaxonomyLocation = $buildConfig->{build}->{taxonomy_url};
+my $IpRange = $dbConfig->{db}->{ip_range} // "";
+my $DbUser = $dbConfig->{db}->{user} // "";
 
 # Set up the scheduler API.
 
@@ -322,9 +326,6 @@ sub submitIdMappingJob {
     my $file = "$BuildDir/$fileNum-idmapping.sh";
     $B->dependency(0, $depId);
    
-    $B->addAction("module load $PerlMod");
-    $B->addAction("module load $DbMod");
-    $B->addAction("module load $EstMod");
     $B->addAction("perl $ScriptDir/import_id_mapping.pl $configParam -input $InputDir/idmapping.dat -output $OutputDir/idmapping.tab");
     $B->addAction("date > $CompletedFlagFile.$fileNum-idmapping\n");
    
@@ -343,8 +344,8 @@ sub submitEnaJob {
     my $file = "$BuildDir/$fileNum-ena.sh";
     
     $B->resource(1, 1, "300gb");
-    $B->addAction("module load $PerlMod");
-    $B->addAction("module load $DbMod");
+
+    addStandardEnv($B);
    
     my $enaDir = "$BuildDir/ena"; 
     mkdir $enaDir unless(-d $enaDir);
@@ -376,8 +377,7 @@ sub submitFinalFileJob {
     my $file = "$BuildDir/$fileNum-finalFiles.sh";
     $B->dependency(0, $depId);
     
-    addLibxmlIfNecessary($B);
-    $B->addAction("module load $PerlMod");
+    addStandardEnv($B);
     
     mkdir "$BuildDir/match_complete" unless(-d "$BuildDir/match_complete");
     
@@ -409,8 +409,7 @@ sub submitBuildCountsJob {
     $B->dependency(0, $depId);
     $B->resource(1, 1, "200gb");
     
-    addLibxmlIfNecessary($B);
-    $B->addAction("module load $PerlMod");
+    addStandardEnv($B);
     
     if (not $skipIfExists or not -f "$OutputDir/family_counts.tab") {
         $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/PFAM.tab -output $OutputDir/family_counts.tab -type PFAM -uniref $OutputDir/uniref.tab -merge-domain -clans $InputDir/Pfam-A.clans.tsv");
@@ -450,8 +449,7 @@ sub submitBuildUnirefJob {
     $B->dependency(0, $depId);
     $B->resource(1, 1, "350gb");
     
-    addLibxmlIfNecessary($B);
-    $B->addAction("module load $PerlMod");
+    addStandardEnv($B);
     
     if (not $skipIfExists or not -f "$OutputDir/uniref.tab") {
         my $urDir = "$BuildDir/uniref";
@@ -492,10 +490,7 @@ sub submitFormatDbAndSplitFastaJob {
 
     $B->workingDirectory($dbDir);
     
-    $B->addAction("module load $BlastMod");
-    $B->addAction("module load $EstMod");
-    $B->addAction("module load $PerlMod");
-    $B->addAction("module load $DiamondMod");
+    addStandardEnv($B);
     
     #build fasta database
     if (not $skipIfExists or not -f "$dbDir/formatdb.log") {
@@ -543,8 +538,7 @@ sub submitBlastJob {
     my $version = $dirs[-1];
     my $dbPath = $ENV{BLASTDB} . "/../" . $version;
 
-    $B->addAction("module load $BlastMod");
-    $B->addAction("module load $PerlMod");
+    addStandardEnv($B);
     if (not $skipIfExists or not -f "$pdbBuildDir/output/blastout-1.fa.tab") {
         $B->addAction("blastall -p blastp -i $pdbBuildDir/fractions/fracfile-\${JOB_ARRAYID}.fa -d $dbPath/pdbaa -m 8 -e 1e-20 -b 1 -o $pdbBuildDir/output/blastout-\${JOB_ARRAYID}.fa.tab");
         $B->addAction("date > $CompletedFlagFile.blastall\n");
@@ -566,11 +560,7 @@ sub submitCatBlastJob {
     $B->workingDirectory($pdbBuildDir);
     $B->dependency(0, $depId);
 
-    my @dirs = sort grep(m%^\d+$%, map { s%^.*\/(\d+)\/?%$1%; $_ } glob($ENV{BLASTDB} . "/../*"));
-    my $version = $dirs[-1];
-    my $dbPath = $ENV{BLASTDB} . "/../" . $version;
-
-    $B->addAction("module load $PerlMod");
+    addStandardEnv($B);
 
     if (not $skipIfExists or not -f "$pdbBuildDir/pdb.tab") {
         $B->addAction("cat $pdbBuildDir/output/*.tab > $pdbBuildDir/pdb.full.tab");
@@ -597,8 +587,7 @@ sub submitTaxonomyJob {
 
     $B->dependency(0, $depId);
 
-    addLibxmlIfNecessary($B);
-    $B->addAction("module load $PerlMod");
+    addStandardEnv($B);
     $B->addAction("$ScriptDir/make_taxonomy_table.pl -input $InputDir/taxonomy.xml -output $OutputDir/taxonomy.tab -verbose");
 
     $B->outputBaseFilepath($file);
@@ -671,8 +660,8 @@ sub submitDownloadJob {
         $B->addAction("curl -sS $UniprotLocation/uniref/uniref90/uniref90.xml.gz > $InputDir/uniref90.xml.gz");
         $B->addAction("date > $CompletedFlagFile.uniref90.xml\n");
     }
-    my $pfamInfoUrl = $config->{build}->{pfam_info_url};
-    my $clanInfoUrl = exists $config->{build}->{clan_info_url} ? $config->{build}->{clan_info_url} : "";
+    my $pfamInfoUrl = $buildConfig->{build}->{pfam_info_url};
+    my $clanInfoUrl = exists $buildConfig->{build}->{clan_info_url} ? $buildConfig->{build}->{clan_info_url} : "";
     if (not $skipIfExists or not -f "$InputDir/Pfam-A.clans.tsv.gz" and not -f "$InputDir/Pfam-A.clans.tsv") {
         logprint "#  Downloading $pfamInfoUrl\n";
         $B->addAction("echo Downloading Pfam-A.clans.tsv.gz");
@@ -714,7 +703,8 @@ sub submitUnzipJob {
 
     $B->dependency(0, $depId);
     $B->mailError();
-    $B->addAction("module load $PerlMod");
+
+    addStandardEnv($B);
 
     waitForInput();
 
@@ -805,7 +795,8 @@ sub submitAnnotationsJob {
 
     $B->resource(1, 1, "150gb");
     $B->dependency(0, $depId);
-    $B->addAction("module load $PerlMod");
+
+    addStandardEnv($B);
 
     waitForInput();
 
@@ -1038,6 +1029,7 @@ SQL
     $writeSqlSub->($sqlFile, $sql) if not ($buildOptions & BUILD_COUNTS);
 
 
+    my $DB = new EFI::Database(%dbArgs);
     my $mysqlCmd = $DB->getCommandLineConnString();
     (my $mysqlCmdAdmin = $mysqlCmd) =~ s/mysql /mysqladmin /g;
     my $batchFile = "$BuildDir/$fileNum-runDatabaseActions.sh";
@@ -1117,8 +1109,8 @@ if [ -f $CompletedFlagFile.mysql_import-base ]; then
     echo "to override this check.";
 else
 
-    mysql: grant select on `efi_201903`.* to 'efidevel'@'172.16.28.0/255.255.252.0';
-    mysql: grant select on `efi_201903`.* to 'efignn'@'172.16.28.0/255.255.252.0';
+    mysql: grant select on `efi_201903`.* to 'efidevel'\@'172.16.28.0/255.255.252.0';
+    mysql: grant select on `efi_201903`.* to 'efignn'\@'172.16.28.0/255.255.252.0';
     $mysqlCmdAdmin create $dbName
     $mysqlCmd $dbName < $sqlFile > $BuildDir/mysqlOutput-base.txt
 
@@ -1158,10 +1150,12 @@ sub waitForInput {
 }
 
 
-sub addLibxmlIfNecessary {
+sub addStandardEnv {
     my $B = shift;
-
-    $B->addAction("module load libxml2") if not $Legacy;
+    return if not $config->{"environment.build"}->{_raw};
+    foreach my $module (@{$config->{"environment.build"}->{_raw}}) {
+        $B->addAction($module);
+    }
 }
 
 

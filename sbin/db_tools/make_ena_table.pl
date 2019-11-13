@@ -212,7 +212,6 @@ $result = GetOptions(
     "idmapping=s"   => \$idMappingFile,
     "v"             => \$verbose,
     "log=s"         => \$log,
-    "config=s"      => \$configFile,
     "legacy-wgs"    => \$legacyWgs,
     "debug=s"       => \$debugParseFile,
     "append"        => \$appendOutput,
@@ -221,14 +220,6 @@ $result = GetOptions(
 $appendOutput = defined($appendOutput);
 
 my $baseDir = $ENV{PWD};
-
-# We're not currently using the EFI database for reverse lookups, rather we're using the flat file so this
-# config file is now optional.
-#if (not $configFile or not -f $configFile) {
-#    $configFile = $ENV{EFICONFIG};
-#}
-#die "This script requires that a config file be provided via the -config=file argument." if not -f $configFile; 
-#my $idMapper = new EFI::IdMapping(config_file_path => $configFile);
 
 my $idMapper = new IdMappingFile(); #Same signature as EFI::IdMapping
 $idMapper->parseTable($idMappingFile) if $idMappingFile and -f $idMappingFile;# and not -f $debugParseFile;

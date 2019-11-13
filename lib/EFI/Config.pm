@@ -161,6 +161,7 @@ sub validateDatabaseConfig {
     $conf->{ip_range} = $config->{database}->{ip_range} // "";
     $conf->{dbi} = $config->{database}->{dbi} // $defaultDbi;
     $conf->{name} = $config->{database}->{name} // "";
+    $conf->{db_home} = $config->{database}->{db_home} // "";
 
     # Override the name from the environment if the environment provides a database name and DBI
     $conf->{name} = $ENV{&ENVIRONMENT_DB} if $ENV{&ENVIRONMENT_DB};

@@ -422,7 +422,9 @@ sub new {
     push(@{ $self->{resource} }, 1) if scalar @{ $self->{resource} } < 2;
     push(@{ $self->{resource} }, "20gb") if scalar @{ $self->{resource} } < 3;
 
-    if (exists $args{dryrun} or $args{dry_run}) {
+    if (exists $args{dryrun}) {
+        $self->{dry_run} = $args{dryrun};
+    } elsif (exists $args{dry_run}) {
         $self->{dry_run} = $args{dry_run};
     } else {
         $self->{dry_run} = 0;
