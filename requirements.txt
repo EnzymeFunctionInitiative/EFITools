@@ -20,5 +20,7 @@ Time::HiRes           => 1.9742
 Storable              => 2.56
 Scalar::Util          => 1.45
 Array::Utils          => 0.5
-
+Config::IniFiles      => 3.000002
+Statistics::Descriptive => 3.0702
+GD::Graph::boxplot    => 1.0
 

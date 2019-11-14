@@ -1,4 +1,3 @@
-library("rhdf5")
 
 args <- commandArgs(trailingOnly = TRUE)
 type = args[1]
@@ -13,6 +12,7 @@ stop = 0
 maxy = 0
 
 if (type == "hdf5") {
+    library("rhdf5")
     start <- h5read(data_file,"/stats/start")
     stop <- h5read(data_file,"/stats/stop")
     maxy <- h5read(data_file,"/stats/maxy")

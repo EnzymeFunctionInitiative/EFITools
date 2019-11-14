@@ -1,4 +1,3 @@
-library("rhdf5")
 
 args <- commandArgs(trailingOnly = TRUE)
 type = args[1]
@@ -12,6 +11,7 @@ start = 0
 stop = 0
 
 if (type == "hdf5") {
+    library("rhdf5")
     plot_data = h5read(data_file,"/edgehisto")
     start <- h5read(data_file,"/stats/start")
     stop <- h5read(data_file,"/stats/stop")

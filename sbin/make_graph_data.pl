@@ -9,7 +9,6 @@ use lib "$FindBin::Bin/../lib";
 use GD::Graph::boxplot;
 use GD;
 use Getopt::Long;
-use Statistics::R;
 use Data::Dumper;
 
 use EFI::Util::HandleCache;

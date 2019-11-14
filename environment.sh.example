@@ -1,0 +1,6 @@
+#!/bin/bash
+
+module load perl
+export PERL5LIB=
+export PATH=
+

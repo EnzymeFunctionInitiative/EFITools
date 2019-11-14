@@ -1,4 +1,3 @@
-library("rhdf5")
 library(Hmisc)
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -14,6 +13,7 @@ stop = 0
 a_scores = vector()
 
 if (type == "hdf5") {
+    library("rhdf5")
     start <- h5read(data_file,"/stats/start")
     stop <- h5read(data_file,"/stats/stop")
 
