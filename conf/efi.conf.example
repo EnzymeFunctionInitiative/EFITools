@@ -22,6 +22,7 @@ mem_queue=
 scheduler=slurm
 ; =yes means to create a script that runs all of the actions in serial mode, i.e. for a single computer.
 serial=no
+scratch_dir=/scratch
 
 ; Anytime the "est-std" environment is requested by the scripts, the following directives are inserted
 ; into the job script.

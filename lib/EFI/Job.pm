@@ -111,11 +111,14 @@ sub addClusterConfig {
 
     my $numSysCpu = getSystemSpec()->{num_cpu} - 1;
     my $autoSched = getSchedulerType();
+    my $defaultScratch = "/scratch";
+
     $conf->{np} = $config->{cluster}->{np} // $numSysCpu;
     $conf->{queue} = $config->{cluster}->{queue} // "";
     $conf->{mem_queue} = $config->{cluster}->{mem_queue} // $conf->{queue};
     $conf->{scheduler} = $config->{cluster}->{scheduler} // $autoSched;
     $conf->{run_serial} = ($config->{cluster}->{serial} and $config->{cluster}->{serial} eq "yes") ? 1 : 0;
+    $conf->{scratch_dir} = $config->{cluster}->{scratch_dir} // $defaultScratch;
 
     return "No queue is provided in configuration file." if not $conf->{queue};
 }
@@ -255,8 +258,7 @@ sub requestHighMemQueue {
 
 sub getScratchDir {
     my $self = shift;
-    #TODO: put this in conf file?
-    return "/scratch";
+    return $self->{cluster}->{scratch_dir};
 }
 
 
