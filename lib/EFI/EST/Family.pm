@@ -197,7 +197,6 @@ sub getDomainFromDb {
 
     foreach my $family (@families) {
         my $sql = "SELECT $table.accession AS accession, start, end $unirefCol $spCol FROM $table $unirefJoin $whereJoin WHERE $table.id = '$family' $fragWhere";
-        print "SQL $sql\n";
         my $sth = $self->{dbh}->prepare($sql);
         $sth->execute;
         my $ac = 1;
