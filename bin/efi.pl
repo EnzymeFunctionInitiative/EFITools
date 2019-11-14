@@ -61,8 +61,8 @@ foreach my $jobInfo (@jobs) {
     foreach my $dep (@jobDeps) {
         my $isArray = 0;
         if (ref($dep) eq "HASH") {
-            $dep = $dep->{obj};
             $isArray = $dep->{is_job_array};
+            $dep = $dep->{obj};
         }
         if ($jobIds{$dep}) {
             $jobObj->dependency($isArray, $jobIds{$dep});

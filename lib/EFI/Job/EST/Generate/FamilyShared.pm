@@ -101,7 +101,7 @@ sub createJobs {
     push @jobs, {job => $job5, deps => [$job4], name => "blastqsub"};
     
     my $job6 = $self->getCatJob($S);
-    push @jobs, {job => $job6, deps => [$job5], name => "catjob"};
+    push @jobs, {job => $job6, deps => [{obj => $job5, is_job_array => 1}], name => "catjob"};
     
     my $job7 = $self->getBlastReduceJob($S);
     push @jobs, {job => $job7, deps => [$job6], name => "blastreduce"};
