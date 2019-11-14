@@ -4,6 +4,10 @@ package EFI::Job;
 use strict;
 use warnings;
 
+use constant RUN => 1;
+use constant DRY_RUN => 2;
+use constant NO_SUBMIT => 4;
+
 use Cwd qw(abs_path);
 use File::Basename qw(dirname);
 use lib dirname(abs_path(__FILE__)) . "/../";
@@ -133,15 +137,13 @@ sub validateOptions {
     my $parms = shift;
     my $conf = shift;
 
-    my $defaultSerialScript = "$conf->{job_dir}/serial.sh";
-
     $conf->{job_id} = $parms->{"job-id"} // 0;
     $conf->{remove_temp} = $parms->{"remove-temp"} // 1;
     $conf->{dir_name} = $parms->{"dir-name"} // "output";
     $conf->{job_dir} = $parms->{"job-dir"} // "";
     $conf->{no_submit} = $parms->{"no-submit"} // 0;
     $conf->{dry_run} = $parms->{"dry-run"} // 0;
-    $conf->{serial_script} = $parms->{"serial-script"} // $defaultSerialScript;
+    $conf->{serial_script} = $parms->{"serial-script"} // "";
 
     if (not $conf->{job_dir}) {
         $conf->{job_dir} = $ENV{PWD};
@@ -299,7 +301,9 @@ sub getScheduler {
 
 sub getSubmitStatus {
     my $self = shift;
-    return (not $self->{conf}->{no_submit} and not $self->{cluster}->{dry_run});
+    return (DRY_RUN | NO_SUBMIT) if $self->{cluster}->{dry_run};
+    return NO_SUBMIT if $self->{conf}->{no_submit};
+    return RUN;
 }
 
 

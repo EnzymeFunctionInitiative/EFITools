@@ -169,15 +169,16 @@ sub renderToFile {
 
     $comment = $comment ? "$comment\n" : "";
 
-    my $targetFile = $filePath;
     if ($self->{output_dir_base} && not $self->{output_file_stdout}) {
         (my $fileName = $filePath) =~ s{^.*/([^/]+)$}{$1};
-        $targetFile = $self->{output_dir_base} . "/" . $fileName;
+        $self->outputBaseFilepath($self->{output_dir_base} . "/" . $fileName);
+    } elsif (not $self->{output_file_stdout}) {
+        $self->outputBaseFilepath($filePath)
     }
 
     my $openMode = $self->{run_serial} ? ">>" : ">";
-    if ($self->{run_serial} and not $self->{output_file_stdout} and not -f $targetFile) {
-        initSerialScript($targetFile);
+    if ($self->{run_serial} and not $self->{output_file_stdout} and not -f $filePath) {
+        initSerialScript($filePath);
     }
 
     if ($self->{dry_run}) {

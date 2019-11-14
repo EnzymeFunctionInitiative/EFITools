@@ -44,7 +44,7 @@ my $S = $job->getScheduler();
 my $doSubmit = $job->getSubmitStatus();
 
 my ($scriptDir, $logDir, $outputDir) = ("", "", "");
-($scriptDir, $logDir, $outputDir) = $job->createJobStructure() if $doSubmit;
+($scriptDir, $logDir, $outputDir) = $job->createJobStructure() if not ($doSubmit & EFI::Job::DRY_RUN);
 
 my @jobs = $job->createJobs();
 my $jobId = $job->getJobId();
@@ -72,7 +72,7 @@ foreach my $jobInfo (@jobs) {
     $jobObj->jobName("$jobNamePrefix$jobName");
     $jobObj->renderToFile($jobFile);
     my $jobId = 1;
-    if ($doSubmit) {
+    if ($doSubmit & EFI::Job::RUN) {
         $jobId = $S->submit($jobFile);
         chomp $jobId;
         ($jobId) = split(m/\./, $jobId);
