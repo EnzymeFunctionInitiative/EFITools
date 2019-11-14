@@ -19,6 +19,7 @@ diamond_db_dir=
 np=48
 queue=
 mem_queue=
+;scheduler=slurm|torque|pbspro
 scheduler=slurm
 ; =yes means to create a script that runs all of the actions in serial mode, i.e. for a single computer.
 serial=no
