@@ -41,6 +41,7 @@ sub new {
         "dir-name|tmp=s",
         "job-dir|out-dir=s",
         "no-submit", # create the script files but don't submit them
+        "serial-script=s", # file to place the serial execute commands into (has a default value)
     );
 
     my $homeDir = abs_path(dirname(__FILE__) . "/../../");
@@ -110,6 +111,7 @@ sub addClusterConfig {
     $conf->{queue} = $config->{cluster}->{queue} // "";
     $conf->{mem_queue} = $config->{cluster}->{mem_queue} // $conf->{queue};
     $conf->{scheduler} = $config->{cluster}->{scheduler} // $autoSched;
+    $conf->{run_serial} = ($config->{cluster}->{serial} and $config->{cluster}->{serial} eq "yes") ? 1 : 0;
 
     return "No queue is provided in configuration file." if not $conf->{queue};
 }
@@ -137,11 +139,14 @@ sub validateOptions {
     $conf->{job_dir} = $parms->{"job-dir"} // "";
     $conf->{no_submit} = $parms->{"no-submit"} // 0;
     $conf->{dry_run} = $parms->{"dry-run"} // 0;
+    $conf->{serial_script} = $parms->{"serial-script"} // "";
 
     if (not $conf->{job_dir}) {
         $conf->{job_dir} = $ENV{PWD};
         return "Results already exist in the current directory.  Please use the --job-dir flag to use this directory, or remove the results." if -d "$conf->{job_dir}/output";
     }
+
+    $conf->{serial_script} = "$conf->{job_dir}/serial.sh";
 
     return "";
 }
@@ -197,6 +202,12 @@ sub getOutputDir {
     my $self = shift;
     my $dir = $self->{conf}->{job_dir};
     $dir .= "/" . $self->{conf}->{dir_name} if $self->{conf}->{dir_name};
+}
+
+
+sub getSerialScript {
+    my $self = shift;
+    return $self->{conf}->{serial_script};
 }
 
 

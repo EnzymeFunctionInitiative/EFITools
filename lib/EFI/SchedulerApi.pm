@@ -169,13 +169,15 @@ sub renderToFile {
 
     $comment = $comment ? "$comment\n" : "";
 
-    my $openMode = $self->{run_serial} ? ">>" : ">";
-
+    my $targetFile = $filePath;
     if ($self->{output_dir_base} && not $self->{output_file_stdout}) {
         (my $fileName = $filePath) =~ s{^.*/([^/]+)$}{$1};
-        $self->outputBaseFilepath($self->{output_dir_base} . "/" . $fileName);
-    } elsif (not $self->{output_file_stdout}) {
-        $self->outputBaseFilepath($filePath);
+        $targetFile = $self->{output_dir_base} . "/" . $fileName;
+    }
+
+    my $openMode = $self->{run_serial} ? ">>" : ">";
+    if ($self->{run_serial} and not $self->{output_file_stdout} and not -f $targetFile) {
+        initSerialScript($targetFile);
     }
 
     if ($self->{dry_run}) {
@@ -187,6 +189,16 @@ sub renderToFile {
         $self->render($fh);
         close $fh;
     }
+}
+
+
+sub initSerialScript {
+    my $file = shift;
+    open my $fh, ">", $file or die "Unable to write to serial-script $file: $!";
+    print $fh "#!/bin/bash\n";
+    close $fh;
+
+    chmod 0755, $file;
 }
 
 

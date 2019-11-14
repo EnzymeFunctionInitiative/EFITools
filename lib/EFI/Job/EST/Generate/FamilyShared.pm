@@ -332,7 +332,18 @@ sub getBlastJob {
     $self->addStandardEnv($B);
 
     if ($conf->{blast_type} eq "blast") {
-        $B->addAction("blastall -p blastp -i $conf->{frac_dir}/fracfile-{JOB_ARRAYID}.fa -d $outputDir/database -m 8 -e $evalue -b $blasthits -o $conf->{blast_output_dir}/blastout-{JOB_ARRAYID}.fa.tab");
+        if ($self->getSerialScript()) {
+            my $scriptDir = $outputDir;
+            open my $fh, ">", "$scriptDir/blast.sh";
+            print $fh "#!/bin/bash\n";
+            $self->addStandardEnv(sub { $fh->print(shift); });
+            print $fh "blastall -p blastp -d $outputDir/database -m 8 -e $evalue -b $blasthits -o $conf->{blast_output_dir}/blastout-\$1.fa.tab -i $conf->{frac_dir}/fracfile-\$1.fa\n";
+            close $fh;
+            chmod 0755, "$scriptDir/blast.sh";
+            $B->addAction("echo {1..$np} | xargs -n 1 -P $np $scriptDir/blast.sh");
+        } else {
+            $B->addAction("blastall -p blastp -i $conf->{frac_dir}/fracfile-{JOB_ARRAYID}.fa -d $outputDir/database -m 8 -e $evalue -b $blasthits -o $conf->{blast_output_dir}/blastout-{JOB_ARRAYID}.fa.tab");
+        }
     } elsif ($conf->{blast_type} eq "blast+") {
         map { $B->addAction($_); } $self->getEnvironment("est-blast+");
         $B->addAction("blastp -query $conf->{filt_seq_file} -num_threads $np -db $outputDir/database -gapopen 11 -gapextend 1 -comp_based_stats 2 -use_sw_tback -outfmt \"6\" -max_hsps 1 -num_descriptions $blasthits -num_alignments $blasthits -out $conf->{blast_final_file} -evalue $evalue");

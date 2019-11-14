@@ -51,9 +51,14 @@ sub new {
 sub addStandardEnv {
     my $self = shift;
     my $B = shift;
+    
+    my $func = $B;
+    if (ref($B) ne "CODE") {
+        $func = sub { $B->addAction(shift); };
+    }
 
     my @mods = $self->getEnvironment("est-std");
-    map { $B->addAction($_); } @mods;
+    map { $func->($_); } @mods;
 }
 
 
