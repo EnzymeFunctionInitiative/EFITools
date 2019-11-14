@@ -267,17 +267,15 @@ sub setJobDir {
 
 sub createScheduler {
     my $self = shift;
-    my $schedulerType = shift;
 
     return $self->{scheduler} if $self->{scheduler};
 
-    $schedulerType = getSchedulerType() if not $schedulerType;
-
     my %schedArgs = (
-        type => $schedulerType,
+        type => $self->{cluster}->{scheduler},
         queue => $self->{cluster}->{queue},
         resource => [1, 1, "35gb"],
         dry_run => $self->{cluster}->{dry_run},
+        run_serial => $self->{cluster}->{run_serial},
         output_base_dirpath => "$self->{conf}->{job_dir}/log",
     );
     #$schedArgs{output_base_dirpath} = $logDir if $logDir;
