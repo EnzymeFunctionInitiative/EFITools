@@ -14,7 +14,6 @@ use XML::LibXML::Reader;
 use JSON;
 use DBI;
 use List::MoreUtils qw(uniq);
-use Time::HiRes qw(time);
 use Storable;
 use Data::Dumper;
 
