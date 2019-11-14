@@ -101,6 +101,10 @@ sub retrieveAndSaveSequences {
         }
     }
 
+    foreach my $err (@err) {
+        print STDERR $err;
+    }
+
     $histo->saveToFile($self->{domain_length_file}) if $self->{domain_length_file};
 
     @ids = sort keys %$userSeq;
