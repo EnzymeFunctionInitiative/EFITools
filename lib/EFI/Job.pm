@@ -147,14 +147,6 @@ sub validateOptions {
 }
 
 
-#TODO: remove this
-## This should be overridden in subclasses.
-#sub getJobEnvironment {
-#    my $self = shift;
-#    return ();
-#}
-
-
 sub getJobEnvAction {
     my $self = shift;
     #TODO: support loading from env file

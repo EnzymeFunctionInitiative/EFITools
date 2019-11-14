@@ -54,13 +54,6 @@ sub addStandardEnv {
 
     my @mods = $self->getEnvironment("est-std");
     map { $B->addAction($_); } @mods;
-
-    #TODO: remove this
-#    my $dbMod = $self->{conf}->{modules}->{db};
-#    my $toolMod = $self->{conf}->{modules}->{tool};
-#    my $loadCmd = $self->getJobEnvAction();
-#    $B->addAction("$loadCmd $dbMod");
-#    $B->addAction("$loadCmd $toolMod");
 }
 
 

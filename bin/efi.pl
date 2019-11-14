@@ -40,9 +40,12 @@ if (not -d $dir) {
 
 print "Job Dir: $dir\n";
 
-my ($scriptDir, $logDir, $outputDir) = $job->createJobStructure();
 my $S = $job->getScheduler();
 my $doSubmit = $job->getSubmitStatus();
+
+my ($scriptDir, $logDir, $outputDir) = ("", "", "");
+($scriptDir, $logDir, $outputDir) = $job->createJobStructure() if $doSubmit;
+
 my @jobs = $job->createJobs();
 my $jobId = $job->getJobId();
 my $jobNamePrefix = $jobId ? "${jobId}_" : "";

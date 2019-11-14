@@ -9,8 +9,6 @@ use Exporter qw(import);
 use File::Temp;
 use Data::Dumper;
 
-use lib "$FindBin::Bin/../../lib";
-
 
 our @EXPORT =
     qw(
@@ -48,16 +46,22 @@ sub new {
     my $class = shift;
     my @args = @_;
     
+    my $opts = {};
+    if (scalar @args and ref $args[$#args] eq "HASH") {
+        $opts = pop @args;
+    }
+    
     my $dryRun = grep m/dry\-?run/, @ARGV;
     my $noSubmit = grep m/no\-?submit/, @ARGV;
 
-    my $dir = make_test_dir();
+    my $dir = $opts->{job_dir} // "";
+    $dir = make_test_dir() if not $dir;
+
     @ARGV = @args;
-    push @ARGV,
-        "--job-dir", $dir,
-        "--config", "/home/n-z/noberg/dev/EFITools/conf/efi.conf";
+    push @ARGV, "--config", "/home/n-z/noberg/dev/EFITools/conf/efi.conf";
     push @ARGV, "--dry-run" if $dryRun;
     push @ARGV, "--no-submit" if $noSubmit;
+    push @ARGV, "--job-dir", $dir;
 
     my $self = {job_dir => $dir};
 
