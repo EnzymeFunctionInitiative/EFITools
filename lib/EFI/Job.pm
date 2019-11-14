@@ -133,20 +133,20 @@ sub validateOptions {
     my $parms = shift;
     my $conf = shift;
 
+    my $defaultSerialScript = "$conf->{job_dir}/serial.sh";
+
     $conf->{job_id} = $parms->{"job-id"} // 0;
     $conf->{remove_temp} = $parms->{"remove-temp"} // 1;
     $conf->{dir_name} = $parms->{"dir-name"} // "output";
     $conf->{job_dir} = $parms->{"job-dir"} // "";
     $conf->{no_submit} = $parms->{"no-submit"} // 0;
     $conf->{dry_run} = $parms->{"dry-run"} // 0;
-    $conf->{serial_script} = $parms->{"serial-script"} // "";
+    $conf->{serial_script} = $parms->{"serial-script"} // $defaultSerialScript;
 
     if (not $conf->{job_dir}) {
         $conf->{job_dir} = $ENV{PWD};
         return "Results already exist in the current directory.  Please use the --job-dir flag to use this directory, or remove the results." if -d "$conf->{job_dir}/output";
     }
-
-    $conf->{serial_script} = "$conf->{job_dir}/serial.sh";
 
     return "";
 }

@@ -125,6 +125,8 @@ sub parseConfigFile {
         next if not $_;
         if (m/^\[(.*)\]/) {
             $section = $1;
+        } elsif ($section =~ m/^environment/ and length) {
+            push @{$data->{$section}->{_raw}}, $_;
         } elsif (length) {
             my @parts = split(m/=/, $_, 2);
             if (scalar @parts == 1) {
