@@ -181,7 +181,7 @@ sub createJobs {
     push @jobs, {job => $job4, deps => [$job3], name => "repnode_xgmml"};
 
     my $job5 = $self->createStatsJob($S);
-    push @jobs, {job => $job5, deps => [$job4], name => "stats"};
+    push @jobs, {job => $job5, deps => [{obj => $job4, is_job_array => 1}], name => "stats"};
 
     return @jobs;
 }
