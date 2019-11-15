@@ -80,7 +80,7 @@ sub new {
     $err = addDatabaseConfig($config, $self->{db});
     die "Error validating database config: $err" if $err;
 
-    $err = validateOptions($parms, $self->{conf});
+    $err = validateOptions($parms, $self, $self->{conf});
     die "Error validating options: $err" if $err;
 
     return $self;
@@ -138,6 +138,7 @@ sub addModuleConfig {
 
 sub validateOptions {
     my $parms = shift;
+    my $self = shift;
     my $conf = shift;
 
     $conf->{job_id} = $parms->{"job-id"} // 0;
@@ -148,12 +149,34 @@ sub validateOptions {
     $conf->{dry_run} = $parms->{"dry-run"} // 0;
     $conf->{serial_script} = $parms->{"serial-script"} // "";
 
+    $conf->{job_dir_arg_set} = 1;
     if (not $conf->{job_dir}) {
         $conf->{job_dir} = $ENV{PWD};
-        return "Results already exist in the current directory.  Please use the --job-dir flag to use this directory, or remove the results." if -d "$conf->{job_dir}/output";
+        if (not $self->getUseResults()) {
+            $conf->{job_dir_arg_set} = 0;
+            return "Results already exist in the current directory.  Please use the --job-dir flag to use this directory, or remove the results." if -d "$conf->{job_dir}/output";
+        }
     }
+    $conf->{job_dir} = abs_path($conf->{job_dir});
 
     return "";
+}
+
+
+# This should be overridden in each job type.
+sub getUsage {
+    my $self = shift;
+    return "";
+}
+# This should be overridden in each job type.
+sub getJobType {
+    my $self = shift;
+    return "";
+}
+# This can be overridden to indicate that results in the current directory should be used.
+sub getUseResults {
+    my $self = shift;
+    return 0;
 }
 
 
@@ -193,6 +216,12 @@ sub getToolPath {
 sub getJobDir {
     my $self = shift;
     return $self->{conf}->{job_dir};
+}
+
+
+sub getJobDirArgumentSet {
+    my $self = shift;
+    return $self->{conf}->{job_dir_arg_set};
 }
 
 

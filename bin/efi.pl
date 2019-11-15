@@ -29,12 +29,10 @@ die "Invalid job type $jobType" if not $job;
 
 my $dir = $job->getJobDir();
 
-if (not -d $dir) {
+if (not $job->getJobDirArgumentSet()) {
     print "WARNING: no --job-dir specified.  Use the current directory? [y/n] ";
     my $yn = <STDIN>;
     exit(1) if $yn !~ m/^\s*y/i;
-    $dir = $ENV{PWD};
-    $job->setJobDir($dir);
 }
 
 

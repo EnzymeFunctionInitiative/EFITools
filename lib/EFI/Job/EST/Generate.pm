@@ -120,6 +120,7 @@ sub setupDefaults {
     $conf->{len_uniprot_dom_file} = "$outputDir/length_uniprot_domain.tab"; # domain lengths of all UniProt sequences (expanded from UniRef if necessary)
     $conf->{len_uniref_file} = "$outputDir/length_uniref.tab"; # full lengths of UR cluster ID sequences
     $conf->{len_uniref_dom_file} = "$outputDir/length_uniref_domain.tab"; # domain lengths of UR cluster ID sequences
+    $conf->{uniref_flag_file} = "$outputDir/use_uniref"; # domain lengths of UR cluster ID sequences
 }
 
 

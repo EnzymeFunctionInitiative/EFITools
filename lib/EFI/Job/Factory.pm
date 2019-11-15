@@ -15,6 +15,7 @@ use EFI::Job::EST::Generate::BLAST;
 use EFI::Job::EST::Generate::Family;
 use EFI::Job::EST::Generate::FASTA;
 use EFI::Job::EST::Color;
+use EFI::Job::EST::Analyze;
 
 use EFI::SchedulerApi;
 
@@ -39,11 +40,17 @@ sub create_est_job {
         $job = new EFI::Job::EST::Generate::FASTA();
     } elsif ($jobType eq EFI::Job::EST::Color::JOB_TYPE) {
         $job = new EFI::Job::EST::Color();
+    } elsif ($jobType eq EFI::Job::EST::Analyze::JOB_TYPE) {
+        $job = new EFI::Job::EST::Analyze();
+    } else {
+        die "Invalid Job type";
     }
 
     $job->getScheduler();
     if ($job->hasErrors()) {
-        die join("\n", $job->getErrors()), "\n";
+        my $msg = join("\n", $job->getErrors()) . "\n\n";
+        $msg .= "usage: " . $job->getUsage();
+        die $msg;
     }
 
     return $job;
@@ -57,6 +64,7 @@ sub get_available_types {
         EFI::Job::EST::Generate::Family::JOB_TYPE,
         EFI::Job::EST::Generate::FASTA::JOB_TYPE,
         EFI::Job::EST::Color::JOB_TYPE,
+        EFI::Job::EST::Analyze::JOB_TYPE,
     );
 
     return @types;

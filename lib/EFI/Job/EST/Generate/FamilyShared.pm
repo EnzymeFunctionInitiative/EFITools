@@ -196,6 +196,8 @@ sub getInitialImportJob {
         $B->addAction("$toolPath/get_lengths_from_anno.pl " . join(" ", @lenUnirefArgs));
     }
 
+    $B->addAction("touch $gconf->{uniref_flag_file}") if $unirefVersion;
+
     # Annotation retrieval (getannotations.pl) now happens in the SNN/analysis step.
     #
     return $B;

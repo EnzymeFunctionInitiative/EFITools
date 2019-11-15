@@ -14,6 +14,8 @@ use Getopt::Long qw(:config pass_through);
 
 use EFI::Config;
 
+use constant JOB_TYPE => "analyze";
+
 
 sub new {
     my $class = shift;
@@ -40,13 +42,46 @@ sub new {
         "use-min-edge-attr",
     );
 
-    my $conf = validateOptions($parms);
+    my $conf = {};
+    my $err = validateOptions($parms, $conf);
+    push @{$self->{startup_errors}}, $err if $err;
 
     $self->setupDefaults($conf);
+
+    my $flagFile = $self->getOutputDir() . "/1.out.completed";
+    push @{$self->{startup_errors}}, "Output directory and results must exist to run analyze." if not -f $flagFile;
 
     $self->{conf}->{analyze} = $conf;
 
     return $self;
+}
+
+
+sub getJobType {
+    my $self = shift;
+    return JOB_TYPE;
+}
+sub getUseResults {
+    my $self = shift;
+    return 1;
+}
+
+
+sub getUsage {
+    my $self = shift;
+    my $usage = <<USAGE;
+--minval ALIGNMENT_SCORE [--filter eval|bit --minlen MIN_SEQ_LEN --maxlen MAX_SEQ_LEN
+    --title "<TITLE>" --uniref-version 90|50]
+
+    --minval            minimum alignment score to use for separating nodes into clusters
+    --filter            eval = group on alignment score; bit = group on bitscore
+    --minlen            minimum sequence length to include node in network
+    --maxlen            maximum sequence length to include node in network
+    --title             title of the file; goes into the filename; defaults to Untitled
+    --uniref-version    this should be set if the generate step was created using
+                        UniRef settings
+USAGE
+    return $usage;
 }
 
 
@@ -61,14 +96,13 @@ sub addStandardEnv {
 
 sub validateOptions {
     my $parms = shift;
-    my $self = shift;
+    my $conf = shift;
 
     my $defaultMaxLen = 50000;
-    my $defaultFilter = "bit";
+    my $defaultFilter = "eval";
     my $defaultTitle = "Untitled";
     my $defaultMaxfull = 10000000;
 
-    my $conf = {};
     $conf->{filter} = $parms->{"filter"} // $defaultFilter;
     $conf->{minval} = $parms->{"minval"} // 0;
     $conf->{maxlen} = $parms->{"maxlen"} // $defaultMaxLen;
@@ -84,7 +118,7 @@ sub validateOptions {
     $conf->{use_anno_spec} = defined $parms->{"use-anno-spec"} ? 1 : 0;
     $conf->{use_min_edge_attr} = defined $parms->{"use-min-edge-attr"} ? 1 : 0;
 
-    return $conf;
+    return "--minval argument is required" if not $conf->{minval};
 }
 
 
