@@ -197,6 +197,7 @@ sub getHandle {
     
         $dbh = DBI->connect($connStr, $self->{db}->{user}, $self->{db}->{password});
         $dbh->{mysql_auto_reconnect} = 1;
+        $dbh->do('SET @@group_concat_max_len = 3000'); # Increase the amount of elements that can be concat together (to avoid truncation)
     } 
 
     return $dbh;
