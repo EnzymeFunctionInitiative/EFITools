@@ -61,7 +61,7 @@ sub jobArray {
     my ($self, $array) = @_;
 
     if (length($array)) {
-        $self->{array} = "-t $array";
+        $self->{array} = "-J $array";
     } else {
         $self->{array} = "";
     }
@@ -76,7 +76,7 @@ sub queue {
 sub resource {
     my ($self, $numNodes, $procPerNode, $ram) = @_;
 
-    $self->{res} = ["-l nodes=$numNodes:ppn=$procPerNode"];
+    $self->{res} = ["-l select=$numNodes:ncpus=$procPerNode"];
 }
 
 sub dependency {
