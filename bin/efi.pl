@@ -82,8 +82,3 @@ foreach my $jobInfo (@jobs) {
     $lastJobId = $jobId;
 }
 
-# For EFI tools web UI
-print "$lastJobId.for_web_ui\n";
-
-
-

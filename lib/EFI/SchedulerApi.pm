@@ -133,7 +133,7 @@ sub submit {
     if (not $self->{dry_run} and not $self->{run_serial}) {
         my $submit = $self->getSubmitCmd();
         $result = `$submit $script`;
-        $result =~ s/\D//g;
+        $result =~ s/[^0-9\[\]]//g;
     }
 
     return $result;
