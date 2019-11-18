@@ -19,6 +19,7 @@ sub new {
     my $class = shift;
     my %args = @_;
 
+    $args{family_mandatory} = 1;
     my $self = $class->SUPER::new(%args);
 
     my $parms = {};
@@ -39,6 +40,18 @@ sub validateOptions {
 
     my $conf = $self->{conf}->{family};  # already set in FamilyShared
     $self->{conf}->{domain} = {} if lc($parms->{"domain"} // "off") eq "on"; # If this hash is present, then domains are turned on.
+}
+
+
+sub getUsage {
+    my $self = shift;
+    
+    my ($junk, $optional, $descs) = $self->getSharedUsage(); # From FamilyShared
+    my @mandatory = ("--pfam PF#####|CL####", "AND/OR", "--interpro IPR######");
+    my @localDescs = (["--domain", "use the sequence domain specified by the family(s)"]);
+    my @localOptional = ("--domain");
+
+    return $self->outputSharedUsage(\@mandatory, [@$optional, @localOptional], [@$descs, @localDescs]);
 }
 
 

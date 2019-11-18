@@ -62,6 +62,22 @@ sub validateOptions {
 }
 
 
+sub getUsage {
+    my $self = shift;
+    
+    # All family args are optional
+    my ($famMandatory, $famOptional, $famDescs) = $self->getSharedUsage(); # From FamilyShared
+    my @mandatory = ("--fasta-file <FASTA_FILE_PATH>");
+    my @optional = ("--use-fasta-headers");
+    my @descs = (
+        ["--fasta-file", "file containing FASTA-format sequences with FASTA headers"],
+        ["--use-fasta-headers", "parse FASTA headers for UniProt or RefSeq IDs"],
+    );
+
+    return $self->outputSharedUsage(\@mandatory, [@optional, @$famMandatory, @$famOptional], [@descs, @$famDescs]);
+}
+
+
 sub getInitialImportArgs {
     my $self = shift;
     my $numFams = shift;

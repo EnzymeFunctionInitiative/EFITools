@@ -124,22 +124,49 @@ sub setupDefaults {
 }
 
 
-sub createJobs {
+sub outputSharedUsage {
     my $self = shift;
-    return ();
+    my ($mandatory, $optional, $descs) = @_;
+
+    my $usage = join(" ", @$mandatory) . "\n    ";
+    $usage .= "[" . fancyJoin(" ", @$optional) . "]\n\n";;
+
+    foreach my $desc (@$descs) {
+        $usage .= sprintf "    %-19s %s\n", $desc->[0], fancyJoin(" ", split(m/ /, $desc->[1]), 23);
+    }
+    
+    return $usage;
 }
 
 
-sub createJobStructure {
+sub fancyJoin {
+    my $sep = shift;
+    my @parts = @_;
+
+    my $indent = pop @parts if $parts[$#parts] =~ m/^\d+$/;
+    $indent = 4 if not $indent;
+
+    my $str = "";
+    my $len = 0;
+    foreach my $p (@parts) {
+        $str .= $sep if $str;
+        $str .= $p;
+        $len += length $p;
+        if ($len > 90 - $indent) {
+            $str .= "\n" . $sep x $indent;
+            $len = 0;
+        }
+    }
+
+    $str =~ s/\s+$//gs;
+
+    return $str;
+}
+
+
+sub createJobs {
     my $self = shift;
-    my $dir = $self->{conf}->{job_dir};
-    my $outputDir = "$dir/output";
-    mkdir $outputDir;
-    my $scriptDir = "$dir/scripts";
-    mkdir $scriptDir;
-    my $logDir = "$dir/log";
-    mkdir $logDir;
-    return ($scriptDir, $logDir, $outputDir);
+    return ();
 }
 
 

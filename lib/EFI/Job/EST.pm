@@ -19,5 +19,18 @@ sub new {
 }
 
 
+sub createJobStructure {
+    my $self = shift;
+    my $dir = $self->{conf}->{job_dir};
+    my $outputDir = "$dir/output";
+    mkdir $outputDir;
+    my $scriptDir = "$dir/scripts";
+    mkdir $scriptDir;
+    my $logDir = "$dir/log";
+    mkdir $logDir;
+    return ($scriptDir, $logDir, $outputDir);
+}
+
+
 1;
 

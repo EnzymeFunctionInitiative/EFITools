@@ -69,6 +69,27 @@ sub validateOptions {
 }
 
 
+sub getUsage {
+    my $self = shift;
+    
+    # All family args are optional
+    my ($famMandatory, $famOptional, $famDescs) = $self->getSharedUsage(); # From FamilyShared
+    my @mandatory = ("--accession-file <ID_FILE_PATH>");
+    my @optional = (
+        "--no-match-file <NO_MATCHING_ID_FILE_PATH>",
+        #"--domain", "--domain-family FAMILY", "--domain-region nterminal|cterminal",
+    );
+    my @descs = (
+        ["--accession-file", "file containing list of sequence IDs, UniProt or NCBI RefSeq IDs are supported"],
+        #["--domain", "use the domain given by the family specified by --domain-family instead of the full-length sequence"],
+        #["--domain-family", "family to obtain domain from"],
+        #["--domain-region", "if specified, the N-terminal or N-terminal to the family domain is used instead of the domain itself"],
+    );
+
+    return $self->outputSharedUsage(\@mandatory, [@optional, @$famMandatory, @$famOptional], [@descs, @$famDescs]);
+}
+
+
 sub getInitialImportArgs {
     my $self = shift;
     my $numFams = shift;

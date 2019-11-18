@@ -44,7 +44,9 @@ sub new {
 
     my ($conf, $errors) = validateOptions($parms, $self);
 
-    $self->setupDefaults($conf);
+    if (not scalar @$errors) {
+        $self->setupDefaults($conf);
+    }
 
     $self->{conf}->{color} = $conf;
 
@@ -95,6 +97,47 @@ sub validateOptions {
 }
 
 
+sub getUsage {
+    my $self = shift;
+
+    my $showAllFileOpts = 1;
+    my $showDevSiteOpts = 0;
+
+    my $usage = <<USAGE;
+--ssn-in <PATH_TO_SSN_FILE> [--ssn-out <FILE>]
+USAGE
+    if ($showAllFileOpts) { #disable for now
+        $usage .= <<USAGE;
+        [--map-file-name <FILE> --domain-map-file-name <FILE> --stats <FILE> --cluster-sizes <FILE>
+         --sp-clusters-desc <FILE> --sp-singletons-desc <FILE>]
+USAGE
+    }
+    if ($showDevSiteOpts) { #dev site only, disable for now
+        $usage .= <<USAGE;
+        [--extra-ram --opt-msa-option HIST|WEBLOGO|HMM|CR --opt-aa-threshold #
+         --opt-aa-list *[,*,*...] --opt-min-seq-msa #]
+USAGE
+    }
+    $usage .= <<USAGE;
+
+    --ssn-in            path to uncolored SSN
+    --ssn-out           path to output SSN, colored and numbered
+USAGE
+    if ($showAllFileOpts) {
+        $usage .= <<USAGE;
+    --map-file-name     path to output file mapping UniProt IDs to clusters
+    --domain-map-file-name  path to output file mapping UniProt IDs to clusters, with domain info;
+                        only valid when the input SSN contains domain-length sequences
+    --stats             path to statistics file containing various node counts
+    --cluster-sizes     path to file that lists cluster sizes
+    --sp-clusters-desc  path to file that lists Swiss-Prot IDs and the corresponding cluster number
+    --sp-singletons-desc    path to file that lists Swiss-Prot IDs in singletons
+USAGE
+    }
+    return $usage;
+}
+
+
 sub setupDefaults {
     my $self = shift;
     my $conf = shift;
@@ -116,11 +159,10 @@ sub setupDefaults {
 
 sub createJobStructure {
     my $self = shift;
-    my $dir = $self->getOutputDir();
-    my $outDir = "$dir/output";
-    mkdir $outDir;
+    my @dirs = $self->SUPER::createJobStructure();
+    my $outDir = $self->getOutputDir();
     mkdir "$outDir/$self->{conf}->{color}->{cluster_data_path}";
-    return ($outDir, $outDir, $outDir);
+    return @dirs;
 }
 
 
@@ -340,11 +382,13 @@ sub getColorSsnJob {
     my $B = $S->getBuilder();
     
     my $ramReservation = $self->computeRamReservation();
+    my $blastDbDir = $self->getBlastDbDir();
 
     $B->resource(1, 1, "${ramReservation}gb");
     map { $B->addAction($_); } $self->getEnvironment("est-color");
     
     $B->addAction("cd $outputDir");
+    $B->addAction("export EFI_DB_PATH=$blastDbDir");
     $B->addAction("$toolPath/unzip_file.pl -in $conf->{zipped_file} -out $conf->{ssn_in}") if $conf->{zipped_file};
     $B->addAction("$toolPath/cluster_gnn.pl $scriptArgs");
     EFI::GNN::Base::addFileActions($B, $fileInfo);

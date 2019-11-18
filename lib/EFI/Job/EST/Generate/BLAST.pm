@@ -31,6 +31,7 @@ sub new {
         "blast-input-id=s",
         "db-type=s",
         "sequence|seq=s",
+        "sequence-file=s",
     );
 
     my ($conf, $errors) = validateOptions($parms, $self);
@@ -42,6 +43,26 @@ sub new {
     push @{$self->{startup_errors}}, @$errors;
 
     return $self;
+}
+
+
+sub getUsage {
+    my $self = shift;
+    
+    # All family args are optional
+    my ($famMandatory, $famOptional, $famDescs) = $self->getSharedUsage(); # From FamilyShared
+    my @mandatory = ("--sequence \"SEQUENCE\"", "  OR  ", "--sequence-file <PATH_TO_FILE>");
+    my @optional = (
+        "--blast-evalue #", "--max-blast-results #", "--blast-input-id ID",
+        #"--db-type uniprot|uniref90|uniref50",
+    );
+    my @descs = (
+        ["--blast-evalue", "numeric value indicating the negative log of the e-value to use for retrieving similar sequences; defaults to 5"],
+        ["--max-blast-results", "numeric value to limit the number sequences retrieved; defaults to 1000"],
+        ["--blast-input-id", "the ID to include in the SSN that represents the input sequence; defaults to zINPUT_SEQ"],
+    );
+
+    return $self->outputSharedUsage(\@mandatory, [@optional, @$famMandatory, @$famOptional], [@descs, @$famDescs]);
 }
 
 
@@ -59,6 +80,7 @@ sub validateOptions {
     $conf->{max_results} = $parms->{"max-blast-results"} // 1000;
     $conf->{input_id} = $parms->{"blast-input-id"} // "";
     $conf->{sequence} = $parms->{"sequence"} // $defaultSeqId;
+    $conf->{sequence_file} = $parms->{"sequence-file"} // "";
 
     $conf->{max_results} = 1000 if not $conf->{max_results};
 
@@ -67,6 +89,19 @@ sub validateOptions {
     $conf->{db_name} = $dbType eq "uniref50" ? "uniref50" : ($dbType eq "uniref90" ? "uniref90" : "combined");
     $conf->{db_name} .= "_nf" if $self->{conf}->{generate}->{exclude_fragments};
     $conf->{db_name} .= ".fasta";
+
+    push @errors, "A sequence must be specified through --sequence or --sequence-file" if not $conf->{sequence} or not -f $conf->{sequence_file};
+
+    if (not $conf->{sequence}) {
+        open my $fh, $conf->{sequence_file} or die "Unable to read input file sequence $conf->{sequence_file}: $!";
+        my $seq = "";
+        while (<$fh>) {
+            s/[^A-Z\-]//g;
+            $seq .= $_;
+        }
+        close $fh;
+        $conf->{sequence} = $seq;
+    }
 
     return $conf, \@errors;
 }

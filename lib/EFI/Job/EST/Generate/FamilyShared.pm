@@ -31,7 +31,7 @@ sub new {
         "no-demux",
     );
     
-    my ($conf, $errors) = validateOptions($parms, $self);
+    my ($conf, $errors) = validateOptions($parms, $self, $args{family_mandatory});
 
     $self->{conf}->{family} = $conf;
 
@@ -44,6 +44,7 @@ sub new {
 sub validateOptions {
     my $parms = shift;
     my $self = shift;
+    my $familyMandatory = shift;
 
     my @errors;
 
@@ -57,11 +58,25 @@ sub validateOptions {
     $conf->{no_demux} = $parms->{"no-demux"} // 0;
 
     my $famCount = scalar @{$conf->{pfam}} + scalar @{$conf->{interpro}} + scalar @{$conf->{gene3d}} + scalar @{$conf->{ssf}};
-    push @errors, "At least one of --pfam, --interpro, --gene3d, or --ssf arguments are required." if not $famCount;
+    push @errors, "At least one of --pfam, --interpro, --gene3d, or --ssf arguments are required."
+        if not $famCount and $familyMandatory;
     push @errors, "--uniref-version must be either 50 or 90"
         if $conf->{uniref_version} and $conf->{uniref_version} ne "50" and $conf->{uniref_version} ne "90";
 
     return $conf, \@errors;
+}
+
+
+sub getSharedUsage {
+    my @mandatory = ();
+    my @optional = ("--pfam PF#####|CL####", "--interpro IPR######", "--fraction #", "--uniref-version 50|90");
+    my @desc = (
+        ["--pfam", "Pfam family; can also be Pfam clan; multiple families can be used by including the --pfam arg multiple times"],
+        ["--interpro", "InterPro family; multiple families can be used by using the --interpro arg multiple times"],
+        ["--fraction", "A numeric value that is the fraction of sequences to include from the family; by default all sequences are used"],
+        ["--uniref-version", "Uses the UniRef50 or UniRef90 cluster ID sequences instead of the full family"],
+    );
+    return \@mandatory, \@optional, \@desc;
 }
 
 

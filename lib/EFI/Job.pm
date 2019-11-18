@@ -236,6 +236,14 @@ sub getOutputDir {
     my $self = shift;
     my $dir = $self->{conf}->{job_dir};
     $dir .= "/" . $self->{conf}->{dir_name} if $self->{conf}->{dir_name};
+    return $dir;
+}
+
+
+sub getLogDir {
+    my $self = shift;
+    my $dir = $self->{conf}->{job_dir} . "/log";
+    return $dir;
 }
 
 
@@ -303,13 +311,14 @@ sub createScheduler {
 
     return $self->{scheduler} if $self->{scheduler};
 
+    my $logDir = $self->getLogDir();
     my %schedArgs = (
         type => $self->{cluster}->{scheduler},
         queue => $self->{cluster}->{queue},
         resource => [1, 1, "35gb"],
         dry_run => $self->{cluster}->{dry_run},
         run_serial => $self->{cluster}->{run_serial},
-        output_base_dirpath => "$self->{conf}->{job_dir}/log",
+        output_base_dirpath => $logDir,
     );
     #$schedArgs{output_base_dirpath} = $logDir if $logDir;
     #TODO:

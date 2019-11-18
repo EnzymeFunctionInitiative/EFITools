@@ -48,14 +48,12 @@ if ($domainFastaDir and not $fastaDir) {
 } elsif (not $fastaDir) {
     die "-out-dir must be specified.";
 }
-if ($configFile and not -f $configFile and not exists $ENV{EFI_CONFIG} and not -f $ENV{EFI_CONFIG}) {
+if (not $configFile or not -f $configFile) {
     die "Config file required in environment or as a parameter.\n$usage"
 }
 
 die "Need efidb module loaded" if not $ENV{EFI_DB_PATH};
 
-
-$configFile = $ENV{EFI_CONFIG} if not $configFile or not -f $configFile;
 
 
 mkdir $fastaDir or die "Unable to create $fastaDir: $!" if $fastaDir and not -d $fastaDir;
@@ -63,7 +61,7 @@ mkdir $domainFastaDir or die "Unable to create $fastaDir: $!" if $domainFastaDir
 
 
 
-my $db = new EFI::Database(config_file => $configFile);
+my $db = new EFI::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
 
 my $blastDbPath = $ENV{EFI_DB_PATH};
