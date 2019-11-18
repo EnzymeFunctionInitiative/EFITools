@@ -58,7 +58,7 @@ sub new {
         $configFile = "$ENV{HOME}/.efi/efi.conf" if not -f $configFile;
     }
     if (not -f $configFile) {
-        die "--config file parameter is required.";
+        die "--config file parameter is required.\n";
     }
 
     $self->{config_file} = $configFile;
@@ -74,14 +74,14 @@ sub new {
     my $config = EFI::Config::parseConfigFile($configFile);
 
     my $err = addModuleConfig($config, $self->{modules});
-    die "Error validating module config: $err" if $err;
+    die "Error validating module config: $err\n" if $err;
     $err = addClusterConfig($config, $self->{cluster});
-    die "Error validating cluster config: $err" if $err;
+    die "Error validating cluster config: $err\n" if $err;
     $err = addDatabaseConfig($config, $self->{db});
-    die "Error validating database config: $err" if $err;
+    die "Error validating database config: $err\n" if $err;
 
     $err = validateOptions($parms, $self, $self->{conf});
-    die "Error validating options: $err" if $err;
+    die "Error validating options: $err\n" if $err;
 
     return $self;
 }

@@ -43,14 +43,14 @@ sub create_est_job {
     } elsif ($jobType eq EFI::Job::EST::Analyze::JOB_TYPE) {
         $job = new EFI::Job::EST::Analyze();
     } else {
-        die "Invalid Job type";
+        die "Invalid Job type\n";
     }
 
     $job->getScheduler();
     if ($job->hasErrors()) {
         my $msg = join("\n", $job->getErrors()) . "\n\n";
         $msg .= "usage: " . $job->getUsage();
-        die $msg;
+        die $msg . "\n";
     }
 
     return $job;
