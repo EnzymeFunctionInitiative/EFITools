@@ -62,6 +62,17 @@ sub validateOptions {
 }
 
 
+sub getJobInfo {
+    my $self = shift;
+    my $info = $self->SUPER::getJobInfo();
+    my $conf = $self->{conf}->{fasta};
+
+    push @$info, [fasta_file => $conf->{fasta_file}];
+    push @$info, [use_fasta_headers => $conf->{use_fasta_headers}];
+
+    return $info;
+}
+
 sub getUsage {
     my $self = shift;
     

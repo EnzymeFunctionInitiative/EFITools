@@ -67,6 +67,20 @@ sub validateOptions {
 }
 
 
+sub getJobInfo {
+    my $self = shift;
+    my $info = $self->SUPER::getJobInfo();
+    my $conf = $self->{conf}->{family};
+
+    push @$info, [pfam => join(" ", map { "--pfam $_" } @{$conf->{pfam}})] if scalar @{$conf->{pfam}};
+    push @$info, [interpro => join(" ", map { "--pfam $_" } @{$conf->{interpro}})] if scalar @{$conf->{interpro}};
+    push @$info, [uniref_version => $conf->{uniref_version}] if $conf->{uniref_version};
+    push @$info, [fraction => $conf->{fraction}] if $conf->{fraction} > 1;
+
+    return $info;
+}
+
+
 sub getSharedUsage {
     my @mandatory = ();
     my @optional = ("--pfam PF#####|CL####", "--interpro IPR######", "--fraction #", "--uniref-version 50|90");

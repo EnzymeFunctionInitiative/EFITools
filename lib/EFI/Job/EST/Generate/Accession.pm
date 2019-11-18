@@ -61,13 +61,29 @@ sub validateOptions {
 
     $conf->{accession}->{file_is_zipped} = $file =~ m/\.zip$/i;
     $file =~ s/\.zip$//i;
-    $conf->{accession}->{id_list_file} = $file;
+    $conf->{accession}->{accession_file} = $file;
 
-    push @errors, "No --accession-file parameter provided." if not -f $conf->{accession}->{id_list_file};
+    push @errors, "No --accession-file parameter provided." if not -f $conf->{accession}->{accession_file};
 
     return $conf, \@errors;
 }
 
+
+sub getJobInfo {
+    my $self = shift;
+    my $info = $self->SUPER::getJobInfo();
+    my $conf = $self->{conf}->{accession};
+    my $dconf = $self->{conf}->{domain};
+
+    push @$info, [accession_file => $conf->{accession_file}];
+    if ($dconf) {
+        push @$info, [domain => "yes"];
+        push @$info, [domain_family => $conf->{domain_family}] if $conf->{domain_family};
+        push @$info, [domain_region => $conf->{domain_region}] if $conf->{domain_region};
+    }
+
+    return $info;
+}
 
 sub getUsage {
     my $self = shift;
@@ -105,7 +121,7 @@ sub getInitialImportArgs {
         }
     }
 
-    push @args, "--accession-file $conf->{accession}->{id_list_file}";
+    push @args, "--accession-file $conf->{accession}->{accession_file}";
 
     my $noMatchFile = $conf->{accession}->{no_match_file};
     $noMatchFile = "$outputDir/$noMatchFile" if $noMatchFile !~ m/^[\/~]/;
@@ -128,7 +144,7 @@ sub addInitialImportFileActions {
     my $self = shift;
     my $B = shift;
 
-    my $file = $self->{conf}->{accession}->{id_list_file};
+    my $file = $self->{conf}->{accession}->{accession_file};
     $B->addAction("unzip -p $file.zip > $file") if $self->{conf}->{accession}->{file_is_zipped};
     $B->addAction("dos2unix -q $file");
     $B->addAction("mac2unix -q $file");

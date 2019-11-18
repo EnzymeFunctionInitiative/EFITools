@@ -43,6 +43,15 @@ sub validateOptions {
 }
 
 
+sub getJobInfo {
+    my $self = shift;
+    my $info = $self->SUPER::getJobInfo();
+
+    push @$info, [domain => "yes"] if $self->{conf}->{domain};
+
+    return $info;
+}
+
 sub getUsage {
     my $self = shift;
     

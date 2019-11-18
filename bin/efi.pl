@@ -43,6 +43,7 @@ my $doSubmit = $job->getSubmitStatus();
 
 my ($scriptDir, $logDir, $outputDir) = ("", "", "");
 ($scriptDir, $logDir, $outputDir) = $job->createJobStructure() if not ($doSubmit & EFI::Job::DRY_RUN);
+saveJobInfo($job);
 
 my @jobs = $job->createJobs();
 my $jobId = $job->getJobId();
@@ -79,4 +80,19 @@ foreach my $jobInfo (@jobs) {
     $jobIds{$jobObj} = $jobId;
     $lastJobId = $jobId;
 }
+
+
+sub saveJobInfo {
+    my $job = shift;
+    my $dir = $job->getJobDir();
+    my $info = $job->getJobInfo();
+
+    my $file = "$dir/job_parameters.txt";
+    open my $fh, ">", $file or die "Unable to save job info to $file: $!\n";
+    foreach my $row (@$info) {
+        print $fh join("\t", @$row), "\n";
+    }
+    close $fh;
+}
+
 

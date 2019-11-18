@@ -163,6 +163,14 @@ sub validateOptions {
 }
 
 
+# This should be overridden in each job type, but it should call this function by $self->SUPER::getJobInfo().
+sub getJobInfo {
+    my $self = shift;
+    my $jobId = $self->getJobId();
+    my @info;
+    push @info, [job_id => $jobId] if $jobId;
+    return \@info;
+}
 # This should be overridden in each job type.
 sub getUsage {
     my $self = shift;

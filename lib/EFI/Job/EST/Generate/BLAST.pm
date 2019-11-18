@@ -15,6 +15,7 @@ use Getopt::Long qw(:config pass_through);
 use EFI::Util::BLAST;
 
 use constant JOB_TYPE => "blast";
+use constant DEFAULT_BLAST_EVALUE => 5;
 
 
 sub new {
@@ -46,26 +47,6 @@ sub new {
 }
 
 
-sub getUsage {
-    my $self = shift;
-    
-    # All family args are optional
-    my ($famMandatory, $famOptional, $famDescs) = $self->getSharedUsage(); # From FamilyShared
-    my @mandatory = ("--sequence \"SEQUENCE\"", "  OR  ", "--sequence-file <PATH_TO_FILE>");
-    my @optional = (
-        "--blast-evalue #", "--max-blast-results #", "--blast-input-id ID",
-        #"--db-type uniprot|uniref90|uniref50",
-    );
-    my @descs = (
-        ["--blast-evalue", "numeric value indicating the negative log of the e-value to use for retrieving similar sequences; defaults to 5"],
-        ["--max-blast-results", "numeric value to limit the number sequences retrieved; defaults to 1000"],
-        ["--blast-input-id", "the ID to include in the SSN that represents the input sequence; defaults to zINPUTSEQ"],
-    );
-
-    return $self->outputSharedUsage(\@mandatory, [@optional, @$famMandatory, @$famOptional], [@descs, @$famDescs]);
-}
-
-
 sub validateOptions {
     my $parms = shift;
     my $self = shift;
@@ -73,10 +54,9 @@ sub validateOptions {
     my @errors;
 
     my $defaultSeqId = "zINPUTSEQ";
-    my $defaultBlastEvalue = 5;
 
     my $conf = {};
-    $conf->{evalue} = "1e-" . ($parms->{"blast-evalue"} // $defaultBlastEvalue);
+    $conf->{evalue} = "1e-" . ($parms->{"blast-evalue"} // DEFAULT_BLAST_EVALUE);
     $conf->{max_results} = $parms->{"max-blast-results"} // 1000;
     $conf->{input_id} = $parms->{"blast-input-id"} // $defaultSeqId;
     $conf->{sequence} = $parms->{"sequence"} // "";
@@ -104,6 +84,41 @@ sub validateOptions {
     }
 
     return $conf, \@errors;
+}
+
+
+sub getJobInfo {
+    my $self = shift;
+    my $info = $self->SUPER::getJobInfo();
+    my $conf = $self->{conf}->{blast};
+
+    (my $evalue = $conf->{evalue}) =~ s/^1e-//;
+    push @$info, [blast_evalue => $evalue] if $evalue != DEFAULT_BLAST_EVALUE;
+    push @$info, [max_results => $conf->{max_results}];
+    push @$info, [input_id => $conf->{input_id}];
+    push @$info, [sequence => $conf->{sequence}] if $conf->{sequence};
+    push @$info, [sequence_file => $conf->{sequence_file}] if $conf->{sequence_file};
+
+    return $info;
+}
+
+sub getUsage {
+    my $self = shift;
+    
+    # All family args are optional
+    my ($famMandatory, $famOptional, $famDescs) = $self->getSharedUsage(); # From FamilyShared
+    my @mandatory = ("--sequence \"SEQUENCE\"", "  OR  ", "--sequence-file <PATH_TO_FILE>");
+    my @optional = (
+        "--blast-evalue #", "--max-blast-results #", "--blast-input-id ID",
+        #"--db-type uniprot|uniref90|uniref50",
+    );
+    my @descs = (
+        ["--blast-evalue", "numeric value indicating the negative log of the e-value to use for retrieving similar sequences; defaults to 5"],
+        ["--max-blast-results", "numeric value to limit the number sequences retrieved; defaults to 1000"],
+        ["--blast-input-id", "the ID to include in the SSN that represents the input sequence; defaults to zINPUTSEQ"],
+    );
+
+    return $self->outputSharedUsage(\@mandatory, [@optional, @$famMandatory, @$famOptional], [@descs, @$famDescs]);
 }
 
 

@@ -12,6 +12,8 @@ use parent qw(EFI::Job::EST);
 
 use Getopt::Long qw(:config pass_through);
 
+use constant DEFAULT_BLAST_EVALUE => 5;
+
 
 sub new {
     my $class = shift;
@@ -124,14 +126,27 @@ sub setupDefaults {
 }
 
 
+sub getJobInfo {
+    my $self = shift;
+    my $info = $self->SUPER::getJobInfo();
+    my $conf = $self->{conf}->{generate};
+
+    (my $evalue = $conf->{evalue}) =~ s/^1e-//;
+    push @$info, [evalue => $evalue] if $evalue != DEFAULT_BLAST_EVALUE;
+    push @$info, [exclude_fragments => $conf->{exclude_fragments}] if $conf->{exclude_fragments};
+
+    return $info;
+}
+
+
 sub outputSharedUsage {
     my $self = shift;
     my ($mandatory, $optional, $descs) = @_;
 
     my $usage = join(" ", @$mandatory) . "\n    ";
-    $usage .= "[" . fancyJoin(" ", @$optional) . "]\n\n";;
+    $usage .= "[" . fancyJoin(" ", @$optional, "--exclude-fragments") . "]\n\n";;
 
-    foreach my $desc (@$descs) {
+    foreach my $desc (@$descs, ["--exclude-fragments", "exclude sequences that are defined as fragments by UniProt"]) {
         $usage .= sprintf "    %-19s %s\n", $desc->[0], fancyJoin(" ", split(m/ /, $desc->[1]), 23);
     }
     
