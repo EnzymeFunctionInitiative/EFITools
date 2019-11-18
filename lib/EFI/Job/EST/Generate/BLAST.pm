@@ -59,7 +59,7 @@ sub getUsage {
     my @descs = (
         ["--blast-evalue", "numeric value indicating the negative log of the e-value to use for retrieving similar sequences; defaults to 5"],
         ["--max-blast-results", "numeric value to limit the number sequences retrieved; defaults to 1000"],
-        ["--blast-input-id", "the ID to include in the SSN that represents the input sequence; defaults to zINPUT_SEQ"],
+        ["--blast-input-id", "the ID to include in the SSN that represents the input sequence; defaults to zINPUTSEQ"],
     );
 
     return $self->outputSharedUsage(\@mandatory, [@optional, @$famMandatory, @$famOptional], [@descs, @$famDescs]);
@@ -72,14 +72,14 @@ sub validateOptions {
 
     my @errors;
 
-    my $defaultSeqId = "ZINPUT";
+    my $defaultSeqId = "zINPUTSEQ";
     my $defaultBlastEvalue = 5;
 
     my $conf = {};
     $conf->{evalue} = "1e-" . ($parms->{"blast-evalue"} // $defaultBlastEvalue);
     $conf->{max_results} = $parms->{"max-blast-results"} // 1000;
-    $conf->{input_id} = $parms->{"blast-input-id"} // "";
-    $conf->{sequence} = $parms->{"sequence"} // $defaultSeqId;
+    $conf->{input_id} = $parms->{"blast-input-id"} // $defaultSeqId;
+    $conf->{sequence} = $parms->{"sequence"} // "";
     $conf->{sequence_file} = $parms->{"sequence-file"} // "";
 
     $conf->{max_results} = 1000 if not $conf->{max_results};
@@ -90,9 +90,9 @@ sub validateOptions {
     $conf->{db_name} .= "_nf" if $self->{conf}->{generate}->{exclude_fragments};
     $conf->{db_name} .= ".fasta";
 
-    push @errors, "A sequence must be specified through --sequence or --sequence-file" if not $conf->{sequence} or not -f $conf->{sequence_file};
+    push @errors, "A sequence must be specified through --sequence or --sequence-file" if not $conf->{sequence} and not -f $conf->{sequence_file};
 
-    if (not $conf->{sequence}) {
+    if ($conf->{sequence_file} and not $conf->{sequence}) {
         open my $fh, $conf->{sequence_file} or die "Unable to read input file sequence $conf->{sequence_file}: $!";
         my $seq = "";
         while (<$fh>) {
