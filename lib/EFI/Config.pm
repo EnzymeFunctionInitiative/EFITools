@@ -5,7 +5,6 @@ use strict;
 use Exporter qw(import);
 use FindBin;
 use Config::IniFiles;
-use Log::Message::Simple qw[:STD :CARP];
 
 
 #our @EXPORT_OK = qw(build_config database_configure);
@@ -61,7 +60,7 @@ use constant ANNOTATION_SPEC_FILENAME => "annotation.spec";
 sub build_configure {
     my ($object, %args) = @_;
 
-    croak "config_file_path argument is required" if not $args{config_file_path};
+    die "config_file_path argument is required" if not $args{config_file_path};
 
     #$configFilePath = $FindBin::Bin . "/../conf/build.conf";
     #if (exists $args{config_file_path}) {
@@ -182,10 +181,10 @@ sub validateDatabaseConfig {
 sub parseBuildConfig {
     my ($object, $configFilePath) = @_;
 
-    croak "The configuration file " . $configFilePath . " does not exist." if not -f $configFilePath;
+    die "The configuration file " . $configFilePath . " does not exist." if not -f $configFilePath;
 
     my $cfg = new Config::IniFiles(-file => $configFilePath);
-    croak "Unable to parse config file: " . join("; ", @Config::IniFiles::errors), "\n" if not defined $cfg;
+    die "Unable to parse config file: " . join("; ", @Config::IniFiles::errors), "\n" if not defined $cfg;
 
     $object->{id_mapping}->{table} = $cfg->val(IDMAPPING_SECTION, IDMAPPING_TABLE_NAME);
     $object->{id_mapping}->{remote_url} = $cfg->val(IDMAPPING_SECTION, IDMAPPING_REMOTE_URL);
@@ -202,16 +201,16 @@ sub parseBuildConfig {
         }
     }
 
-    croak getError(IDMAPPING_TABLE_NAME)            if not defined $object->{id_mapping}->{table};
-    croak getError(IDMAPPING_REMOTE_URL)            if not defined $object->{id_mapping}->{remote_url};
+    die getError(IDMAPPING_TABLE_NAME)            if not defined $object->{id_mapping}->{table};
+    die getError(IDMAPPING_REMOTE_URL)            if not defined $object->{id_mapping}->{remote_url};
 
     $object->{build}->{uniprot_url} = $cfg->val(DBBUILD_SECTION, DBBUILD_UNIPROT_URL);
     $object->{build}->{interpro_url} = $cfg->val(DBBUILD_SECTION, DBBUILD_INTERPRO_URL);
     $object->{build}->{pfam_info_url} = $cfg->val(DBBUILD_SECTION, DBBUILD_PFAM_INFO_URL);
 
-    croak getError(DBBUILD_UNIPROT_URL)             if not defined $object->{build}->{uniprot_url};
-    croak getError(DBBUILD_INTERPRO_URL)            if not defined $object->{build}->{interpro_url};
-    croak getError(DBBUILD_PFAM_INFO_URL)           if not defined $object->{build}->{pfam_info_url};
+    die getError(DBBUILD_UNIPROT_URL)             if not defined $object->{build}->{uniprot_url};
+    die getError(DBBUILD_INTERPRO_URL)            if not defined $object->{build}->{interpro_url};
+    die getError(DBBUILD_PFAM_INFO_URL)           if not defined $object->{build}->{pfam_info_url};
 
     $object->{tax}->{remote_url} = $cfg->val(TAX_SECTION, TAX_REMOTE_URL);
 

@@ -9,7 +9,6 @@ use File::Basename qw(dirname);
 use lib dirname(abs_path(__FILE__)) . "/../";
 
 use DBI;
-use Log::Message::Simple qw[:STD :CARP];
 use EFI::Config qw(database_configure);
 use EFI::SchedulerApi;
 use EFI::Database;

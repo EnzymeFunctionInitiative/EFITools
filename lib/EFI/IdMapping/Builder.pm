@@ -8,7 +8,6 @@ use lib abs_path(dirname(__FILE__)) . "/../../";
 
 use DBI;
 use POSIX qw(floor);
-use Log::Message::Simple qw[:STD :CARP];
 use EFI::Config qw(database_configure);
 use EFI::SchedulerApi;
 use EFI::Database::Schema;

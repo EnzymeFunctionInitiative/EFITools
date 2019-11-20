@@ -2,9 +2,14 @@
 package EFI::Database;
 
 use strict;
+use warnings;
+
 use DBI;
-use Log::Message::Simple qw[:STD :CARP];
-require 'Config.pm';
+
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use lib dirname(abs_path(__FILE__)) . "/../";
+
 use EFI::Config qw(database_configure);
 
 
@@ -26,25 +31,6 @@ sub new {
 }
 
 
-#sub createTable {
-#    my ($self, $tableName) = @_;
-#
-#    my $dbh = $self->getHandle();
-#    my $result = 1;
-#    eval {
-#        $dbh->do("CREATE TABLE $tableName");
-#        1;
-#    } or do {
-#        error("Creating table $tableName failed: $@");
-#        $result = 0;
-#    };
-#
-#    $dbh->finish();
-#
-#    return $result;
-#}
-
-
 sub loadTabular {
     my ($self, $tableName, $tabularFile) = @_;
 
@@ -54,19 +40,13 @@ sub loadTabular {
         $dbh->do("load data local infile '$tabularFile' into table $tableName");
         1;
     } or do {
-        error("Loading data from file '$tabularFile' failed: $@", 1);
+        warn("Loading data from file '$tabularFile' failed: $@", 1);
         $result = 0;
     };
 
     $dbh->disconnect();
 
     return $result;
-}
-
-
-sub stuff {
-
-#grant select,execute,show view on `efi_20170412`.* to 'efignn'@'10.1.0.0/255.255.0.0';
 }
 
 
