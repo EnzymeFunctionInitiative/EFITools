@@ -177,10 +177,23 @@ $buildOptions = $buildOptions | BUILD_COUNTS if $buildCountsOnly;
 my %dbArgs;
 $dbArgs{config_file_path} = $configFile if (defined $configFile and -f $configFile);
 
+# Get info from the configuration file.
+my $UniprotLocation = $buildConfig->{build}->{uniprot_url};
+my $InterproLocation = $buildConfig->{build}->{interpro_url};
+my $TaxonomyLocation = $buildConfig->{build}->{taxonomy_url};
+my $IpRange = $dbConfig->{db}->{ip_range} // "";
+my $DbUser = $dbConfig->{db}->{user} // "";
+
+# Set up the scheduler API.
+$scheduler = "slurm" if not $scheduler and usesSlurm();
+my $schedType = getSchedulerType($scheduler);
+my $S = new EFI::SchedulerApi('type' => $schedType, 'queue' => $queue, 'resource' => [1, 1, '100gb'],
+    'default_working_dir' => $BuildDir, 'dryrun' => $dryRun, 'abort_script_on_action_fail' => 0);
+
 
 # Output the sql commands necessary for creating the database and importing the data, then exit.
 if (defined $sql) {
-    writeSqlCommands($dbName, $buildOptions, $dbType eq "sqlite" ? "sqlite" : "mysql");
+    writeSqlCommands($dbName, $buildOptions, $dbType eq "sqlite" ? "sqlite" : "mysql", $S);
     exit(0);
 }
 
@@ -191,19 +204,6 @@ my $DoSubmit = not defined $noSubmit;
 
 
 
-# Get info from the configuration file.
-my $UniprotLocation = $buildConfig->{build}->{uniprot_url};
-my $InterproLocation = $buildConfig->{build}->{interpro_url};
-my $TaxonomyLocation = $buildConfig->{build}->{taxonomy_url};
-my $IpRange = $dbConfig->{db}->{ip_range} // "";
-my $DbUser = $dbConfig->{db}->{user} // "";
-
-# Set up the scheduler API.
-
-$scheduler = "slurm" if not $scheduler and usesSlurm();
-my $schedType = getSchedulerType($scheduler);
-my $S = new EFI::SchedulerApi('type' => $schedType, 'queue' => $queue, 'resource' => [1, 1, '100gb'],
-    'default_working_dir' => $BuildDir, 'dryrun' => $dryRun, 'abort_script_on_action_fail' => 0);
 my $FH = new EFI::Util::FileHandle('dryrun' => $dryRun);
 
 
@@ -296,7 +296,7 @@ if (defined $buildEna and $buildEna) {
 if (not $doDownload) {
     # Create and import the data into the database
     logprint "#WRITING SQL SCRIPT FOR IMPORTING DATA INTO DATABASE\n";
-    writeSqlCommands($dbName, $buildOptions | BUILD_COUNTS, $fileNum); # Output the build counts job as well, by default
+    writeSqlCommands($dbName, $buildOptions | BUILD_COUNTS, $fileNum, $S); # Output the build counts job as well, by default
 }
 
 
@@ -817,13 +817,16 @@ sub submitAnnotationsJob {
 
 
 sub writeSqlCommands {
-    my ($dbName, $buildOptions, $fileNum) = @_;
+    my ($dbName, $buildOptions, $fileNum, $S) = @_;
 
     my $sql = "";
     my $countSql = "";
     my $enaSql = "";
 
     my $startTrans = $dbType eq "sqlite" ? "BEGIN TRANSACTION;" : "START TRANSACTION;";
+    my $loadStart = $dbType eq "sqlite" ? ".import" : "LOAD DATA LOCAL INFILE";
+    my $loadMid = $dbType eq "sqlite" ? "" : "INTO TABLE";
+    my $loadEnd = $dbType eq "sqlite" ? "" : ";";
     my $endTrans = "COMMIT;";
 
     if ($buildOptions & BUILD_COUNTS) {
@@ -837,7 +840,7 @@ CREATE TABLE family_info(family VARCHAR(10) PRIMARY KEY, short_name VARCHAR(50),
 CREATE INDEX family_Index ON family_info (family);
 
 SELECT 'LOADING family_info' AS '';
-LOAD DATA LOCAL INFILE '$OutputDir/family_info.tab' INTO TABLE family_info;
+$loadStart '$OutputDir/family_info.tab' $loadMid family_info$loadEnd
 $endTrans
 
 $startTrans
@@ -847,7 +850,7 @@ CREATE TABLE PFAM_clans(pfam_id VARCHAR(24), clan_id VARCHAR(24));
 CREATE INDEX clan_id_Index ON PFAM_clans (clan_id);
 
 SELECT 'LOADING PFAM_clans' AS '';
-LOAD DATA LOCAL INFILE '$OutputDir/PFAM_clans.tab' INTO TABLE PFAM_clans;
+$loadStart '$OutputDir/PFAM_clans.tab' $loadMid PFAM_clans$loadEnd
 $endTrans
 
 SQL
@@ -866,7 +869,7 @@ CREATE INDEX ena_acnum_Index ON ena(AC, NUM);
 CREATE INDEX ena_ID_Index ON ena(id);
 
 SELECT 'LOADING ena' AS '';
-LOAD DATA LOCAL INFILE '$OutputDir/ena.tab' INTO TABLE ena;
+$loadStart '$OutputDir/ena.tab' $loadMid ena$loadEnd
 $endTrans
 
 SQL
@@ -906,7 +909,7 @@ CREATE INDEX accession_Index ON annotations (accession);
 CREATE INDEX STATUS_Index ON annotations (STATUS);
 CREATE INDEX Fragment_Index ON annotations (Fragment);
 SELECT 'LOADING annotations' AS '';
-LOAD DATA LOCAL INFILE '$OutputDir/annotations.tab' INTO TABLE annotations;
+$loadStart '$OutputDir/annotations.tab' $loadMid annotations$loadEnd
 $endTrans
 
 $startTrans
@@ -915,7 +918,7 @@ DROP TABLE IF EXISTS taxonomy;
 CREATE TABLE taxonomy(Taxonomy_ID INTEGER, Domain VARCHAR(25), Kingdom VARCHAR(25), Phylum VARCHAR(30), Class VARCHAR(25), TaxOrder VARCHAR(30), Family VARCHAR(25), Genus VARCHAR(40), Species VARCHAR(50));
 CREATE INDEX TaxID_Index ON taxonomy (Taxonomy_ID);
 SELECT 'LOADING taxonomy' AS '';
-LOAD DATA LOCAL INFILE '$OutputDir/taxonomy.tab' INTO TABLE taxonomy;
+$loadStart '$OutputDir/taxonomy.tab' $loadMid taxonomy$loadEnd
 $endTrans
 
 $startTrans
@@ -924,7 +927,7 @@ DROP TABLE IF EXISTS GENE3D;
 CREATE TABLE GENE3D(id VARCHAR(24), accession VARCHAR(10), start INTEGER, end INTEGER);
 CREATE INDEX GENE3D_ID_Index ON GENE3D (id);
 SELECT 'LOADING GENE3D' AS '';
-LOAD DATA LOCAL INFILE '$OutputDir/GENE3D.tab' INTO TABLE GENE3D;
+$loadStart '$OutputDir/GENE3D.tab' $loadMid GENE3D$loadEnd
 $endTrans
 
 $startTrans
@@ -934,7 +937,7 @@ CREATE TABLE PFAM(id VARCHAR(24), accession VARCHAR(10), start INTEGER, end INTE
 CREATE INDEX PAM_ID_Index ON PFAM (id);
 CREATE INDEX PAM_Accession_Index ON PFAM (accession);
 SELECT 'LOADING PFAM' AS '';
-LOAD DATA LOCAL INFILE '$OutputDir/PFAM.tab' INTO TABLE PFAM;
+$loadStart '$OutputDir/PFAM.tab' $loadMid PFAM$loadEnd
 $endTrans
 
 $startTrans
@@ -945,7 +948,7 @@ CREATE INDEX uniref_accession_Index ON uniref (accession);
 CREATE INDEX uniref50_seed_Index ON uniref (uniref50_seed);
 CREATE INDEX uniref90_seed_Index ON uniref (uniref90_seed);
 SELECT 'LOADING UNIREF' AS '';
-LOAD DATA LOCAL INFILE '$OutputDir/uniref.tab' INTO TABLE uniref;
+$loadStart '$OutputDir/uniref.tab' $loadMid uniref$loadEnd
 $endTrans
 
 $startTrans
@@ -954,7 +957,7 @@ DROP TABLE IF EXISTS SSF;
 CREATE TABLE SSF(id VARCHAR(24), accession VARCHAR(10), start INTEGER, end INTEGER);
 CREATE INDEX SSF_ID_Index ON SSF (id);
 SELECT 'LOADING SSF' AS '';
-LOAD DATA LOCAL INFILE '$OutputDir/SSF.tab' INTO TABLE SSF;
+$loadStart '$OutputDir/SSF.tab' $loadMid SSF$loadEnd
 $endTrans
 
 $startTrans
@@ -964,7 +967,7 @@ CREATE TABLE INTERPRO(id VARCHAR(24), accession VARCHAR(10), start INTEGER, end 
 CREATE INDEX INTERPRO_ID_Index ON INTERPRO (id);
 CREATE INDEX INTERPRO_Accession_Index ON INTERPRO (accession);
 SELECT 'LOADING INTERPRO' AS '';
-LOAD DATA LOCAL INFILE '$OutputDir/INTERPRO.tab' INTO TABLE INTERPRO;
+$loadStart '$OutputDir/INTERPRO.tab' $loadMid INTERPRO$loadEnd
 $endTrans
 
 $startTrans
@@ -972,7 +975,7 @@ SELECT 'CREATING colors' AS '';
 DROP TABLE IF EXISTS colors;
 CREATE TABLE colors(cluster INTEGER PRIMARY KEY,color VARCHAR(7));
 SELECT 'LOADING colors' AS '';
-LOAD DATA LOCAL INFILE '$DbSupport/colors.tab' INTO TABLE colors;
+$loadStart '$DbSupport/colors.tab' $loadMid colors$loadEnd
 $endTrans
 
 $startTrans
@@ -982,7 +985,7 @@ CREATE TABLE idmapping (uniprot_id VARCHAR(15), foreign_id_type VARCHAR(15), for
 CREATE INDEX uniprot_id_Index ON idmapping (uniprot_id);
 CREATE INDEX foreign_id_Index ON idmapping (foreign_id);
 SELECT 'LOADING idmapping' AS '';
-LOAD DATA LOCAL INFILE '$OutputDir/idmapping.tab' INTO TABLE idmapping;
+$loadStart '$OutputDir/idmapping.tab' $loadMid idmapping$loadEnd
 $endTrans
 
 $startTrans
@@ -1005,7 +1008,7 @@ DROP TABLE IF EXISTS pdbhits;
 CREATE TABLE pdbhits(ACC VARCHAR(10) PRIMARY KEY, PDB VARCHAR(4), e VARCHAR(20));
 CREATE INDEX pdbhits_ACC_Index ON pdbhits (ACC);
 SELECT 'LOADING pdbhits' AS '';
-LOAD DATA LOCAL INFILE '$OutputDir/pdb.tab' INTO TABLE pdbhits;
+$loadStart '$OutputDir/pdb.tab' $loadMid pdbhits$loadEnd
 $endTrans
 SQL
         }
@@ -1014,6 +1017,7 @@ SQL
 
     my $writeSqlSub = sub {
         my ($filePath, $sqlString) = @_;
+        print "WRITING TO $filePath\n";
         open OUT, "> $filePath" or die "Unable to open '$filePath' to save SQL commands: $!";
         print OUT $sqlString;
         close OUT;
@@ -1026,35 +1030,34 @@ SQL
 
     $writeSqlSub->($countSqlFile, $countSql) if $buildOptions & BUILD_COUNTS;
     $writeSqlSub->($enaSqlFile, $enaSql) if $buildOptions & BUILD_ENA;
-    $writeSqlSub->($sqlFile, $sql) if not ($buildOptions & BUILD_COUNTS);
+    $writeSqlSub->($sqlFile, $sql);
 
 
     my $DB = new EFI::Database(%dbArgs);
-    my $mysqlCmd = $DB->getCommandLineConnString();
-    (my $mysqlCmdAdmin = $mysqlCmd) =~ s/mysql /mysqladmin /g;
-    my $batchFile = "$BuildDir/$fileNum-runDatabaseActions.sh";
 
-    if (not ($buildOptions & BUILD_COUNTS)) {
-        open BATCH, "> $batchFile" or die "Unable to open '$batchFile' to save SQL shell script: $!";
-        print BATCH "#!/bin/bash\n\n";
-    
-        if ($buildOptions & BUILD_ENA) {
-            print BATCH <<CMDS;
+    my $dbConnCmd = $dbType eq "sqlite" ? "sqlite3" : $DB->getCommandLineConnString();
+    (my $mysqlCmdAdmin = $dbConnCmd) =~ s/mysql /mysqladmin /g;
+    my $B = $S->getBuilder();
+    $B->resource(1, 1, "10gb");
+    my $batchFile = "$BuildDir/$fileNum-runDatabaseActions-all.sh";
+
+    my $loadDbName = $dbName;
+
+    if ($buildOptions & BUILD_ENA) {
+        $B->addAction(<<CMDS);
 
 if [ -f $CompletedFlagFile.mysql_import-ena ]; then
     echo "The ENA database has already been imported. You will need to manually import the data to"
     echo "override this check."
-elif [ -f $CompletedFlagFile.*-ena ]; then
-    $mysqlCmd $dbName < $enaSqlFile > $BuildDir/mysqlOutput-ena.txt
-    date > $CompletedFlagFile.mysql_import-ena
-else
-    echo "The ENA data file build has not completed yet. Skipping that import."
+    exit
 fi
-
 CMDS
-        }
+        $B->addAction("$dbConnCmd $loadDbName < $enaSqlFile");
+        $B->addAction("date > $CompletedFlagFile.mysql_import-ena");
+    }
 
-        print BATCH <<CMDS;
+    {
+        $B->addAction(<<CMDS);
 
 if [ ! -f $CompletedFlagFile.*-finalFiles ]; then
     echo "The data file build has not completed yet. Please wait until all of the output has been generated."
@@ -1107,39 +1110,31 @@ fi
 if [ -f $CompletedFlagFile.mysql_import-base ]; then
     echo "It looks like the data has already been imported. You'll have to manually import if you want"
     echo "to override this check.";
-else
-
-    mysql: grant select on `efi_201903`.* to 'efidevel'\@'172.16.28.0/255.255.252.0';
-    mysql: grant select on `efi_201903`.* to 'efignn'\@'172.16.28.0/255.255.252.0';
-    $mysqlCmdAdmin create $dbName
-    $mysqlCmd $dbName < $sqlFile > $BuildDir/mysqlOutput-base.txt
-
-    date > $CompletedFlagFile.mysql_import-base
+    exit
 fi
-
 CMDS
-
-        close BATCH;
+        if ($dbType eq "mysql") {
+            $B->addAction("#mysql: GRANT SELECT ON `$loadDbName`.* TO '$DbUser'\@'$IpRange';*/");
+            $B->addAction("#$mysqlCmdAdmin create $loadDbName");
+        }
+        $B->addAction("$dbConnCmd $loadDbName < $sqlFile");
+        $B->addAction("date > $CompletedFlagFile.mysql_import-base");
     }
     
     if ($buildOptions & BUILD_COUNTS) {
-        (my $countsBatchFile = $batchFile) =~ s/\.sh$/.counts.sh/;
-        open COUNTSBATCH, "> $countsBatchFile" or die "Unable to open counts batch file '$countsBatchFile': $!";
-        print COUNTSBATCH <<CMDS;
+        $B->addAction(<<CMDS);
 
 if [ -f $CompletedFlagFile.mysql_import-counts ]; then
     echo "The family counts table has already been imported. You will need to manually import the data"
     echo "to override this check."
-elif [ -f $CompletedFlagFile.*-counts ]; then
-    echo "Do something like mysql -p WEB_EFI_DB_NAME < $countSqlFile > $BuildDir/mysqlOutput-counts.txt"
-else
-    echo "The family counts file has not yet been created.  Skipping that import."
+    exit
 fi
-
 CMDS
-        close COUNTSBATCH;
+        $B->addAction("$dbConnCmd $loadDbName < $countSqlFile");
     }
-
+        
+    $B->outputBaseFilepath($batchFile);
+    $B->renderToFile($batchFile);
 }
 
 
