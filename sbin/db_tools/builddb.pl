@@ -828,10 +828,10 @@ sub writeSqlCommands {
     my $loadMid = $dbType eq "sqlite" ? "" : "INTO TABLE";
     my $loadEnd = $dbType eq "sqlite" ? "" : ";";
     my $endTrans = "COMMIT;";
+    my $sqlSepStmt = ".separator \"\\t\"\n\n" if $dbType eq "sqlite";
 
     if ($buildOptions & BUILD_COUNTS) {
-        $countSql = ".separator \"\t\"" if $dbType eq "sqlite";
-        $countSql .= <<SQL;
+        $countSql = $sqlSepStmt . <<SQL;
 
 $startTrans
 SELECT 'CREATING family_info' AS '';
@@ -859,8 +859,7 @@ SQL
     }
     
     if ($buildOptions & BUILD_ENA) {
-        $enaSql = ".separator \"\t\"" if $dbType eq "sqlite";
-        $enaSql = <<SQL;
+        $enaSql = $sqlSepStmt . <<SQL;
 
 $startTrans
 SELECT 'CREATING ena' AS '';
@@ -879,8 +878,7 @@ SQL
     }
     
     {
-        $sql = ".separator \"\t\"" if $dbType eq "sqlite";
-        $sql = <<SQL;
+        $sql = $sqlSepStmt . <<SQL;
 
 $startTrans
 SELECT 'CREATING ANNOTATIONS' AS '';
@@ -1061,12 +1059,6 @@ CMDS
 
     {
         $B->addAction(<<CMDS);
-
-if [ ! -f $CompletedFlagFile.*-finalFiles ]; then
-    echo "The data file build has not completed yet. Please wait until all of the output has been generated."
-    echo "Bye."
-    exit
-fi
 
 if [ ! -f $OutputDir/annotations.tab ]; then
     echo "$OutputDir/annotations.tab does not exist. Did the build complete?"
