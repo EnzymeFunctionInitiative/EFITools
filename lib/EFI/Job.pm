@@ -186,6 +186,18 @@ sub getUseResults {
     my $self = shift;
     return 0;
 }
+# This can be overridden so specific job types can create extra directories as needed, but this function MUST be called by invoking $self->SUPER::getJobInfo().
+sub createJobStructure {
+    my $self = shift;
+    my $dir = $self->{conf}->{job_dir};
+    my $outputDir = "$dir/output";
+    mkdir $outputDir;
+    my $scriptDir = "$dir/scripts";
+    mkdir $scriptDir;
+    my $logDir = "$dir/log";
+    mkdir $logDir;
+    return ($scriptDir, $logDir, $outputDir);
+}
 
 
 sub getJobEnvAction {
@@ -395,6 +407,15 @@ sub addBlastEnvVars {
     my $name = $self->{db}->{blast}->{"${type}_db"} // "";
     #TODO: handle error if the db doesn't exist
     $B->addAction("export EFI_${varName}_DB=$name");
+}
+
+
+
+# Utility methods
+
+sub checkSafeFileName {
+    my $file = shift;
+    return $file !~ m%[^/a-zA-Z0-9\-_\.+=]%;
 }
 
 

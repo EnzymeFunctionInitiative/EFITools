@@ -14,6 +14,7 @@ use Getopt::Long qw(:config pass_through);
 
 use EFI::Util qw(checkNetworkType);
 use EFI::GNN::Base;
+use EFI::Job::GNT::Shared;
 
 use constant JOB_TYPE => "color";
 
@@ -75,7 +76,7 @@ sub validateOptions {
     $conf->{sp_singletons_desc} = $parms->{"sp-singletons-desc"} // "swissprot_singletons_desc.txt";
     $conf->{extra_ram} = $parms->{"extra-ram"} // 0;
 
-    $conf->{zipped_file} = $file if $file =~ m/\.zip$/i;
+    $conf->{zipped_ssn_in} = $file if $file =~ m/\.zip$/i;
     $file =~ s/\.zip$//i;
     $conf->{ssn_in} = $file;
 
@@ -138,6 +139,17 @@ USAGE
 }
 
 
+sub getJobInfo {
+    my $self = shift;
+    my $info = $self->SUPER::getJobInfo();
+    my $conf = $self->{conf}->{color};
+
+    push @$info, [ssn_out => $conf->{ssn_out}];
+
+    return $info;
+}
+
+
 sub setupDefaults {
     my $self = shift;
     my $conf = shift;
@@ -146,14 +158,15 @@ sub setupDefaults {
     ($conf->{ssn_type}, $conf->{is_domain}) = checkNetworkType($conf->{ssn_in});
     $conf->{map_file_name} = "$conf->{ssn_name}_$conf->{map_file_name}";
     $conf->{domain_map_file_name} = "$conf->{ssn_name}_$conf->{domain_map_file_name}";
-
-    my $clusterDataPath = $conf->{cluster_data_path} = "cluster-data";
-    $conf->{uniprot_node_data_dir} = "$clusterDataPath/uniprot-nodes";
-    $conf->{uniprot_domain_node_data_dir} = "$clusterDataPath/uniprot-domain-nodes";
-    $conf->{uniref50_node_data_dir} = "$clusterDataPath/uniref50-nodes";
-    $conf->{uniref50_domain_node_data_dir} = "$clusterDataPath/uniref50-domain-nodes";
-    $conf->{uniref90_node_data_dir} = "$clusterDataPath/uniref90-nodes";
-    $conf->{uniref90_domain_node_data_dir} = "$clusterDataPath/uniref90-domain-nodes";
+    $conf->{use_domain} = (not $conf->{ssn_type} or $conf->{is_domain});
+    
+    (my $inputFileBase = $conf->{ssn_in}) =~ s%^.*/([^/]+)$%$1%;
+    $inputFileBase =~ s/\.zip$//;
+    $inputFileBase =~ s/\.xgmml$//;
+    $conf->{input_file_base} = $inputFileBase;
+    
+    my $outputDir = $self->getOutputDir();
+    $conf->{cluster_data_dir} = "$outputDir/" . CLUSTER_DATA_DIR;
 }
 
 
@@ -161,7 +174,7 @@ sub createJobStructure {
     my $self = shift;
     my @dirs = $self->SUPER::createJobStructure();
     my $outDir = $self->getOutputDir();
-    mkdir "$outDir/$self->{conf}->{color}->{cluster_data_path}";
+    mkdir $self->{conf}->{color}->{cluster_data_dir};
     return @dirs;
 }
 
@@ -174,6 +187,7 @@ sub createJobs {
     die "Need scheduler" if not $S;
 
     my $fileInfo = $self->getFileInfo();
+    $self->makeDirs($conf, $fileInfo);
 
     my @jobs;
 
@@ -186,6 +200,37 @@ sub createJobs {
     }
 
     return @jobs;
+}
+
+
+sub makeDirs {
+    my $self = shift;
+    my $conf = shift;
+    my $info = shift;
+
+    my $useDomain = $conf->{use_domain};
+
+    my $outputDir = $self->getOutputDir();
+    my $dryRun = $self->getDryRun();
+    my $hmmDataDir = "$conf->{cluster_data_dir}/hmm";
+
+    # Since we're passing relative paths to the cluster_gnn script we need to create the directories with absolute paths.
+    my $mkPath = sub {
+        my $dir = $_[0];
+        $dir = "$outputDir/$dir" if $dir !~ m%^/%;
+        #my $dir = "$outputDir/$_[0]";
+        if ($dryRun) {
+            print "mkdir $dir\n";
+        } else {
+            mkdir $dir or die "Unable to create output dir $dir: $!" if not -d $dir;
+        }
+    };
+    
+    &$mkPath($conf->{cluster_data_dir});
+    &$mkPath($hmmDataDir) if $conf->{opt_msa_option};
+
+    # Shared.pm
+    makeClusterDataDirs($conf, $info, $outputDir, $dryRun, $mkPath);
 }
 
 
@@ -206,59 +251,12 @@ sub getFileInfo {
     my $mapFileName = $conf->{map_file_name};
     (my $ssnOutZip = $conf->{ssn_out}) =~ s/\.xgmml$/.zip/;
 
-    my $clusterDataPath             = $conf->{cluster_data_path};
-    my $fastaUniProtDataDir         = "$clusterDataPath/fasta";
-    my $fastaUniProtDomainDataDir   = "$clusterDataPath/fasta-domain";
-    my $fastaUniRef90DataDir        = "$clusterDataPath/fasta-uniref90";
-    my $fastaUniRef90DomainDataDir  = "$clusterDataPath/fasta-uniref90-domain";
-    my $fastaUniRef50DataDir        = "$clusterDataPath/fasta-uniref50";
-    my $fastaUniRef50DomainDataDir  = "$clusterDataPath/fasta-uniref50-domain";
-    my $hmmDataDir                  = "$clusterDataPath/hmm";
-    
-    my $uniprotIdZip = "$outputDir/${ssnName}_UniProt_IDs.zip";
-    my $uniprotDomainIdZip = "$outputDir/${ssnName}_UniProt_Domain_IDs.zip";
-    my $uniRef50IdZip = "$outputDir/${ssnName}_UniRef50_IDs.zip";
-    my $uniRef50DomainIdZip = "$outputDir/${ssnName}_UniRef50_Domain_IDs.zip";
-    my $uniRef90IdZip = "$outputDir/${ssnName}_UniRef90_IDs.zip";
-    my $uniRef90DomainIdZip = "$outputDir/${ssnName}_UniRef90_Domain_IDs.zip";
-    my $fastaZip = "$outputDir/${ssnName}_FASTA.zip";
-    my $fastaDomainZip = "$outputDir/${ssnName}_FASTA_Domain.zip";
-    my $fastaUniRef90Zip = "$outputDir/${ssnName}_FASTA_UniRef90.zip";
-    my $fastaUniRef90DomainZip = "$outputDir/${ssnName}_FASTA_UniRef90_Domain.zip";
-    my $fastaUniRef50Zip = "$outputDir/${ssnName}_FASTA_UniRef50.zip";
-    my $fastaUniRef50DomainZip = "$outputDir/${ssnName}_FASTA_UniRef50_Domain.zip";
+    my $hmmDataDir = "$conf->{cluster_data_dir}/hmm";
     my $hmmZip = "$outputDir/${ssnName}_HMMs.zip";
 
-    # The if statements apply to the mkdir cmd, not the die().
-    my $mkPath = sub {
-       my $dir = "$outputDir/$_[0]";
-       if ($dryRun) {
-           print "mkdir $dir\n";
-       } else {
-           mkdir $dir or die "Unable to create output dir $dir: $!" if not -d $dir;
-       }
-    };
     my $absPath = sub {
         return $_[0] =~ m/^\// ? $_[0] : "$outputDir/$_[0]";
     };
-    
-    &$mkPath($conf->{uniprot_node_data_dir});
-    &$mkPath($conf->{uniprot_domain_node_data_dir}) if not $ssnType or $ssnType eq "UniProt" and $isDomain;
-    &$mkPath($fastaUniProtDataDir);
-    &$mkPath($fastaUniProtDomainDataDir) if not $ssnType or $ssnType eq "UniProt" and $isDomain;
-    
-    &$mkPath($conf->{uniref50_node_data_dir});
-    &$mkPath($conf->{uniref50_domain_node_data_dir}) if not $ssnType or $ssnType eq "UniRef50" and $isDomain;
-    &$mkPath($fastaUniRef50DataDir);
-    &$mkPath($fastaUniRef50DomainDataDir) if not $ssnType or $ssnType eq "UniRef50" and $isDomain;
-    
-    &$mkPath($conf->{uniref90_node_data_dir});
-    &$mkPath($conf->{uniref90_domain_node_data_dir}) if not $ssnType or $ssnType eq "UniRef90" and $isDomain;
-    &$mkPath($fastaUniRef90DataDir);
-    &$mkPath($fastaUniRef90DomainDataDir) if not $ssnType or $ssnType eq "UniRef90" and $isDomain;
-    
-    &$mkPath($hmmDataDir) if $conf->{opt_msa_option};
-
 
     my $fileInfo = {
         color_only => 1,
@@ -268,12 +266,6 @@ sub getFileInfo {
         cat_tool_path => "$toolPath/cat_files.pl",
         ssn_out => "$outputDir/$conf->{ssn_out}",
         ssn_out_zip => "$outputDir/$ssnOutZip",
-    
-        uniprot_node_data_dir => &$absPath($conf->{uniprot_node_data_dir}),
-        fasta_data_dir => &$absPath($fastaUniProtDataDir),
-        uniprot_node_zip => $uniprotIdZip,
-        fasta_zip => $fastaZip,
-    
         domain_map_file => "${ssnName}_$domainMapFileName",
         map_file => "${ssnName}_$mapFileName",
     };
@@ -310,40 +302,8 @@ sub getFileInfo {
         $fileInfo->{hmm_zip_prefix} = "${ssnName}";
     }
 
-    # In some cases we can't determine the type of the file in advance, so we write out all possible cases.
-    # The 'not $ssnType or' statement ensures that this happens.
-    if (not $ssnType or $ssnType eq "UniProt" and $isDomain) {
-        $fileInfo->{uniprot_domain_node_data_dir} = &$absPath($conf->{uniprot_domain_node_data_dir});
-        $fileInfo->{fasta_domain_data_dir} = &$absPath($fastaUniProtDomainDataDir);
-        $fileInfo->{uniprot_domain_node_zip} = $uniprotDomainIdZip;
-        $fileInfo->{fasta_domain_zip} = $fastaDomainZip;
-    }
-    
-    if (not $ssnType or $ssnType eq "UniRef90" or $ssnType eq "UniRef50") {
-        $fileInfo->{uniref90_node_data_dir} = &$absPath($conf->{uniref90_node_data_dir});
-        $fileInfo->{fasta_uniref90_data_dir} = &$absPath($fastaUniRef90DataDir);
-        $fileInfo->{uniref90_node_zip} = $uniRef90IdZip;
-        $fileInfo->{fasta_uniref90_zip} = $fastaUniRef90Zip;
-        if (not $ssnType or $isDomain and $ssnType eq "UniRef90") {
-            $fileInfo->{uniref90_domain_node_data_dir} = &$absPath($conf->{uniref90_domain_node_data_dir});
-            $fileInfo->{fasta_uniref90_domain_data_dir} = &$absPath($fastaUniRef90DomainDataDir);
-            $fileInfo->{uniref90_domain_node_zip} = $uniRef90DomainIdZip;
-            $fileInfo->{fasta_uniref90_domain_zip} = $fastaUniRef90DomainZip;
-        }
-    }
-    
-    if (not $ssnType or $ssnType eq "UniRef50") {
-        $fileInfo->{uniref50_node_data_dir} = &$absPath($conf->{uniref50_node_data_dir});
-        $fileInfo->{fasta_uniref50_data_dir} = &$absPath($fastaUniRef50DataDir);
-        $fileInfo->{uniref50_node_zip} = $uniRef50IdZip;
-        $fileInfo->{fasta_uniref50_zip} = $fastaUniRef50Zip;
-        if (not $ssnType or $isDomain) {
-            $fileInfo->{uniref50_domain_node_data_dir} = &$absPath($conf->{uniref50_domain_node_data_dir});
-            $fileInfo->{fasta_uniref50_domain_data_dir} = &$absPath($fastaUniRef50DomainDataDir);
-            $fileInfo->{uniref50_domain_node_zip} = $uniRef50DomainIdZip;
-            $fileInfo->{fasta_uniref50_domain_zip} = $fastaUniRef50DomainZip;
-        }
-    }
+    # Shared.pm
+    getClusterDataDirInfo($conf, $fileInfo, $outputDir, $conf->{cluster_data_dir});
 
     return $fileInfo;
 }
@@ -358,66 +318,38 @@ sub getColorSsnJob {
     my $outputDir = $self->getOutputDir();
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
+    my $blastDbDir = $self->getBlastDbDir();
 
     my $scriptArgs = 
-        "-output-dir $outputDir " .
-        "-ssnin $conf->{ssn_in} " .
-        "-ssnout $conf->{ssn_out} " .
-        "-uniprot-id-dir $conf->{uniprot_node_data_dir} " .
-        "-uniprot-domain-id-dir $conf->{uniprot_domain_node_data_dir} " .
-        "-uniref50-id-dir $conf->{uniref50_node_data_dir} " .
-        "-uniref50-domain-id-dir $conf->{uniref50_domain_node_data_dir} " .
-        "-uniref90-id-dir $conf->{uniref90_node_data_dir} " .
-        "-uniref90-domain-id-dir $conf->{uniref90_domain_node_data_dir} " .
-        "-id-out $conf->{map_file_name} " .
-        "-id-out-domain $conf->{domain_map_file_name} " .
-        "-config $configFile " .
-        "-stats $conf->{stats} " .
-        "-cluster-sizes $conf->{cluster_sizes} " .
-        "-sp-clusters-desc $conf->{sp_clusters_desc} " .
-        "-sp-singletons-desc $conf->{sp_singletons_desc} " .
+        " --config $configFile" .
+        " --output-dir $outputDir" .
+        " --ssnin $conf->{ssn_in}" .
+        " --ssnout $conf->{ssn_out}" .
+        " --id-out $conf->{map_file_name}" .
+        " --id-out-domain $conf->{domain_map_file_name}" .
+        " --stats $conf->{stats}" .
+        " --cluster-sizes $conf->{cluster_sizes}" .
+        " --sp-clusters-desc $conf->{sp_clusters_desc}" .
+        " --sp-singletons-desc $conf->{sp_singletons_desc}" .
         ""
         ;
+    $scriptArgs .= getClusterDataDirArgs($fileInfo);
 
     my $B = $S->getBuilder();
     
-    my $ramReservation = $self->computeRamReservation();
-    my $blastDbDir = $self->getBlastDbDir();
+    my $ramReservation = computeRamReservation($self->{conf}->{color});
 
     $B->resource(1, 1, "${ramReservation}gb");
     map { $B->addAction($_); } $self->getEnvironment("est-color");
     
     $B->addAction("cd $outputDir");
     $B->addAction("export EFI_DB_PATH=$blastDbDir");
-    $B->addAction("$toolPath/unzip_file.pl -in $conf->{zipped_file} -out $conf->{ssn_in}") if $conf->{zipped_file};
+    $B->addAction("$toolPath/unzip_file.pl --in $conf->{zipped_ssn_in} --out $conf->{ssn_in}") if $conf->{zipped_ssn_in};
     $B->addAction("$toolPath/cluster_gnn.pl $scriptArgs");
     EFI::GNN::Base::addFileActions($B, $fileInfo);
     $B->addAction("touch $outputDir/1.out.completed");
 
     return $B;
-}
-
-
-sub computeRamReservation {
-    my $self = shift;
-    my $conf = $self->{conf}->{color};
-
-    my $fileSize = 0;
-    if ($conf->{zipped_file}) { # If it's a .zip we can't predict apriori what the size will be.
-        $fileSize = -s $conf->{ssn_in};
-    }
-    
-    # Y = MX+B, M=emperically determined, B = safety factor; X = file size in MB; Y = RAM reservation in GB
-    my $ramReservation = $conf->{extra_ram} ? 800 : 150;
-    if ($fileSize) {
-        my $ramPredictionM = 0.03;
-        my $ramSafety = 10;
-        $fileSize = $fileSize / 1024 / 1024; # MB
-        $ramReservation = $ramPredictionM * $fileSize + $ramSafety;
-        $ramReservation = int($ramReservation + 0.5);
-    }
-
-    return $ramReservation;
 }
 
 

@@ -52,7 +52,12 @@ module load DIAMOND
 module load BLAST+
 
 [environment.est-color]
-module load efiest/efitools/devlocal
+module load Perl
+module load BLAST
+
+[environment.gnt]
+module load Perl
+module load BLAST
 
 [environment.build]
 module load BLAST

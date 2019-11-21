@@ -1,5 +1,5 @@
 
-package EFI::Job::EST;
+package EFI::Job::GNT;
 
 use strict;
 use warnings;
