@@ -1060,48 +1060,6 @@ CMDS
     {
         $B->addAction(<<CMDS);
 
-if [ ! -f $OutputDir/annotations.tab ]; then
-    echo "$OutputDir/annotations.tab does not exist. Did the build complete?"
-    echo "Bye."
-    exit
-fi
-
-if [ ! -f $OutputDir/GENE3D.tab ]; then
-    echo "$OutputDir/GENE3D.tab does not exist. Did the build complete?"
-    echo "Bye."
-    exit
-fi
-
-if [ ! -f $OutputDir/PFAM.tab ]; then
-    echo "$OutputDir/PFAM.tab does not exist. Did the build complete?"
-    echo "Bye."
-    exit
-fi
-
-if [ ! -f $OutputDir/SSF.tab ]; then
-    echo "$OutputDir/SSF.tab does not exist. Did the build complete?"
-    echo "Bye."
-    exit
-fi
-
-if [ ! -f $OutputDir/INTERPRO.tab ]; then
-    echo "$OutputDir/INTERPRO.tab does not exist. Did the build complete?"
-    echo "Bye."
-    exit
-fi
-
-if [ ! -f $OutputDir/pdb.tab  ]; then
-    echo "$OutputDir/pdb.tab  does not exist. Did the build complete?"
-    echo "Bye."
-    exit
-fi
-
-if [ ! -f $OutputDir/family_info.tab ]; then
-    echo "$OutputDir/family_info.tab does not exist. Did the build complete?"
-    echo "Bye."
-    exit
-fi
-
 if [ -f $CompletedFlagFile.mysql_import-base ]; then
     echo "It looks like the data has already been imported. You'll have to manually import if you want"
     echo "to override this check.";
