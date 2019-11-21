@@ -830,7 +830,8 @@ sub writeSqlCommands {
     my $endTrans = "COMMIT;";
 
     if ($buildOptions & BUILD_COUNTS) {
-        $countSql = <<SQL;
+        $countSql = ".separator \"\t\"" if $dbType eq "sqlite";
+        $countSql .= <<SQL;
 
 $startTrans
 SELECT 'CREATING family_info' AS '';
@@ -858,6 +859,7 @@ SQL
     }
     
     if ($buildOptions & BUILD_ENA) {
+        $enaSql = ".separator \"\t\"" if $dbType eq "sqlite";
         $enaSql = <<SQL;
 
 $startTrans
@@ -877,6 +879,7 @@ SQL
     }
     
     {
+        $sql = ".separator \"\t\"" if $dbType eq "sqlite";
         $sql = <<SQL;
 
 $startTrans
