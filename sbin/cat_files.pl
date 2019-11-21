@@ -5,7 +5,6 @@
 
 use Getopt::Long;
 use File::Slurp;
-use Capture::Tiny qw(:all);
 
 my ($result, $inputPattern, $outputFile);
 $result = GetOptions(

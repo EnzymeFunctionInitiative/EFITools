@@ -195,6 +195,7 @@ sub saveSequences {
         my ($fastacmdOutput, $fastaErr) = capture {
             system("fastacmd", "-d", "$blastDbPath/combined.fasta", "-s", $batchLine);
         };
+        print STDERR "fastacmd error: $fastaErr\n" if $fastaErr;
 
         my @sequences = split /\n>/, $fastacmdOutput;
         $sequences[0] = substr($sequences[0], 1) if $#sequences >= 0 and substr($sequences[0], 0, 1) eq ">";
