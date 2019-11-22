@@ -45,6 +45,7 @@ sub new {
         "dir-name|tmp=s",
         "job-dir|out-dir=s",
         "no-submit", # create the script files but don't submit them
+        "help",
         "serial-script=s", # file to place the serial execute commands into (has a default value)
     );
 
@@ -148,13 +149,13 @@ sub validateOptions {
     $conf->{no_submit} = $parms->{"no-submit"} // 0;
     $conf->{dry_run} = $parms->{"dry-run"} // 0;
     $conf->{serial_script} = $parms->{"serial-script"} // "";
+    $conf->{wants_help} = $parms->{"help"} ? 1 : 0;
 
     $conf->{job_dir_arg_set} = 1;
     if (not $conf->{job_dir}) {
         $conf->{job_dir} = $ENV{PWD};
         if (not $self->getUseResults()) {
             $conf->{job_dir_arg_set} = 0;
-            return "Results already exist in the current directory.  Please use the --job-dir flag to use this directory, or remove the results." if -d "$conf->{job_dir}/output";
         }
     }
     $conf->{job_dir} = abs_path($conf->{job_dir});
@@ -171,10 +172,42 @@ sub getJobInfo {
     push @info, [job_id => $jobId] if $jobId;
     return \@info;
 }
-# This should be overridden in each job type.
+# This can/should be overridden in each job type.  If no job type is specified, this usage is displayed.
 sub getUsage {
     my $self = shift;
-    return "";
+    return getGlobalUsageArgs() . "\n\n" . getGlobalUsage(admin => 1);
+}
+sub getGlobalUsageArgs {
+    return "[--job-id # --job-dir <JOB_DIR>]";
+}
+sub getGlobalUsage {
+    my $admin = shift || 0;
+    my $help = <<HELP;
+    --job-id            the job number to assign to the job; this is the prefix to each file;
+                        if not specified no prefix will be assigned to the output files and
+                        job scripts (the file name will mirror that of the input file).
+    --job-dir           the directory to store all of the inputs/outputs to the job; it will
+                        contain scripts/ (the location for scripts submitted ot the cluster), log/
+                        (the output from cluster jobs), and output/ (the directory where results
+                        will be stored).
+HELP
+    if ($admin) {
+        $help .= <<HELP;
+    --help              if no valid job types are specified, this help is displayed; if a job type
+                        is provided, shows the specific options for the job type.
+
+ADVANCED OPTIONS: (only for administrators for testing purposes)
+    --dry-run           doesn't create any directories or job scripts; outputs to the terminal
+                        what would be submitted to the cluster.
+    --no-submit         only create the job scripts, do not submit them to the cluster.
+    --dir-name          the output directory name to put results into (defaults to output/).
+    --remove-temp       setting this to 0 will not remove intermediate files; useful for debugging;
+                        defaults to true (remove all intermediate files)
+    --serial-script     output all of the cluster jobs into a single file that can be run on a
+                        single cluster node, or on a stand-alone system.
+HELP
+    }
+    return $help;
 }
 # This should be overridden in each job type.
 sub getJobType {
@@ -260,6 +293,20 @@ sub getOutputDir {
 }
 
 
+sub getHasResults {
+    my $self = shift;
+    my $dir = $self->{conf}->{job_dir};
+    $dir .= "/" . $self->{conf}->{dir_name};
+    return -d $dir;
+}
+
+
+sub getWantsHelp {
+    my $self = shift;
+    return $self->{conf}->{wants_help};
+}
+
+
 sub getLogDir {
     my $self = shift;
     my $dir = $self->{conf}->{job_dir} . "/log";
@@ -340,10 +387,6 @@ sub createScheduler {
         run_serial => $self->{cluster}->{run_serial},
         output_base_dirpath => $logDir,
     );
-    #$schedArgs{output_base_dirpath} = $logDir if $logDir;
-    #TODO:
-    #$schedArgs{node} = $clusterNode if $clusterNode;
-    #$schedArgs{extra_path} = $config->{cluster}->{extra_path} if $config->{cluster}->{extra_path};
     my $S = new EFI::SchedulerApi(%schedArgs);
 
     $self->{scheduler} = $S;

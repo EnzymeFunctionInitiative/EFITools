@@ -13,26 +13,46 @@ use EFI::Job::Factory;
 
 my $jobType = shift @ARGV;
 
-if (not $jobType) {
-    my $jobTypes = join("|", EFI::Job::Factory::get_available_types());
-    print <<HELP;
-usage: $0 <$jobTypes> [command line arguments}
-HELP
+# The user can request general app help here, either by not providing any arguments or by providing the
+# --help flag.
+if (not $jobType or $jobType =~ m/help/) {
+    print getHelp();
     exit(1);
 }
 
 
+# Option validation is done here.  If the user requests a valid job type, plus --help, then the usage is printed out
+# If there are validation errors, the usage is printed out.
 my $job = EFI::Job::Factory::create_est_job($jobType);
 
-die "Invalid job type $jobType" if not $job;
+# If an invalid job type is specified, then the app usage is printed out.
+if (not $job) {
+    print getHelp("Invalid job type '$jobType'.");
+    exit(1);
+}
+if ($job->getWantsHelp()) {
+    print getHelp("", $job, $jobType);
+    exit(1);
+}
+if ($job->hasErrors()) {
+    my $msg = join("\n", $job->getErrors());
+    print getHelp($msg, $job, $jobType);
+    exit(1);
+}
 
 
 my $dir = $job->getJobDir();
 
-if (not $job->getJobDirArgumentSet()) {
-    print "WARNING: no --job-dir specified.  Use the current directory? [y/n] ";
-    my $yn = <STDIN>;
-    exit(1) if $yn !~ m/^\s*y/i;
+if (not $job->getJobDirArgumentSet() and not($job->getSubmitStatus() & EFI::Job::DRY_RUN)) {
+    if ($job->getHasResults() and not $job->getUseResults()) {
+        my $msg = "Results already exist in the current directory.  Please use the --job-dir flag to use this\ndirectory, or remove the results.";
+        print getHelp($msg, $job, $jobType);
+        exit(1);
+    } else {
+        print "WARNING: no --job-dir specified.  Use the current directory? [y/n] ";
+        my $yn = <STDIN>;
+        exit(1) if $yn !~ m/^\s*y/i;
+    }
 }
 
 
@@ -93,6 +113,29 @@ sub saveJobInfo {
         print $fh join("\t", @$row), "\n";
     }
     close $fh;
+}
+
+
+# Man this getHelp stuff is more complicated than the relationship between Thor and Loki.
+sub getHelp {
+    my $msg = shift || "";
+    my $job = shift;
+    my $jobType = shift;
+
+    (my $script = $0) =~ s%^.*/([^/]+)$%$1%;
+    $msg = "$msg\n\n" if $msg;
+    my $jobTypes = "<" . join("|", EFI::Job::Factory::get_available_types()) . ">";
+
+    my $globalArgs = EFI::Job::getGlobalUsageArgs();
+    my $globalUsage = EFI::Job::getGlobalUsage(not $job);
+    my $jobUsage = "\n";
+    if ($job and $jobType) {
+        $jobTypes = $jobType;
+        $jobUsage = $job->getUsage();
+        $globalArgs = "";
+    }
+
+    print "${msg}usage: $script $jobTypes $globalArgs${jobUsage}\nGLOBAL OPTIONS:\n$globalUsage\n";
 }
 
 

@@ -49,15 +49,10 @@ sub create_est_job {
     } elsif ($jobType eq EFI::Job::GNT::GND::JOB_TYPE) {
         $job = new EFI::Job::GNT::GND();
     } else {
-        die "Invalid Job type\n";
+        return undef;
     }
 
     $job->getScheduler();
-    if ($job->hasErrors()) {
-        my $msg = join("\n", $job->getErrors()) . "\n\n";
-        $msg .= "usage: " . $job->getUsage();
-        die $msg . "\n";
-    }
 
     return $job;
 }
