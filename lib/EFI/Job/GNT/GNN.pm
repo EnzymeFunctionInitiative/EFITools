@@ -14,7 +14,7 @@ use EFI::GNN::Base;
 use EFI::GNN;
 use EFI::Job::GNT::Shared;
 
-use parent qw(EFI::Job);
+use parent qw(EFI::Job::GNT);
 
 use Getopt::Long qw(:config pass_through);
 

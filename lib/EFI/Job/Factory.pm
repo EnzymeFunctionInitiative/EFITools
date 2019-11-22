@@ -17,6 +17,7 @@ use EFI::Job::EST::Generate::FASTA;
 use EFI::Job::EST::Color;
 use EFI::Job::EST::Analyze;
 use EFI::Job::GNT::GNN;
+use EFI::Job::GNT::GND;
 
 use EFI::SchedulerApi;
 
@@ -45,6 +46,8 @@ sub create_est_job {
         $job = new EFI::Job::EST::Analyze();
     } elsif ($jobType eq EFI::Job::GNT::GNN::JOB_TYPE) {
         $job = new EFI::Job::GNT::GNN();
+    } elsif ($jobType eq EFI::Job::GNT::GND::JOB_TYPE) {
+        $job = new EFI::Job::GNT::GND();
     } else {
         die "Invalid Job type\n";
     }
