@@ -93,7 +93,7 @@ if ($doIdMapping) {
 
 
 
-my $accessionData = findNeighbors($mysqlDbh, $nbSize, $noNeighborFile, $evalues, @inputIds);
+my $accessionData = findNeighbors($mysqlDbh, $nbSize, $noNeighborFile, \@unmatchedIds, $evalues, @inputIds);
 
 my %arrowMeta;
 $arrowMeta{neighborhood_size} = $nbSize;
@@ -130,6 +130,7 @@ sub findNeighbors {
     my $dbh = shift;
     my $nbSize = shift;
     my $noNbFile = shift;
+    my $unmatchedIds = shift;
     my $evalues = shift;
     my @ids = @_;
 
@@ -150,8 +151,10 @@ sub findNeighbors {
     foreach my $id (@ids) {
         my $localData = {};
         my (undef, undef, undef, undef) = $nbFind->findNeighbors($id, $nbSize, $warningFh, $useCircTest, $noneFamily, $localData);
+        my $numKeys = scalar(keys(%$localData)); # was it empty; e.g. no neighbors
         $accessionData->{$id} = $localData;
         getAnnotations($dbh, $id, $accessionData, $sortKey, $evalues);
+        push @unmatchedIds, $id if not $accessionData->{$id}->{attributes}->{anno_status} and not $numKeys;
         $sortKey++;
     }
 
