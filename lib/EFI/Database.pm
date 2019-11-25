@@ -164,10 +164,10 @@ sub getHandle {
 
     my $dbh;
     if ($self->{db}->{dbi} eq EFI::Config::DATABASE_SQLITE3) {
-        print "Using SQLite3 database $self->{db}->{name}\n";
+        #print "Using SQLite3 database $self->{db}->{name}\n";
         $dbh = DBI->connect("DBI:SQLite:dbname=$self->{db}->{name}","","");
     } else {
-        print "Using MySQL/MariaDB database $self->{db}->{name}\n";
+        #print "Using MySQL/MariaDB database $self->{db}->{name}\n";
         my $connStr =
             "DBI:mysql" .
             ":database=" . $self->{db}->{name} .

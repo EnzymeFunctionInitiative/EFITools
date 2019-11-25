@@ -113,6 +113,8 @@ sub getUsage {
         #"--db-type uniprot|uniref90|uniref50",
     );
     my @descs = (
+        ["--sequence", "amino acid sequence to use as input for the BLAST"],
+        ["--sequence-file", "path to file containing a single amino acid sequence; equivalent to --sequence, just taking the sequence from the file instead"],
         ["--blast-evalue", "numeric value indicating the negative log of the e-value to use for retrieving similar sequences; defaults to 5"],
         ["--max-blast-results", "numeric value to limit the number sequences retrieved; defaults to 1000"],
         ["--blast-input-id", "the ID to include in the SSN that represents the input sequence; defaults to zINPUTSEQ"],
