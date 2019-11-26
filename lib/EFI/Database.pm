@@ -2,19 +2,24 @@
 package EFI::Database;
 
 use strict;
+use warnings;
+
 use DBI;
-use Log::Message::Simple qw[:STD :CARP];
-require 'Config.pm';
-use EFI::Config qw(cluster_configure);
+
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use lib dirname(abs_path(__FILE__)) . "/../";
+
+use EFI::Config qw(database_configure);
 
 
 sub new {
     my ($class, %args) = @_;
 
-    my $self = {};
+    my $self = {db => {}};
     bless($self, $class);
 
-    cluster_configure($self, %args);
+    $self->{db} = database_configure($args{config_file_path});
 
     if (exists $args{load_infile}) {
         $self->{load_infile} = $args{load_infile};
@@ -26,25 +31,6 @@ sub new {
 }
 
 
-#sub createTable {
-#    my ($self, $tableName) = @_;
-#
-#    my $dbh = $self->getHandle();
-#    my $result = 1;
-#    eval {
-#        $dbh->do("CREATE TABLE $tableName");
-#        1;
-#    } or do {
-#        error("Creating table $tableName failed: $@");
-#        $result = 0;
-#    };
-#
-#    $dbh->finish();
-#
-#    return $result;
-#}
-
-
 sub loadTabular {
     my ($self, $tableName, $tabularFile) = @_;
 
@@ -54,7 +40,7 @@ sub loadTabular {
         $dbh->do("load data local infile '$tabularFile' into table $tableName");
         1;
     } or do {
-        error("Loading data from file '$tabularFile' failed: $@", 1);
+        warn("Loading data from file '$tabularFile' failed: $@", 1);
         $result = 0;
     };
 
@@ -64,26 +50,21 @@ sub loadTabular {
 }
 
 
-sub stuff {
-
-#grant select,execute,show view on `efi_20170412`.* to 'efignn'@'10.1.0.0/255.255.0.0';
-}
-
-
 sub tableExists {
-    my ($self, $tableName) = @_;
+    my ($self, $tableName, $dbhCache) = @_;
 
-    my $dbh = $self->getHandle();
+    my $dbh = $dbhCache ? $dbhCache : $self->getHandle();
 
     my $sth = $dbh->table_info('', '', '', 'TABLE');
     while (my (undef, undef, $name) = $sth->fetchrow_array()) {
         if ($tableName eq $name) {
-            $dbh->disconnect();
+            $dbh->disconnect() if not $dbhCache;
             return 1;
         }
     }
 
-    $dbh->disconnect();
+    $dbh->disconnect() if not $dbhCache;
+
     return 0;
 }
 
@@ -118,6 +99,29 @@ sub createTable {
 }
 
 
+# Private
+sub getVersion {
+    my ($self, $dbh) = @_;
+
+    if (exists $self->{db_version}) {
+        return $self->{db_version};
+    }
+
+    my $ver = 0;
+
+    if ($self->tableExists("version", $dbh)) {
+        my $sth = $dbh->prepare("SELECT * FROM version LIMIT 1");
+        $sth->execute();
+        my $row = $sth->fetchrow_hashref();
+        if ($row) {
+            $ver = $row->{db_version};
+        }
+    }
+
+    $self->{db_version} = $ver;
+
+    return $ver;
+}
 
 
 
@@ -139,12 +143,17 @@ sub createTable {
 sub getCommandLineConnString {
     my ($self) = @_;
 
-    my $connStr =
-        "mysql"
-        . " -u " . $self->{db}->{user}
-        . " -p"
-        . " -P " . $self->{db}->{port}
-        . " -h " . $self->{db}->{host};
+    my $connStr ="";
+    if ($self->{db}->{dbi} eq EFI::Config::DATABASE_MYSQL) {
+        $connStr =
+            "mysql"
+            . " -u " . $self->{db}->{user}
+            . " -p"
+            . " -P " . $self->{db}->{port}
+            . " -h " . $self->{db}->{host};
+    } else {
+        $connStr = "sqlite3 $self->{db}->{name}";
+    }
 
     return $connStr;
 }
@@ -153,15 +162,23 @@ sub getCommandLineConnString {
 sub getHandle {
     my ($self) = @_;
 
-    my $connStr =
-        "DBI:mysql" .
-        ":database=" . $self->{db}->{name} .
-        ":host=" . $self->{db}->{host} .
-        ":port=" . $self->{db}->{port};
-    $connStr .= ";mysql_local_infile=1" if $self->{load_infile};
-
-    my $dbh = DBI->connect($connStr, $self->{db}->{user}, $self->{db}->{password});
-    $dbh->{mysql_auto_reconnect} = 1;
+    my $dbh;
+    if ($self->{db}->{dbi} eq EFI::Config::DATABASE_SQLITE3) {
+        #print "Using SQLite3 database $self->{db}->{name}\n";
+        $dbh = DBI->connect("DBI:SQLite:dbname=$self->{db}->{name}","","");
+    } else {
+        #print "Using MySQL/MariaDB database $self->{db}->{name}\n";
+        my $connStr =
+            "DBI:mysql" .
+            ":database=" . $self->{db}->{name} .
+            ":host=" . $self->{db}->{host} .
+            ":port=" . $self->{db}->{port};
+        $connStr .= ";mysql_local_infile=1" if $self->{load_infile};
+    
+        $dbh = DBI->connect($connStr, $self->{db}->{user}, $self->{db}->{password});
+        $dbh->{mysql_auto_reconnect} = 1;
+        $dbh->do('SET @@group_concat_max_len = 3000'); # Increase the amount of elements that can be concat together (to avoid truncation)
+    } 
 
     return $dbh;
 }

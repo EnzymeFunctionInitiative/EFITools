@@ -5,10 +5,9 @@ use strict;
 use Exporter qw(import);
 use FindBin;
 use Config::IniFiles;
-use Log::Message::Simple qw[:STD :CARP];
 
 
-our @EXPORT_OK = qw(cluster_configure);
+#our @EXPORT_OK = qw(build_config database_configure);
 
 
 use constant {
@@ -19,6 +18,9 @@ use constant {
     DATABASE_HOST               => "host",
     DATABASE_PORT               => "port",
     DATABASE_IP_RANGE           => "ip_range",
+    DATABASE_DBI                => "dbi",
+    DATABASE_MYSQL              => "mysql",
+    DATABASE_SQLITE3            => "sqlite3",
 
     IDMAPPING_SECTION           => "idmapping",
     IDMAPPING_TABLE_NAME        => "table_name",
@@ -39,42 +41,64 @@ use constant {
     TAX_SECTION                 => "taxonomy",
     TAX_REMOTE_URL              => "remote_url",
 
-    ENVIRONMENT_DB              => "EFIDB",
-    ENVIRONMENT_CONFIG          => "EFICONFIG",
+    ENVIRONMENT_DB              => "EFI_DB",
+    ENVIRONMENT_CONFIG          => "EFI_CONFIG",
+    ENVIRONMENT_DBI             => "EFI_DBI",
 };
+
+
+our @EXPORT = qw(database_configure parseConfigFile ENVIRONMENT_DB ENVIRONMENT_CONFIG ENVIRONMENT_DBI DATABASE_SQLITE3);
+
 
 use constant NO_ACCESSION_MATCHES_FILENAME => "no_accession_matches.txt";
 use constant FASTA_ID_FILENAME => "userfasta.ids.txt";
 use constant FASTA_META_FILENAME => "fasta.metadata";
 use constant ANNOTATION_SPEC_FILENAME => "annotation.spec";
 
-# Deprecated -- use the ones in EFI::Annotations instead.
-use constant FIELD_SEQ_SRC_KEY => "Sequence_Source";
-use constant FIELD_SEQ_SRC_VALUE_BOTH => "FAMILY+USER";
-use constant FIELD_SEQ_SRC_VALUE_FASTA => "USER";
-use constant FIELD_SEQ_SRC_VALUE_FAMILY => "FAMILY";
 
 
-sub cluster_configure {
+sub build_configure {
     my ($object, %args) = @_;
 
-    $object->{config_file_path} = $FindBin::Bin . "/" . "efi.config";
-    if (exists $args{config_file_path}) {
-        $object->{config_file_path} = $args{config_file_path};
-    } elsif (exists $ENV{EFICONFIG}) {
-        $object->{config_file_path} = $ENV{EFICONFIG};
-    }
-    
-    if (exists $args{dryrun}) {
-        $object->{dryrun} = $args{dryrun};
-    } else {
-        $object->{dryrun} = 0;
-    }
+    die "config_file_path argument is required" if not $args{config_file_path};
 
-    parseConfig($object);
+    #$configFilePath = $FindBin::Bin . "/../conf/build.conf";
+    #if (exists $args{config_file_path}) {
+    #    $configFilePath = $args{config_file_path};
+    #} elsif (exists $ENV{EFI_BUILD_CONFIG}) {
+    #    $configFilePath = $ENV{EFI_BUILD_CONFIG};
+    #}
+    #
+    #if (exists $args{dryrun}) {
+    #    $object->{dryrun} = $args{dryrun};
+    #} else {
+    #    $object->{dryrun} = 0;
+    #}
+
+    parseBuildConfig($object, $args{config_file_path});
 }
 
 
+# $configFile can be an already-parsed hash reference (parsed by parseConfigFile below; this would happen if
+# another code has already parsed the file), or a path to a file.
+# $conf is an optional parameter which can be used to put parameters in, if it is part of another object.
+# Otherwise a hashref is returned.
+sub database_configure {
+    my $configFile = shift or die "Unable to configure database without configuration file";
+    my $conf = shift;
+    $conf = {} if not $conf;
+    
+    my $config;
+    if (not ref $configFile) {
+        $config = parseConfigFile($configFile);
+    } else {
+        $config = $configFile;
+    }
+
+    validateDatabaseConfig($config, $conf);
+
+    return $conf;
+}
 
 
 
@@ -87,31 +111,81 @@ sub cluster_configure {
 #
 
 
-sub parseConfig {
-    my ($object) = @_;
+sub parseConfigFile {
+    my $filePath = shift;
 
-    croak "The configuration file " . $object->{config_file_path} . " does not exist." if not -f $object->{config_file_path};
+    my $section = "";
+    my $data = {};
 
-    my $cfg = new Config::IniFiles(-file => $object->{config_file_path});
-    croak "Unable to parse config file: " . join("; ", @Config::IniFiles::errors), "\n" if not defined $cfg;
-
-    $object->{db}->{user} = $cfg->val(DATABASE_SECTION, DATABASE_USER);
-    $object->{db}->{password} = $cfg->val(DATABASE_SECTION, DATABASE_PASSWORD);
-    $object->{db}->{host} = $cfg->val(DATABASE_SECTION, DATABASE_HOST, "localhost");
-    $object->{db}->{port} = $cfg->val(DATABASE_SECTION, DATABASE_PORT, "3306");
-    $object->{db}->{ip_range} = $cfg->val(DATABASE_SECTION, DATABASE_IP_RANGE, "");
-
-    if (exists $ENV{&ENVIRONMENT_DB}) {
-        $object->{db}->{name} = $ENV{&ENVIRONMENT_DB};
-    } else {
-        $object->{db}->{name} = $cfg->val(DATABASE_SECTION, DATABASE_NAME);
+    open my $fh, $filePath or die "Unable to read config file $filePath: $!";
+    while (<$fh>) {
+        s/^\s*(.*?)\s*$/$1/s;
+        s/;.+$//;
+        next if not $_;
+        if (m/^\[(.*)\]/) {
+            $section = $1;
+        } elsif ($section =~ m/^environment/ and length) {
+            push @{$data->{$section}->{_raw}}, $_;
+        } elsif (length) {
+            my @parts = split(m/=/, $_, 2);
+            if (scalar @parts == 1) {
+                push @{$data->{$section}->{_raw}}, $parts[0];
+            } else {
+                my ($key, $val) = @parts;
+                if (exists $data->{$section}->{$key}) {
+                    $data->{$section}->{$key} = [$data->{$section}->{$key}] if not ref $data->{$section}->{$key};
+                    push @{$data->{$section}->{$key}}, $val;
+                } else {
+                    $data->{$section}->{$key} = $val;
+                }
+            }
+        }
     }
 
-    croak getError(DATABASE_USER)                   if not defined $object->{db}->{user};
-    croak getError(DATABASE_PASSWORD)               if not defined $object->{db}->{password};
-    croak getError(DATABASE_NAME)                   if not defined $object->{db}->{name};
+    return $data;
+}
+
+
+# Return 0 if it's OK, error message if it's not.
+sub validateDatabaseConfig {
+    my $config = shift;
+    my $conf = shift;
     
-    
+    my $defaultHost = "localhost";
+    my $defaultPort = 3306;
+    my $defaultDbi = "mysql";
+
+    $conf->{user} = $config->{database}->{user} // "";
+    $conf->{password} = $config->{database}->{password} // "";
+    $conf->{host} = $config->{database}->{host} // $defaultHost;
+    $conf->{port} = $config->{database}->{port} // $defaultPort;
+    $conf->{ip_range} = $config->{database}->{ip_range} // "";
+    $conf->{dbi} = $config->{database}->{dbi} // $defaultDbi;
+    $conf->{name} = $config->{database}->{name} // "";
+    $conf->{db_home} = $config->{database}->{db_home} // "";
+
+    # Override the name from the environment if the environment provides a database name and DBI
+    $conf->{name} = $ENV{&ENVIRONMENT_DB} if $ENV{&ENVIRONMENT_DB};
+    $conf->{dbi} = $ENV{&ENVIRONMENT_DBI} if $ENV{&ENVIRONMENT_DBI};
+
+    if ($conf->{dbi} eq DATABASE_MYSQL) {
+        return getError(DATABASE_USER)               if not defined $conf->{user};
+        return getError(DATABASE_PASSWORD)           if not defined $conf->{password};
+    }
+    return getError(DATABASE_NAME)                   if not defined $conf->{name};
+
+    return 0;
+}
+
+
+sub parseBuildConfig {
+    my ($object, $configFilePath) = @_;
+
+    die "The configuration file " . $configFilePath . " does not exist." if not -f $configFilePath;
+
+    my $cfg = new Config::IniFiles(-file => $configFilePath);
+    die "Unable to parse config file: " . join("; ", @Config::IniFiles::errors), "\n" if not defined $cfg;
+
     $object->{id_mapping}->{table} = $cfg->val(IDMAPPING_SECTION, IDMAPPING_TABLE_NAME);
     $object->{id_mapping}->{remote_url} = $cfg->val(IDMAPPING_SECTION, IDMAPPING_REMOTE_URL);
     $object->{id_mapping}->{uniprot_id} = $cfg->val(IDMAPPING_SECTION, IDMAPPING_UNIPROT_ID);
@@ -127,23 +201,16 @@ sub parseConfig {
         }
     }
 
-    croak getError(IDMAPPING_TABLE_NAME)            if not defined $object->{id_mapping}->{table};
-    croak getError(IDMAPPING_REMOTE_URL)            if not defined $object->{id_mapping}->{remote_url};
-
-
-    $object->{cluster}->{queue} = $cfg->val(CLUSTER_SECTION, CLUSTER_QUEUE);
-    $object->{cluster}->{extra_path} = $cfg->val(CLUSTER_SECTION, CLUSTER_EXTRA_PATH);
-
-    croak getError(CLUSTER_QUEUE)                   if not defined $object->{cluster}->{queue};
-
+    die getError(IDMAPPING_TABLE_NAME)            if not defined $object->{id_mapping}->{table};
+    die getError(IDMAPPING_REMOTE_URL)            if not defined $object->{id_mapping}->{remote_url};
 
     $object->{build}->{uniprot_url} = $cfg->val(DBBUILD_SECTION, DBBUILD_UNIPROT_URL);
     $object->{build}->{interpro_url} = $cfg->val(DBBUILD_SECTION, DBBUILD_INTERPRO_URL);
     $object->{build}->{pfam_info_url} = $cfg->val(DBBUILD_SECTION, DBBUILD_PFAM_INFO_URL);
 
-    croak getError(DBBUILD_UNIPROT_URL)             if not defined $object->{build}->{uniprot_url};
-    croak getError(DBBUILD_INTERPRO_URL)            if not defined $object->{build}->{interpro_url};
-    croak getError(DBBUILD_PFAM_INFO_URL)           if not defined $object->{build}->{pfam_info_url};
+    die getError(DBBUILD_UNIPROT_URL)             if not defined $object->{build}->{uniprot_url};
+    die getError(DBBUILD_INTERPRO_URL)            if not defined $object->{build}->{interpro_url};
+    die getError(DBBUILD_PFAM_INFO_URL)           if not defined $object->{build}->{pfam_info_url};
 
     $object->{tax}->{remote_url} = $cfg->val(TAX_SECTION, TAX_REMOTE_URL);
 

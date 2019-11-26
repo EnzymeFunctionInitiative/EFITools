@@ -1,20 +1,20 @@
 
-BEGIN {
-    die "The EFISHARED environment variable must be set before including this module" if not exists $ENV{EFISHARED} and not length $ENV{EFISHARED};
-    use lib $ENV{EFISHARED};
-}
-
-
 package EFI::GNN;
 
 use strict;
 use warnings;
+
 
 use constant PFAM_THRESHOLD => 0;
 use constant PFAM_ANY => 1;
 use constant PFAM_SPLIT => 2;
 use constant PFAM_ANY_SPLIT => 4;
 use constant MAX_NB_SIZE => 20;
+
+
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use lib dirname(abs_path(__FILE__)) . "/../";
 
 use List::MoreUtils qw{apply uniq any};
 use List::Util qw(sum max);
