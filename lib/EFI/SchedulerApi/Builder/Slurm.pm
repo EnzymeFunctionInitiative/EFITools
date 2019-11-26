@@ -82,7 +82,7 @@ sub dependency {
         my $okStr = "afterok";
         my $depStr = "";
         if (ref $jobId eq "ARRAY") {
-            $depStr = join(",", map { s/\s//sg; "$okStr:$_" } @$jobId);
+            $depStr = join(",", map { s/\s//sg; "$okStr:$_" } grep defined($_), @$jobId);
         } else {
             $depStr = "$okStr:$jobId";
         }
