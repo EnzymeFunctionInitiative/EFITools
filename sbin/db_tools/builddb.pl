@@ -28,7 +28,6 @@ my $skipIfExists = 0;
 my $scheduler = "";
 my $queue;
 my $configFile;
-my $buildConfigFile;
 my $sql;
 my $batchMode;
 my $noSubmit;
@@ -47,8 +46,7 @@ my $result = GetOptions("dir=s"         => \$WorkingDir,
                         "exists"        => \$skipIfExists,
                         "scheduler=s"   => \$scheduler,     # to set the scheduler to slurm
                         "queue=s"       => \$queue,
-                        "config=s"      => \$configFile,
-                        "build-config=s"    => \$buildConfigFile,
+                        "build-config=s"    => \$configFile,
                         "sql"           => \$sql,           # only output the SQL commands for importing data. no other args are required to use this option.
                         "no-prompt"     => \$batchMode,     # run without the GOLD version prompt
                         "no-submit"     => \$noSubmit,      # create the job scripts but don't submit them
@@ -107,32 +105,28 @@ if (not $WorkingDir) {
 }
 
 
-$configFile = "$FindBin::Bin/../../conf/efi.conf" if not $configFile;
+$configFile = "$FindBin::Bin/../../conf/build.conf" if not $configFile;
+die "The --build-config file parameter must be specified" if not $configFile or not -f $configFile;
+
 my $config = parseConfigFile($configFile);
-my $dbConfig = database_configure($configFile);
 
 $doPdbBlast = defined $doPdbBlast;
 $dbType = "mysql" if not $dbType;
 $queue = $config->{cluster}->{queue} if not $queue and $config->{cluster}->{queue};
-my $dbHome = $dbConfig->{db_home} // $ENV{EFI_DB_HOME} // "";
 
 die "The BLASTDB environment variable must be present. Did you forget to \"module load BLAST\" before running this program?" if not exists $ENV{BLASTDB} and $doPdbBlast;
-die "The EFI database home variable must be present either through argument or present in config file." if not $dbHome;
+die "The EFI database home variable must be present either through argument or present in config file." if not $config->{build}->{db_home};
 die "The --db-name parameter is required." if not $dbName and not ($buildEna or $doDownload or $buildCountsOnly);
 die "The --queue parameter is required." if not $queue and not ($sql or $doDownload or $buildCountsOnly);
 
 
-$buildConfigFile = "$FindBin::Bin/../../conf/build.conf" if not $buildConfigFile;
-die "The --build-config file parameter must be specified" if not $buildConfigFile or not -f $buildConfigFile;
-
-my $buildConfig = parseConfigFile($buildConfigFile);
 
 
 
 
 
 # Various directories and files.
-my $DbSupport = "$dbHome/support";
+my $DbSupport = "$config->{build}->{db_home}/support";
 $WorkingDir = abs_path($WorkingDir);
 my $ScriptDir = $FindBin::Bin;
 my $BuildDir = "$WorkingDir/build";
@@ -178,11 +172,9 @@ my %dbArgs;
 $dbArgs{config_file_path} = $configFile if (defined $configFile and -f $configFile);
 
 # Get info from the configuration file.
-my $UniprotLocation = $buildConfig->{build}->{uniprot_url};
-my $InterproLocation = $buildConfig->{build}->{interpro_url};
-my $TaxonomyLocation = $buildConfig->{build}->{taxonomy_url};
-my $IpRange = $dbConfig->{db}->{ip_range} // "";
-my $DbUser = $dbConfig->{db}->{user} // "";
+my $UniprotLocation = $config->{build}->{uniprot_url};
+my $InterproLocation = $config->{build}->{interpro_url};
+my $TaxonomyLocation = $config->{build}->{taxonomy_url};
 
 # Set up the scheduler API.
 $scheduler = "slurm" if not $scheduler and usesSlurm();
@@ -660,8 +652,8 @@ sub submitDownloadJob {
         $B->addAction("curl -sS $UniprotLocation/uniref/uniref90/uniref90.xml.gz > $InputDir/uniref90.xml.gz");
         $B->addAction("date > $CompletedFlagFile.uniref90.xml\n");
     }
-    my $pfamInfoUrl = $buildConfig->{build}->{pfam_info_url};
-    my $clanInfoUrl = exists $buildConfig->{build}->{clan_info_url} ? $buildConfig->{build}->{clan_info_url} : "";
+    my $pfamInfoUrl = $config->{build}->{pfam_info_url};
+    my $clanInfoUrl = exists $config->{build}->{clan_info_url} ? $config->{build}->{clan_info_url} : "";
     if (not $skipIfExists or not -f "$InputDir/Pfam-A.clans.tsv.gz" and not -f "$InputDir/Pfam-A.clans.tsv") {
         logprint "#  Downloading $pfamInfoUrl\n";
         $B->addAction("echo Downloading Pfam-A.clans.tsv.gz");
@@ -750,31 +742,13 @@ sub submitUnzipJob {
 
     waitForInput();
 
-    if (not $skipIfExists or not -f "$LocalSupportDir/gdna.tab") {
-        $B->addAction("cp $DbSupport/gdna.tab $LocalSupportDir/gdna.tab"); 
-        $B->addAction("mac2unix $LocalSupportDir/gdna.tab");
-        $B->addAction("dos2unix $LocalSupportDir/gdna.tab\n");
-    }
-    #if (not $skipIfExists or not -f "$LocalSupportDir/phylo.tab") {
-    #    $B->addAction("cp $DbSupport/phylo.tab $LocalSupportDir/phylo.tab");
-    #    $B->addAction("mac2unix $LocalSupportDir/phylo.tab");
-    #    $B->addAction("dos2unix $LocalSupportDir/phylo.tab\n");
-    #}
-    #if (not $skipIfExists or not -f "$LocalSupportDir/efi-accession.tab") {
-    #    $B->addAction("cp $DbSupport/efi-accession.tab $LocalSupportDir/efi-accession.tab");
-    #    $B->addAction("mac2unix $LocalSupportDir/efi-accession.tab");
-    #    $B->addAction("dos2unix $LocalSupportDir/efi-accession.tab\n");
-    #}
     if (not $skipIfExists or not -f "$LocalSupportDir/hmp.tab") {
         $B->addAction("cp $DbSupport/hmp.tab $LocalSupportDir/hmp.tab\n");
     }
-    if (not $skipIfExists or not -f "$LocalSupportDir/gdna.new.tab") {
+    if (not $skipIfExists or not -f "$LocalSupportDir/gdna.tab") {
+        $B->addAction("cp $DbSupport/gdna.tab $LocalSupportDir/gdna.tab"); 
         $B->addAction("tr -d ' \t' < $LocalSupportDir/gdna.tab > $LocalSupportDir/gdna.new.tab");
-    }
-    if (-f "$LocalSupportDir/gdna.tab") {
         $B->addAction("rm $LocalSupportDir/gdna.tab");
-    }
-    if (-f "$LocalSupportDir/gdna.new.tab") {
         $B->addAction("mv $LocalSupportDir/gdna.new.tab $LocalSupportDir/gdna.tab");
     }
     $B->addAction("date > $CompletedFlagFile.support_files\n");
@@ -828,7 +802,7 @@ sub writeSqlCommands {
     my $loadMid = $dbType eq "sqlite" ? "" : "INTO TABLE";
     my $loadEnd = $dbType eq "sqlite" ? "" : ";";
     my $endTrans = "COMMIT;";
-    my $sqlSepStmt = ".separator \"\\t\"\n\n" if $dbType eq "sqlite";
+    my $sqlSepStmt = $dbType eq "sqlite" ? ".separator \"\\t\"\n\n" : "";
 
     if ($buildOptions & BUILD_COUNTS) {
         $countSql = $sqlSepStmt . <<SQL;
@@ -996,7 +970,7 @@ CREATE TABLE version (db_version INTEGER);
 INSERT INTO version VALUES (2);
 $endTrans
 
-/*GRANT SELECT ON `$dbName`.* TO '$DbUser'\@'$IpRange';*/
+/*GRANT SELECT ON `$dbName`.* TO 'DB_USER'\@'IP_ADDRESS';*/
 
 SQL
         ;
@@ -1067,7 +1041,7 @@ if [ -f $CompletedFlagFile.mysql_import-base ]; then
 fi
 CMDS
         if ($dbType eq "mysql") {
-            $B->addAction("#mysql: GRANT SELECT ON `$loadDbName`.* TO '$DbUser'\@'$IpRange';*/");
+            $B->addAction("#mysql: GRANT SELECT ON `$loadDbName`.* TO 'DB_USER'\@'';*/");
             $B->addAction("#$mysqlCmdAdmin create $loadDbName");
         }
         $B->addAction("$dbConnCmd $loadDbName < $sqlFile");

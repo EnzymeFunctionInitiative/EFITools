@@ -1,7 +1,14 @@
 [build]
+db_home=
 taxonomy_url=ftp://ftp.ebi.ac.uk/pub/databases/ena/taxonomy/taxonomy.xml.gz
 uniprot_url=ftp://ftp.uniprot.org/pub/databases/uniprot/current_release
 interpro_url=ftp://ftp.ebi.ac.uk/pub/databases/interpro/current
 pfam_info_url=ftp://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.clans.tsv.gz
 clan_info_url=ftp://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-C.gz
+
+[environment.build]
+module load BLAST
+module load Perl
+module load libxml2
+module load DIAMOND/0.9.24-IGB-gcc-8.2.0
 

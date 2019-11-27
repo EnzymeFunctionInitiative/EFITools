@@ -3,11 +3,9 @@ user=
 password=
 host=
 port=
-ip_range=
 uniref90_db=uniref90.fasta
 uniref50_db=uniref50.fasta
 uniprot_db=combined.fasta
-db_home=
 
 ; The database name and DBI and BLAST database path can be overridden by the environment.
 dbi=mysql
@@ -71,10 +69,13 @@ module load BLAST
 module load Perl
 module load BLAST
 
-[environment.build]
-module load BLAST
-module load Perl
-module load libxml2
+[environment.cgfp]
+module load Python/2
+module load Biopython
+module load USEARCH/9
+module load MUSCLE/3
+module load BLAST+
+module load CD-HIT
 
 [environment.cgfp]
 module load Python/2
