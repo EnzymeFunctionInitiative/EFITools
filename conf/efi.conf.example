@@ -16,7 +16,10 @@ blast_db_dir=
 diamond_db_dir=
 
 [cluster]
-np=48
+np=48 ; number of processors to use for BLAST jobs
+node_np=24 ; number of processors on a single node
+max_queue_ram=300 ; maximum amount of RAM allowed to be requested on a queue node
+max_mem_queue_ram=1500 ; maximum amount of RAM allowed to be requested on a mem_queue node
 queue=
 mem_queue=
 ;scheduler=slurm|torque|pbspro
@@ -24,6 +27,15 @@ scheduler=slurm
 ; =yes means to create a script that runs all of the actions in serial mode, i.e. for a single computer.
 serial=no
 scratch_dir=/scratch
+
+[cgfp]
+search=diamond
+; Relative paths means it's local to the EFITools repo
+shortbred_repo=sbin/efi_cgfp/shortbred_20180817 ; ShortBRED from Huttenhower
+cgfp_repo=sbin/efi_cgfp/cgfp_20171220 ; CGFP from Balskus
+
+[cgfp.database]
+hmp=
 
 ; Anytime the "est-std" environment is requested by the scripts, the following directives are inserted
 ; into the job script.
@@ -63,4 +75,13 @@ module load BLAST
 module load BLAST
 module load Perl
 module load libxml2
+
+[environment.cgfp]
+module load Python/2
+module load Biopython
+module load USEARCH/9
+module load MUSCLE/3
+module load BLAST+
+module load CD-HIT
+module load DIAMOND/0.9.24-IGB-gcc-4.9.4
 
