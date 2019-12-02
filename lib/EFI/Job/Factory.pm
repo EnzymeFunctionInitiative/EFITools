@@ -18,6 +18,8 @@ use EFI::Job::EST::Color;
 use EFI::Job::EST::Analyze;
 use EFI::Job::GNT::GNN;
 use EFI::Job::GNT::GND;
+use EFI::Job::CGFP::Identify;
+use EFI::Job::CGFP::Quantify;
 
 use EFI::SchedulerApi;
 
@@ -48,6 +50,10 @@ sub create_est_job {
         $job = new EFI::Job::GNT::GNN();
     } elsif ($jobType eq EFI::Job::GNT::GND::JOB_TYPE) {
         $job = new EFI::Job::GNT::GND();
+    } elsif ($jobType eq EFI::Job::CGFP::Identify::JOB_TYPE) {
+        $job = new EFI::Job::CGFP::Identify();
+    } elsif ($jobType eq EFI::Job::CGFP::Quantify::JOB_TYPE) {
+        $job = new EFI::Job::CGFP::Quantify();
     } else {
         return undef;
     }
@@ -66,6 +72,10 @@ sub get_available_types {
         EFI::Job::EST::Generate::FASTA::JOB_TYPE,
         EFI::Job::EST::Color::JOB_TYPE,
         EFI::Job::EST::Analyze::JOB_TYPE,
+        EFI::Job::GNT::GNN::JOB_TYPE,
+        EFI::Job::GNT::GND::JOB_TYPE,
+        EFI::Job::CGFP::Identify::JOB_TYPE,
+        EFI::Job::CGFP::Quantify::JOB_TYPE,
     );
 
     return @types;

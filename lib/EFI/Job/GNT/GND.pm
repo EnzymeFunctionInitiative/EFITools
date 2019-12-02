@@ -210,7 +210,7 @@ sub getBlastJob {
     my $configFile = $self->getConfigFile();
     my $outputDir = $self->getOutputDir();
     my $toolPath = $self->getToolPath();
-    my $blastDb = $self->getBlastDbDir() . "/" . $self->getBlastDbName("uniprot");
+    my $blastDb = $self->getBlastDbPath("uniprot");
     my $diagramVersion = $EFI::GNN::Arrows::Version;
 
     my $B = $S->getBuilder();
@@ -291,7 +291,6 @@ sub getUploadFileJob {
 
     my $outputDir = $self->getOutputDir();
     my $toolPath = $self->getToolPath();
-    my $blastDb = $self->getBlastDbDir() . "/" . $self->getBlastDbName("uniprot");
     my $diagramVersion = $EFI::GNN::Arrows::Version;
 
     my $B = $S->getBuilder();

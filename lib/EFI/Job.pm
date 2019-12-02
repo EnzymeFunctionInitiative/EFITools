@@ -486,7 +486,13 @@ sub getBlastDbDir {
 }
 
 
-sub getBlastDbName {
+sub getDiamondDbDir {
+    my $self = shift;
+    return $self->{db}->{blast}->{diamond_db_dir};
+}
+
+
+sub getSequenceDbName {
     my $self = shift;
     my $type = shift;
 
@@ -502,7 +508,14 @@ sub getBlastDbName {
 sub getBlastDbPath {
     my $self = shift;
     my $type = shift || "uniprot";
-    return $self->getBlastDbDir() . "/" . $self->getBlastDbName($type);
+    return $self->getBlastDbDir() . "/" . $self->getSequenceDbName($type);
+}
+
+
+sub getDiamondDbPath {
+    my $self = shift;
+    my $type = shift || "uniprot";
+    return $self->getDiamondDbDir() . "/" . $self->getSequenceDbName($type) . ".dmnd";
 }
 
 
@@ -516,7 +529,7 @@ sub addBlastEnvVars {
 
     my $dbDir = $self->getBlastDbDir();
     $B->addAction("export EFI_DB_DIR=$dbDir");
-    my $name = $self->getBlastDbName($type);
+    my $name = $self->getSequenceDbName($type);
 
     $B->addAction("export EFI_${varName}_DB=$name");
 }
