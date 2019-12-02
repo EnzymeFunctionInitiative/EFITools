@@ -8,7 +8,7 @@ use lib abs_path(dirname(__FILE__)) . "/../../";
 
 use DBI;
 use POSIX qw(floor);
-use EFI::Config qw(database_configure);
+use EFI::Config qw(parseConfigFile);
 use EFI::SchedulerApi;
 use EFI::Database::Schema;
 use EFI::IdMapping::Util;
@@ -23,7 +23,9 @@ sub new {
     my $self = {};
     bless($self, $class);
 
-    $self->{db} = database_configure($args{config_file_path});
+    my $config = parseConfigFile($args{config_file_path});
+    $self->{id_mapping} = $config->{idmapping};
+    map { $self->{id_mapping}->{lc $_} = $self->{id_mapping}->{$_} } keys %{$self->{id_mapping}};
 
     $self->{build_dir} = $args{build_dir};
     $self->{input_dir} = $args{build_dir} . "/../input";
@@ -43,8 +45,6 @@ sub getTableSchema {
     my ($self) = @_;
 
     my $schema = new EFI::Database::Schema(table_name => $self->{id_mapping}->{table});
-   
-    my $map = $self->{id_mapping}->{map};
    
     my $sql = $self->{id_mapping}->{uniprot_id} . " varchar(15)";
     $sql .= ", foreign_id_type varchar(15), foreign_id varchar(20)";
@@ -71,33 +71,6 @@ sub formatIndex {
 sub getLocalFileName {
     my ($self) = @_;
     return $localFile;
-}
-
-
-sub download {
-    my ($self, $overwrite) = @_;
-
-    my $dir = $self->{input_dir};
-
-    open(TMP, "> $dir/.tmp01101987") or die "Unable to write to download directory '$dir': $!";
-    close(TMP);
-    unlink "$dir/.tmp01101987";
-
-    my $ext = "";
-    my $url = $self->{id_mapping}->{remote_url};
-    $ext = ".gz" if $url =~ m/\.gz$/;
-
-    my $file = "$localFile.gz";
-    if ((not defined $overwrite or not $overwrite) and (-f "$dir/$localFile" or -f "$dir/$localFile$ext")) {
-        return -1;
-    }
-
-    my $cmd = "curl $url > $dir/$localFile$ext";
-
-    my $job = $self->doAction($cmd, "download_idmapping", undef);
-    chomp $job;
-    $job =~ s/^(\d+)\..*$/$1/;
-    return $job;
 }
 
 
@@ -195,7 +168,7 @@ sub doParse {
     open MAP, "$inputFile" or die "Unable to open input file '$inputFile': $!";
     open TAB, "> $outputFile" or die "Unable to open output file '$outputFile': $!";
 
-    my $map = $self->{id_mapping}->{map};
+    my $map = $self->{id_mapping};
 
     my $fileSize = -s $inputFile;
     my $pct = 0;
