@@ -35,12 +35,7 @@ sub new {
         $parms, # options are stored in this hash
         "job-id=i",
         "config=s",
-        "np=i",
-        "queue=s",
-        "mem-queue|memqueue=s",
-        "scheduler=s",
         "dry-run|dryrun",
-        #"cluster-node=s",
         "remove-temp=i",
         "dir-name|tmp=s",
         "job-dir|out-dir=s",
@@ -51,6 +46,7 @@ sub new {
 
     my $homeDir = abs_path(dirname(__FILE__) . "/../../");
     $self->{tool_path} = "$homeDir/sbin"; #TODO: change sbin to whatever it should be.
+    $self->{home_dir} = $homeDir;
 
     my $configFile = $parms->{config} // "";
     if (not $configFile or not -f $configFile) {
@@ -84,6 +80,8 @@ sub new {
     $err = validateOptions($parms, $self, $self->{conf});
     die "Error validating options: $err\n" if $err;
 
+    $self->{raw_config} = $config;
+
     return $self;
 }
 
@@ -115,11 +113,14 @@ sub addClusterConfig {
     my $defaultScratch = "/scratch";
 
     $conf->{np} = $config->{cluster}->{np} // $numSysCpu;
+    $conf->{node_np} = $config->{cluster}->{node_np} // $numSysCpu;
     $conf->{queue} = $config->{cluster}->{queue} // "";
     $conf->{mem_queue} = $config->{cluster}->{mem_queue} // $conf->{queue};
     $conf->{scheduler} = $config->{cluster}->{scheduler} // $autoSched;
     $conf->{run_serial} = ($config->{cluster}->{serial} and $config->{cluster}->{serial} eq "yes") ? 1 : 0;
     $conf->{scratch_dir} = $config->{cluster}->{scratch_dir} // $defaultScratch;
+    $conf->{max_queue_ram} = $config->{cluster}->{max_queue_ram} // 0;
+    $conf->{max_mem_queue_ram} = $config->{cluster}->{max_mem_queue_ram} // 0;
 
     return "No queue is provided in configuration file." if not $conf->{queue};
 }
@@ -326,6 +327,12 @@ sub getNp {
 }
 
 
+sub getNodeNp {
+    my $self = shift;
+    return $self->{cluster}->{node_np};
+}
+
+
 sub getDryRun {
     my $self = shift;
     return $self->{cluster}->{dry_run};
@@ -344,10 +351,46 @@ sub getConfigFile {
 }
 
 
+sub getConfigValue {
+    my $self = shift;
+    my $section = shift || "";
+    my $key = shift || "";
+    return $self->{raw_config}->{$section} // {} if not $key;
+    return $self->{raw_config}->{$section}->{$key} // "";
+}
+
+
+sub getHomePath {
+    my $self = shift;
+    return $self->{home_dir};
+}
+
+
+#TODO: build a bit of logic in here, so that if a single core is requested but max memory, that we
+#bounce this to the mem_queue.
+sub requestResources {
+    my $self = shift;
+    my $B = shift; # SchedulerApi::Builder object
+    my $numNode = shift;
+    my $numCpu = shift;
+    my $ram = shift;
+    my $useHighMem = shift || 0;
+    if ($useHighMem or ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram})) {
+        $B->queue("$self->{cluster}->{mem_queue},$self->{cluster}->{queue}");
+    }
+    if ($self->{cluster}->{max_mem_queue_ram} and $ram > $self->{cluster}->{max_mem_queue_ram}) {
+        $ram = $self->{cluster}->{max_mem_queue_ram};
+    }
+    # We don't need to specify this, since it's defaulted in the SchedulerApi setup
+    #} else {
+    #} $B->queue($self->{cluster}->{queue});
+    $B->resource($numNode, $numCpu, "${ram}gb");
+}
+
+
 sub requestRam {
     my $self = shift;
     my $ram = shift;
-    #TODO: implement a check that prevents requesting more memory than is available
     return $ram;
 }
 
@@ -370,6 +413,12 @@ sub setJobDir {
     my $self = shift;
     my $dir = shift;
     $self->{conf}->{job_dir} = $dir;
+}
+
+
+sub getDbHome {
+    my $self = shift;
+    return ($self->{db}->{db_home} // "");
 }
 
 
@@ -447,6 +496,13 @@ sub getBlastDbName {
     die "BLAST database $type does not exist\n" if not $name;
 
     return $name;
+}
+
+
+sub getBlastDbPath {
+    my $self = shift;
+    my $type = shift || "uniprot";
+    return $self->getBlastDbDir() . "/" . $self->getBlastDbName($type);
 }
 
 

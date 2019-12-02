@@ -30,7 +30,6 @@ scratch_dir=/scratch
 search=diamond
 ; Relative paths means it's local to the EFITools repo
 shortbred_repo=sbin/efi_cgfp/shortbred_20180817 ; ShortBRED from Huttenhower
-cgfp_repo=sbin/efi_cgfp/cgfp_20171220 ; CGFP from Balskus
 
 [cgfp.database]
 hmp=
