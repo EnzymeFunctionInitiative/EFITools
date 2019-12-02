@@ -110,7 +110,7 @@ sub saveJobInfo {
     my $file = "$dir/job_parameters.txt";
     open my $fh, ">", $file or die "Unable to save job info to $file: $!\n";
     foreach my $row (@$info) {
-        print $fh join("\t", @$row), "\n";
+        print $fh join("\t", map { defined($_) ? $_ : "" } @$row), "\n";
     }
     close $fh;
 }
@@ -135,7 +135,7 @@ sub getHelp {
         $globalArgs = "";
     }
 
-    print "${msg}usage: $script $jobTypes $globalArgs${jobUsage}\nGLOBAL OPTIONS:\n$globalUsage\n";
+    return "${msg}usage: $script $jobTypes $globalArgs${jobUsage}\nGLOBAL OPTIONS:\n$globalUsage\n";
 }
 
 
