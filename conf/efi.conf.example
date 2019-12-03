@@ -75,13 +75,5 @@ module load USEARCH/9
 module load MUSCLE/3
 module load BLAST+
 module load CD-HIT
-
-[environment.cgfp]
-module load Python/2
-module load Biopython
-module load USEARCH/9
-module load MUSCLE/3
-module load BLAST+
-module load CD-HIT
-module load DIAMOND/0.9.24-IGB-gcc-4.9.4
+module load DIAMOND
 
