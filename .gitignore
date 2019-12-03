@@ -2,3 +2,6 @@ efi.conf
 build.conf
 test/tmp
 environment.sh
+*.pyc
+*.bak
+
