@@ -36,7 +36,7 @@ sub new {
         "job-id=i",
         "config=s",
         "dry-run|dryrun",
-        "remove-temp=i",
+        "keep-temp",
         "dir-name|tmp=s",
         "job-dir|out-dir=s",
         "no-submit", # create the script files but don't submit them
@@ -144,7 +144,7 @@ sub validateOptions {
     my $conf = shift;
 
     $conf->{job_id} = $parms->{"job-id"} // 0;
-    $conf->{remove_temp} = $parms->{"remove-temp"} // 1;
+    $conf->{remove_temp} = defined $parms->{"keep-temp"} ? 0 : 1;
     $conf->{dir_name} = $parms->{"dir-name"} // "output";
     $conf->{job_dir} = $parms->{"job-dir"} // "";
     $conf->{no_submit} = $parms->{"no-submit"} // 0;
@@ -202,7 +202,7 @@ ADVANCED OPTIONS: (only for administrators for testing purposes)
                         what would be submitted to the cluster.
     --no-submit         only create the job scripts, do not submit them to the cluster.
     --dir-name          the output directory name to put results into (defaults to output/).
-    --remove-temp       setting this to 0 will not remove intermediate files; useful for debugging;
+    --keep-temp         adding this flag will not remove intermediate files; useful for debugging;
                         defaults to true (remove all intermediate files)
     --serial-script     output all of the cluster jobs into a single file that can be run on a
                         single cluster node, or on a stand-alone system.
@@ -336,6 +336,12 @@ sub getNodeNp {
 sub getDryRun {
     my $self = shift;
     return $self->{cluster}->{dry_run};
+}
+
+
+sub getRemoveTemp {
+    my $self = shift;
+    return $self->{conf}->{remove_temp};
 }
 
 
