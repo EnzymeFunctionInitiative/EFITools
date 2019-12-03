@@ -117,7 +117,7 @@ sub process{
                     my ($revUniprotIds, $noMatch) = $idMapper->reverseLookup(EFI::IdMapping::Util::GENBANK, @proteinIds);
                     @revUniprotIdsToAdd = grep { not exists $processedAlready{$_} } @$revUniprotIds;
                     if (scalar @revUniprotIdsToAdd) {
-                        logprint "Found a mapping of protein ID ", join(",", @proteinIds), " to UniProt ID ", join(",", @revUniprotIdsToAdd);
+#                        logprint "Found a mapping of protein ID ", join(",", @proteinIds), " to UniProt ID ", join(",", @revUniprotIdsToAdd);
                     } else {
                         logprint "Couldn't find mappings for ", join(",", @proteinIds);
                     }
