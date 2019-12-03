@@ -49,8 +49,9 @@ sub validateOptions {
     $conf->{parent_job_id} = $parms->{"parent-job-id"} // 0;
     
     return "No valid --ssn-in argument provided" if not -f $conf->{ssn_in};
-    return "No valid --ssn-out-name argument provided" if not $conf->{ssn_out_name};
+    return "No valid --ssn-out-name argument provided" if not $conf->{ssn_out_name} or $conf->{ssn_out_name} =~ m/\//;
 
+    $conf->{ssn_out_name} = "$conf->{ssn_out_name}.xgmml" if $conf->{ssn_out_name} !~ m/\.xgmml$/;
 }
 
 

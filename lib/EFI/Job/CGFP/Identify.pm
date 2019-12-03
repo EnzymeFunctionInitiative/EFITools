@@ -317,6 +317,10 @@ sub getXgmmlJob {
     $B->addAction("$conf->{tool_path}/make_cdhit_table.pl --cdhit-file $conf->{cdhit_file} --cluster-map $conf->{ssn_cluster_file} --table-file $conf->{cdhit_table_file} $colorFileArg");
     $B->addAction("$conf->{tool_path}/make_ssn.pl --ssn-in $conf->{ssn_in} --ssn-out $conf->{ssn_marker} --marker-file $conf->{sb_marker_file} --cluster-map $conf->{ssn_cluster_file} --cdhit-file $conf->{cdhit_table_file}");
     $B->addAction("zip -j $conf->{ssn_marker}.zip $conf->{ssn_marker}");
+    # We keep this around in case another Identify job can use the results
+    #if ($self->getRemoveTemp()) {
+    #    $B->addAction("rm -rf $conf->{sb_output_dir}");
+    #}
     $B->addAction("touch $conf->{identify_real_dir}/job.completed");
 
     return $B;

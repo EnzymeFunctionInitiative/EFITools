@@ -33,7 +33,7 @@ die "-cdhit-file parameter $cdhitFile required" if not defined $cdhitFile or not
 
 
 
-my $cp = new EFI::Util::CdHitParser();
+my $parser = new EFI::Util::CdHitParser();
 
 #parse cluster file to get parent/child sequence associations
 open CDHIT, $cdhitFile or die "cannot open cdhit cluster file $cdhitFile\n";
@@ -43,17 +43,17 @@ my $line = "";
 while (<CDHIT>) {
     $line = $_;
     chomp $line;
-    $cp->parse_line($line);
+    $parser->parse_line($line);
 }
-$cp->finish;
+$parser->finish;
 
 close CDHIT;
 
 
 
 my %remove;
-foreach my $clusterId ($cp->get_clusters) {
-    foreach my $child ($cp->get_children($clusterId)) {
+foreach my $clusterId ($parser->get_clusters) {
+    foreach my $child ($parser->get_children($clusterId)) {
         $remove{$child} = 1 if $child ne $clusterId;
     }
 }

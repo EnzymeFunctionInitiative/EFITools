@@ -107,7 +107,7 @@ sub setupDefaults {
     $conf->{src_dir} = $srcDir;
     $conf->{temp_dir_pat} = "$realDir/quantify-temp";
     
-    $conf->{metagenome_ids} = split(m/,/, $conf->{metagenome_ids});
+    $conf->{metagenome_ids} = $conf->{metagenome_ids} eq "\@all" ? "*" : [split(m/,/, $conf->{metagenome_ids})];
     $conf->{metagenome_db} = $self->getConfigValue("cgfp.database", $conf->{metagenome_db});
 
     # Use job arrays instead of a parallel implementation
@@ -127,10 +127,13 @@ sub setupMgInfo {
     $conf->{mg_info} = $metagenomeInfo;
     $conf->{mg_meta} = $mgMetadata;
 
+    $conf->{metagenome_ids} = [keys %{$metagenomeInfo}] if $conf->{metagenome_ids} eq "*";
+
     # Get the specific avg genome size file, if present.
     my $agsFileName = "AvgGenomeSize.txt";
-    if (-f "$conf->{metagenome_db}/$agsFileName") {
-        $conf->{ags_file_path} = "$conf->{metagenome_db}/$agsFileName";
+    my $mgDbDir = dirname($conf->{metagenome_db});
+    if (-f "$mgDbDir/$agsFileName") {
+        $conf->{ags_file_path} = "$mgDbDir/$agsFileName";
     }
 
     # Get the list of result files.  If this is a "child" job then the files already exist.
@@ -153,6 +156,12 @@ sub setupMgInfo {
     $conf->{mgFiles} = \%mgFiles;
     $conf->{resFilesMedian} = \%resFilesMedian;
     $conf->{resFilesMean} = \%resFilesMean;
+}
+
+
+sub getUseResults {
+    my $self = shift;
+    return 1;
 }
 
 
@@ -218,6 +227,8 @@ sub createJobs {
     my $S = $self->getScheduler();
     die "Need scheduler" if not $S;
 
+    mkdir $conf->{real_dir} if not -d $conf->{real_dir};
+
     my @jobs;
     my $B;
     my $job;
@@ -256,9 +267,9 @@ sub getQuantifyJob {
     $self->addStandardEnv($B);
 
     if ($conf->{use_tasks}) {
-        $self->getQuantifyTasks($B);
+        $self->getQuantifyTasks($conf, $B);
     } else {
-        $self->getQuantifyParallel($B);
+        $self->getQuantifyParallel($conf, $B);
     }
 
     return $B;
@@ -308,6 +319,8 @@ sub getQuantifyTasks {
 
     my $tmpMarker = "$conf->{real_dir}/markers.faa.{JOB_ARRAYID}";
 
+    my $removeTemp = $self->getRemoveTemp();
+
     $B->jobArray("1-$maxTask");
     $self->requestResources($B, 1, 1, 13);
 
@@ -325,7 +338,9 @@ sub getQuantifyTasks {
             $B->addAction("if [ {JOB_ARRAYID} == $aid ]; then");
             $B->addAction("    cp $conf->{sb_marker_file} $tmpMarker"); # Copy to possibly help performance out.
         }
-        $B->addAction("    python $sbQuantifyApp $searchTypeArgs --markers $tmpMarker --wgs $mgFile --results $resFileMedian --results-mean $resFileMean --tmp $conf->{temp_dir_pat}-$mgId");
+        my $tempDir = "$conf->{temp_dir_pat}-$mgId";
+        $B->addAction("    python $sbQuantifyApp $searchTypeArgs --markers $tmpMarker --wgs $mgFile --results $resFileMedian --results-mean $resFileMean --tmp $tempDir");
+        $B->addAction("    rm -rf $tempDir") if $removeTemp;
         $c++;
     }
     if ($c > 1) {
@@ -359,13 +374,18 @@ sub getMergeQuantifyJob {
 
     $B->addAction("python $localMergeApp $resFileMedianList -C $conf->{cluster_file_median} -p $conf->{protein_file_median} -c $conf->{ssn_cluster_file}");
     $B->addAction("python $localMergeApp $resFileMedianList -C $conf->{cluster_norm_median} -p $conf->{protein_norm_median} -c $conf->{ssn_cluster_file} -n");
-    if ($conf->{ags_path}) {
-        $B->addAction("python $localMergeApp $resFileMedianList -C $conf->{cluster_genome_norm_median} -p $conf->{protein_genome_norm_median} -c $conf->{ssn_cluster_file} -g $conf->{ags_path}");
+    if ($conf->{ags_file_path}) {
+        $B->addAction("python $localMergeApp $resFileMedianList -C $conf->{cluster_genome_norm_median} -p $conf->{protein_genome_norm_median} -c $conf->{ssn_cluster_file} -g $conf->{ags_file_path}");
     }
     $B->addAction("python $localMergeApp $resFileMeanList -C $conf->{cluster_file_mean} -p $conf->{protein_file_mean} -c $conf->{ssn_cluster_file}");
     $B->addAction("python $localMergeApp $resFileMeanList -C $conf->{cluster_norm_mean} -p $conf->{protein_norm_mean} -c $conf->{ssn_cluster_file} -n");
-    if ($conf->{ags_path}) {
-        $B->addAction("python $localMergeApp $resFileMeanList -C $conf->{cluster_genome_norm_mean} -p $conf->{protein_genome_norm_mean} -c $conf->{ssn_cluster_file} -g $conf->{ags_path}");
+    if ($conf->{ags_file_path}) {
+        $B->addAction("python $localMergeApp $resFileMeanList -C $conf->{cluster_genome_norm_mean} -p $conf->{protein_genome_norm_mean} -c $conf->{ssn_cluster_file} -g $conf->{ags_file_path}");
+    }
+
+    if ($self->getRemoveTemp()) {
+        $B->addAction("rm $resFileMedianList");
+        $B->addAction("rm $resFileMeanList");
     }
 
     return $B;
@@ -390,7 +410,7 @@ sub getXgmmlJob {
     $B->addAction("MGIDS=\"$metagenomeIdList\"");
     $B->addAction("MGDB=\"$conf->{metagenome_db}\"");
     
-    $B->addAction("$conf->{tool_path}/make_ssn.pl -ssn-in $conf->{ssn_in} -ssn-out $conf->{ssn_out} -protein-file $conf->{protein_genome_norm_median} -cluster-file $conf->{cluster_genome_norm_median} -cdhit-file $conf->{cdhit_table_file} -quantify -metagenome-db \$MGDB -metagenome-ids \$MGIDS");
+    $B->addAction("$conf->{tool_path}/make_ssn.pl --ssn-in $conf->{ssn_in} --ssn-out $conf->{ssn_out} --protein-file $conf->{protein_genome_norm_median} --cluster-file $conf->{cluster_genome_norm_median} --cdhit-file $conf->{cdhit_table_file} --quantify --metagenome-db \$MGDB --metagenome-ids \$MGIDS");
     $B->addAction("OUT=\$?");
     $B->addAction("if [ \$OUT -ne 0 ]; then");
     $B->addAction("    echo \"make SSN failed.\"");
@@ -398,7 +418,7 @@ sub getXgmmlJob {
     $B->addAction("    exit 621");
     $B->addAction("fi");
     $B->addAction("zip -j $conf->{ssn_out}.zip $conf->{ssn_out}");
-    $B->addAction("$conf->{metagenome_dir}/create_quantify_metadata.pl -protein-abundance $conf->{protein_file_median} -metadata $conf->{metadata_file}");
+    $B->addAction("$conf->{tool_path}/create_quantify_metadata.pl --protein-abundance $conf->{protein_file_median} --metadata $conf->{metadata_file}");
     $B->addAction("touch $conf->{real_dir}/job.completed");
 
     return $B;
