@@ -180,7 +180,8 @@ sub getUsage {
     --quantify-dir      name of the directory to put quantify results in (sub dir of the main output dir)
     --metagenome-db     name of the metagenome database to use (available in the [cgfp.database] section
                         of the efi.conf file)
-    --metagenome-ids    comma-separated list of metagenome IDs to use from the database
+    --metagenome-ids    comma-separated list of metagenome IDs to use from the database;
+                        this can be the value \@all to use all metagenomes in the dataset
 
     --cdhit-out-name    what to name the output cdhit mapping table file (not a path)
 
