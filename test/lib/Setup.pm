@@ -6,6 +6,7 @@ use warnings;
 
 use Exporter qw(import);
 
+use FindBin;
 use File::Temp;
 use Data::Dumper;
 
@@ -58,7 +59,7 @@ sub new {
     $dir = make_test_dir() if not $dir;
 
     @ARGV = @args;
-    push @ARGV, "--config", "/home/n-z/noberg/dev/EFITools/conf/efi.conf";
+    push @ARGV, "--config", "$FindBin::Bin/../conf/efi.conf";
     push @ARGV, "--dry-run" if $dryRun;
     push @ARGV, "--no-submit" if $noSubmit;
     push @ARGV, "--job-dir", $dir;
@@ -120,6 +121,7 @@ sub runTest {
         my $jobId = 1;
         if ($doSubmit) {
             $jobId = $S->submit($jobFile);
+            $jobId = "undefined" if not $jobId;
             chomp $jobId;
             ($jobId) = split(m/\./, $jobId);
         }

@@ -121,6 +121,7 @@ sub addClusterConfig {
     $conf->{scratch_dir} = $config->{cluster}->{scratch_dir} // $defaultScratch;
     $conf->{max_queue_ram} = $config->{cluster}->{max_queue_ram} // 0;
     $conf->{max_mem_queue_ram} = $config->{cluster}->{max_mem_queue_ram} // 0;
+    $conf->{default_wall_time} = $config->{cluster}->{default_wall_time} if $config->{cluster}->{default_wall_time};
 
     return "No queue is provided in configuration file." if not $conf->{queue};
 }
@@ -220,6 +221,11 @@ sub getUseResults {
     my $self = shift;
     return 0;
 }
+# This must be overridden in each job type.
+sub createJobs {
+    my $self = shift;
+    return ();
+}
 # This can be overridden so specific job types can create extra directories as needed, but this function MUST be called by invoking $self->SUPER::getJobInfo().
 sub createJobStructure {
     my $self = shift;
@@ -254,7 +260,7 @@ sub getEnvironment {
     my $name = shift;
 
     if ($self->{modules}->{group}->{$name}) {
-        return @{$self->{modules}->{group}->{$name}} 
+        return @{$self->{modules}->{group}->{$name}};
     } else {
         return ();
     }
@@ -442,6 +448,8 @@ sub createScheduler {
         run_serial => $self->{cluster}->{run_serial},
         output_base_dirpath => $logDir,
     );
+    $schedArgs{default_wall_time} = $self->{cluster}->{default_wall_time} if $self->{cluster}->{default_wall_time};
+    $schedArgs{extra_headers} = $self->{modules}->{group}->{headers} if $self->{modules}->{group}->{headers};
     my $S = new EFI::SchedulerApi(%schedArgs);
 
     $self->{scheduler} = $S;

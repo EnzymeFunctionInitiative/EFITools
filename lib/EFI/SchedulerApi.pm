@@ -65,6 +65,15 @@ sub new {
         $self->{abort_script_on_action_fail} = $args{abort_script_on_action_fail};
     }
 
+    if (exists $args{default_wall_time}) {
+        $self->{default_wall_time} = $args{default_wall_time};
+    }
+
+    # Array reference
+    if (exists $args{extra_headers}) {
+        $self->{extra_headers} = [@{$args{extra_headers}}];
+    }
+
     $self->{run_serial} = $args{run_serial} ? 1 : 0;
 
     return $self;
@@ -103,6 +112,8 @@ sub getBuilder {
     my %args = ("dry_run" => $self->{dry_run});
     $args{extra_path} = $self->{extra_path} if $self->{extra_path};
     $args{run_serial} = $self->{run_serial};
+    $args{default_wall_time} = $self->{default_wall_time} if $self->{default_wall_time};
+    $args{extra_headers} = $self->{extra_headers} if $self->{extra_headers};
 
     my $b;
     if ($self->{type} eq EFI::SchedulerApi::Builder::Slurm::TYPE) {
@@ -133,7 +144,7 @@ sub submit {
     if (not $self->{dry_run} and not $self->{run_serial}) {
         my $submit = $self->getSubmitCmd();
         $result = `$submit $script`;
-        $result =~ s/[^0-9\[\]]//g;
+        $result =~ s/[^0-9\[\]]//g if $result;
     }
 
     return $result;

@@ -25,6 +25,8 @@ scheduler=slurm
 ; =yes means to create a script that runs all of the actions in serial mode, i.e. for a single computer.
 serial=no
 scratch_dir=/scratch
+; this is an optional parameter that is required by PBSPro. It can be in hours (with fractions) or HH:MM:SS format.
+;default_wall_time= 
 
 [cgfp]
 search=diamond
@@ -34,9 +36,14 @@ shortbred_repo=sbin/efi_cgfp/shortbred_20180817 ; ShortBRED from Huttenhower
 [cgfp.database]
 hmp=
 
+; Any extra job scheduler headers that are required must be place in here; the other environment
+; sections are not guaranteed to immediately follow the scheduler headers.
+[environment.headers]
+
 ; Anytime the "est-std" environment is requested by the scripts, the following directives are inserted
 ; into the job script.
-; These are used to add environment variables to job scripts, and are directly inserted into the job script files (use source ... or module load)
+; These are used to add environment variables to job scripts, and are directly inserted into the
+; job script files (use source ... or module load)
 [environment.est-std]
 module load efidb/ip76
 module load BLAST
@@ -45,7 +52,8 @@ module load CD-HIT
 
 ; Anytime the "est-graphs" environment is requested by the scripts, the following directives are inserted
 ; into the job script.
-; These are used to add environment variables to job scripts, and are directly inserted into the job script files (use source ... or module load)
+; These are used to add environment variables to job scripts, and are directly inserted into the job
+; script files (use source ... or module load)
 [environment.est-graphs]
 module load GD
 module load R

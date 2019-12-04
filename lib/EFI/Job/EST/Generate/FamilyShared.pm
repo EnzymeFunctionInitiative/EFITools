@@ -305,6 +305,7 @@ sub getFracFileJob {
 
     my $B = $S->getBuilder();
     $B->resource(1, 1, "5gb");
+    $self->addStandardEnv($B);
     
     $B->addAction("mkdir -p $conf->{frac_dir}");
     $B->addAction("$toolPath/split_fasta.pl --parts $np --tmp $conf->{frac_dir} --source $conf->{filt_seq_file}");
@@ -414,6 +415,8 @@ sub getCatJob {
 
     my $B = $S->getBuilder();
     $B->resource(1, 1, "5gb");
+    $self->addStandardEnv($B);
+
     $B->addAction("cat $conf->{blast_output_dir}/blastout-*.tab |grep -v '#'|cut -f 1,2,3,4,12 >$conf->{blast_final_file}")
         if $conf->{blast_type} eq "blast";
     $B->addAction("SZ=`stat -c%s $conf->{blast_final_file}`");
@@ -442,6 +445,7 @@ sub getBlastReduceJob {
     my $B = $S->getBuilder();
     $B->resource(1, 1, "${reqRam}gb");
     $self->requestHighMemQueue($B);
+    $self->addStandardEnv($B);
 
     $B->addAction("$toolPath/alphabetize_blast_output.pl -in $conf->{blast_final_file} -out $outputDir/alphabetized.blastfinal.tab -fasta $conf->{filt_seq_file}");
     $B->addAction("sort -T $sortdir -k1,1 -k2,2 -k5,5nr -t\$\'\\t\' $outputDir/alphabetized.blastfinal.tab > $outputDir/sorted.alphabetized.blastfinal.tab");
@@ -465,6 +469,8 @@ sub getDemuxJob {
     my $normalCdHit = ($conf->{cdhit_seq_id_threshold} == 1 and $conf->{cdhit_length_diff} == 1);
     my $B = $S->getBuilder();
     $B->resource(1, 1, "5gb");
+    $self->addStandardEnv($B);
+
     if ($conf->{multiplex} and $normalCdHit and not $conf->{no_demux}) {
         $B->addAction("mv $outputDir/1.out $outputDir/mux.out");
         $B->addAction("$toolPath/demux.pl -blastin $outputDir/mux.out -blastout $outputDir/1.out -cluster $conf->{filt_seq_file}.clstr");
@@ -489,6 +495,8 @@ sub getConvergenceRatioJob {
 
     my $B = $S->getBuilder();
     $B->resource(1, 1, "5gb");
+    $self->addStandardEnv($B);
+
     $B->addAction("$toolPath/calc_blast_stats.pl -edge-file $outputDir/1.out -seq-file $conf->{all_seq_file} -unique-seq-file $conf->{filt_seq_file} -seq-count-output $conf->{seq_count_file}");
 
     return $B;

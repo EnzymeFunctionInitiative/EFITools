@@ -23,7 +23,8 @@ sub new {
     $self->{output_file_seq_num} = "%j";
     $self->{output_file_seq_num_array} = "%A-%a";
     $self->{arrayid_var_name} = "SLURM_ARRAY_TASK_ID";
-    $self->{other_config} = ["#SBATCH --kill-on-invalid-dep=yes"];
+
+    $self->extraHeaders("#SBATCH --kill-on-invalid-dep=yes");
 
     return $self;
 }

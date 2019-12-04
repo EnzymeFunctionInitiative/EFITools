@@ -93,6 +93,7 @@ foreach my $jobInfo (@jobs) {
     my $jobId = 1;
     if ($doSubmit & EFI::Job::RUN) {
         $jobId = $S->submit($jobFile);
+        $jobId = "undefined-failure" if not $jobId;
         chomp $jobId;
         ($jobId) = split(m/\./, $jobId);
     }
