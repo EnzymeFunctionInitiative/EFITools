@@ -298,12 +298,11 @@ sub createRepNodeXgmmlJob {
 
     my $B = $S->getBuilder();
     $B->resource(1, 1, "10gb");
-
-    $B->jobArray("40,45,50,55,60,65,70,75,80,85,90,95,100");
-
+    $B->jobArray("40-100:5");
+    #$B->jobArray("40,45,50,55,60,65,70,75,80,85,90,95,100");
     $self->addStandardEnv($B);
 
-    $B->addAction("CDHIT=\$(echo \"scale=2; {JOB_ARRAYID}/100\" |bc -l)");
+    $B->addAction("CDHIT=\$(echo \"scale=2; \${PBS_ARRAY_INDEX}/100\" |bc -l)");
     
     $B->addAction("cd-hit -n 2 -s 1 -i $conf->{output_dir}/sequences.fa -o $conf->{output_dir}/cdhit\$CDHIT -c \$CDHIT -d 0");
     $B->addAction("$toolPath/make_repnode_ssn.pl --blast $conf->{blast_file} --cdhit $conf->{output_dir}/cdhit\$CDHIT.clstr --fasta $conf->{output_dir}/sequences.fa --struct $conf->{anno_file} --out $outFile --title=\"$conf->{title}\" --dbver $conf->{dbver} --maxfull $conf->{maxfull} $seqsArg $useMinArg");
