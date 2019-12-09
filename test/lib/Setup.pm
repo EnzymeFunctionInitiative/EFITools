@@ -28,7 +28,7 @@ our @EXPORT =
 
 
 our $WDIR = $ENV{PWD};
-our $DATADIR = "$WDIR/data";
+our $DATADIR = "$WDIR/../sample_data";
 our $SSN_UNIPROT_DOMAIN = "$DATADIR/ssn_uniprot_domain.xgmml";
 our $SSN_UNIREF50_DOMAIN = "$DATADIR/ssn_uniprot_domain.xgmml";
 our $SSN_UNIREF90_DOMAIN = "$DATADIR/ssn_uniprot_domain.xgmml";
