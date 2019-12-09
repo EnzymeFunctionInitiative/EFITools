@@ -85,8 +85,15 @@ sub resource {
         my $s = int($wallTime * 3600) % 3600 - $m * 60;
         $wallTime = sprintf("%02d:%02d:%02d", $h, $m, $s);
     }
+    
+    #TODO:
+    # REMOVE THIS HARDCODED 4 GB parameter
+    $ram = 4;
 
-    $self->{res} = ["-l select=$numNodes:ncpus=$procPerNode:mem=4gb,walltime=$wallTime"];
+    my $mem = defined $ram ? "mem=$ram" : "mem=4";
+    $mem .= "gb" if $mem !~ m/gb$/i;
+
+    $self->{res} = ["-l select=$numNodes:ncpus=$procPerNode:$mem,walltime=$wallTime"];
 }
 
 sub dependency {
