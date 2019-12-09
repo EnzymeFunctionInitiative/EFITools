@@ -33,7 +33,7 @@ sub new {
     my $parms = {};
     my $result = GetOptions(
         $parms, # options are stored in this hash
-        "job-id=i",
+        "job-id|j=i",
         "config=s",
         "dry-run|dryrun",
         "keep-temp",
