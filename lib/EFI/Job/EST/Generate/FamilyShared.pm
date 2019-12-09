@@ -356,7 +356,7 @@ sub getBlastJob {
     my $B = $S->getBuilder();
     $B->setScriptAbortOnError(0); # Disable SLURM aborting on errors, since we want to catch the BLAST error and report it to the user nicely
     $B->jobArray("1-$np") if $conf->{blast_type} eq "blast";
-    $B->resource(1, 8, "5gb");
+    $B->resource(1, 1, "5gb");
     $B->resource(1, 24, "14G") if $conf->{blast_type} =~ /diamond/i;
     $B->resource(1, 24, "14G") if $conf->{blast_type} =~ /blast\+/i;
     
@@ -374,7 +374,7 @@ sub getBlastJob {
             chmod 0755, "$scriptDir/blast.sh";
             $B->addAction("echo {1..$np} | xargs -n 1 -P $np $scriptDir/blast.sh");
         } else {
-            $B->addAction("blastall -p blastp -i $conf->{frac_dir}/fracfile-\${PBS_ARRAY_INDEX}.fa -d $outputDir/database -m 8 -e $evalue -b $blasthits -o $conf->{blast_output_dir}/blastout-\${PBS_ARRAY_INDEX}.fa.tab");
+            $B->addAction("blastall -p blastp -i $conf->{frac_dir}/fracfile-{JOB_ARRAYID}.fa -d $outputDir/database -m 8 -e $evalue -b $blasthits -o $conf->{blast_output_dir}/blastout-\${PBS_ARRAY_INDEX}.fa.tab");
         }
     } elsif ($conf->{blast_type} eq "blast+") {
         map { $B->addAction($_); } $self->getEnvironment("est-blast+");

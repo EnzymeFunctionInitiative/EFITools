@@ -24,7 +24,7 @@ sub new {
     $self->{sched_prefix} = "#PBS";
     $self->{output_file_seq_num} = "";
     $self->{output_file_seq_num_array} = "";
-    $self->{arrayid_var_name} = "PBS_ARRAYID";
+    $self->{arrayid_var_name} = "PBS_ARRAY_INDEX";
     $self->{default_wall_time} = $args{default_wall_time} // "01:00:00";
 
     return $self;

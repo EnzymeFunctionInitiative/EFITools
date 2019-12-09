@@ -144,8 +144,7 @@ sub submit {
     if (not $self->{dry_run} and not $self->{run_serial}) {
         my $submit = $self->getSubmitCmd();
         $result = `$submit $script`;
-	$result = substr($result,0, index($result, '.'));
-        $result =~ s/[^0-9\[\]]//g if $result;
+        $result =~ s/^(\d+)(\..*)?$/$1/ if $result;
     }
 
     return $result;
