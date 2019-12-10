@@ -55,6 +55,7 @@ if (not $job->getJobDirArgumentSet() and not($job->getSubmitStatus() & EFI::Job:
     }
 }
 
+mkdir $dir if not -d $dir;
 
 print "Job Dir: $dir\n";
 
