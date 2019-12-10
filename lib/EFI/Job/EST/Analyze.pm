@@ -15,6 +15,7 @@ use Getopt::Long qw(:config pass_through);
 use EFI::Config;
 
 use constant JOB_TYPE => "analyze";
+use constant DEFAULT_RAM => 4;
 
 
 sub new {
@@ -204,7 +205,7 @@ sub createGetAnnotationsJob {
     my $generateDir = $self->getOutputDir();
 
     my $B = $S->getBuilder();
-    $B->resource(1, 1, "5gb");
+    $self->requestResources($B, 1, 1, DEFAULT_RAM);
 
     #TODO: right now if you useAnnoSpec, we actually just include the bare minimum.  In the future allow the user to determine which annotations to include.
     if ($conf->{use_anno_spec}) {
@@ -244,7 +245,7 @@ sub createFilterBlastJob {
     my $generateDir = $self->getOutputDir();
 
     my $B = $S->getBuilder();
-    $B->resource(1, 1, "5gb");
+    $self->requestResources($B, 1, 1, DEFAULT_RAM);
 
     $self->addStandardEnv($B);
 
@@ -276,7 +277,7 @@ sub createFullXgmmlJob {
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
 
     my $B = $S->getBuilder();
-    $B->resource(1, 1, "10gb");
+    $self->requestResources($B, 1, 1, DEFAULT_RAM);
 
     $self->addStandardEnv($B);
 
@@ -300,7 +301,7 @@ sub createRepNodeXgmmlJob {
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
 
     my $B = $S->getBuilder();
-    $B->resource(1, 1, "10gb");
+    $self->requestResources($B, 1, 1, DEFAULT_RAM);
     $B->jobArray("40-100:5");
     $self->addStandardEnv($B);
 
@@ -323,7 +324,7 @@ sub createFixJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $S->getBuilder();
-    $B->resource(1, 1, "1gb");
+    $self->requestResources($B, 1, 1, DEFAULT_RAM);
 
     $B->addAction("sleep 5");
 
@@ -340,7 +341,7 @@ sub createStatsJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $S->getBuilder();
-    $B->resource(1, 1, "3gb");
+    $self->requestResources($B, 1, 1, DEFAULT_RAM);
     
     $self->addStandardEnv($B);
 
@@ -358,7 +359,7 @@ sub createCleanupJob {
     my $conf = $self->{conf}->{analyze};
 
     my $B = $S->getBuilder();
-    $B->resource(1, 1, "1gb");
+    $self->requestResources($B, 1, 1, DEFAULT_RAM);
     
     $B->addAction("rm $conf->{output_dir}/cdhit*");
     $B->addAction("rm $conf->{output_dir}/*.sh");

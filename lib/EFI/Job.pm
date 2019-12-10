@@ -7,6 +7,8 @@ use warnings;
 use constant RUN => 1;
 use constant DRY_RUN => 2;
 use constant NO_SUBMIT => 4;
+use constant SET_CORES => 1;
+use constant SET_QUEUE => 2;
 
 use Cwd qw(abs_path);
 use File::Basename qw(dirname);
@@ -122,6 +124,12 @@ sub addClusterConfig {
     $conf->{max_queue_ram} = $config->{cluster}->{max_queue_ram} // 0;
     $conf->{max_mem_queue_ram} = $config->{cluster}->{max_mem_queue_ram} // 0;
     $conf->{default_wall_time} = $config->{cluster}->{default_wall_time} if $config->{cluster}->{default_wall_time};
+
+    # set-cores == divide the requested amount of RAM by the max_queue_ram and set the number of CPU to that number.
+    # set-queue == if > max_queue_ram, use mem_queue
+    my $resMethod = $config->{cluster}->{mem_res_method} // "set-cores";
+    $resMethod = $resMethod eq "set-cores" ? SET_CORES : SET_QUEUE;
+    $conf->{mem_res_method} = $resMethod;
 
     return "No queue is provided in configuration file." if not $conf->{queue};
 }
@@ -398,31 +406,26 @@ sub requestResources {
     my $numCpu = shift;
     my $ram = shift;
     my $useHighMem = shift || 0;
-    if ($useHighMem or ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram})) {
-        $B->queue("$self->{cluster}->{mem_queue},$self->{cluster}->{queue}");
+
+    #TODO: needs testing!!!!
+
+    #TODO: test if multiple queues work on PBSPro
+    #$B->queue("$self->{cluster}->{mem_queue},$self->{cluster}->{queue}");
+    if ($useHighMem) {
+        $B->queue($self->{cluster}->{mem_queue});
+    }
+    if ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_QUEUE) {
+        $B->queue($self->{cluster}->{mem_queue});
     }
     if ($self->{cluster}->{max_mem_queue_ram} and $ram > $self->{cluster}->{max_mem_queue_ram}) {
         $ram = $self->{cluster}->{max_mem_queue_ram};
+    } elsif ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_CORES) {
+        $numCpu = int($ram / $self->{cluster}->{max_queue_ram} + 0.5);
     }
-    # We don't need to specify this, since it's defaulted in the SchedulerApi setup
-    #} else {
-    #} $B->queue($self->{cluster}->{queue});
+    if ($numCpu > $self->{cluster}->{node_np}) {
+        $numNode = int($numCpu / $self->{cluster}->{node_np} + 0.5);
+    }
     $B->resource($numNode, $numCpu, "${ram}gb");
-}
-
-
-sub requestRam {
-    my $self = shift;
-    my $ram = shift;
-    return $ram;
-}
-
-
-sub requestHighMemQueue {
-    my $self = shift;
-    my $B = shift;
-    my $queue = $self->{cluster}->{mem_queue};
-    $B->queue($queue);
 }
 
 

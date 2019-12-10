@@ -18,6 +18,7 @@ np=48 ; number of processors to use for BLAST jobs
 node_np=24 ; number of processors on a single node
 max_queue_ram=300 ; maximum amount of RAM allowed to be requested on a queue node
 max_mem_queue_ram=1500 ; maximum amount of RAM allowed to be requested on a mem_queue node
+mem_res_method=set-cores ;set-cores or set-queue
 queue=
 mem_queue=
 ;scheduler=slurm|torque|pbspro
