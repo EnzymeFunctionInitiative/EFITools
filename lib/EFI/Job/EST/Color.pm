@@ -268,6 +268,7 @@ sub getFileInfo {
         ssn_out_zip => "$outputDir/$ssnOutZip",
         domain_map_file => "${ssnName}_$domainMapFileName",
         map_file => "${ssnName}_$mapFileName",
+        output_dir => $outputDir,
     };
 
     if ($conf->{opt_msa_option}) {
@@ -319,6 +320,7 @@ sub getColorSsnJob {
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
     my $blastDbDir = $self->getBlastDbDir();
+    my $removeTemp = $self->getRemoveTemp();
 
     my $scriptArgs = 
         " --config $configFile" .
@@ -346,7 +348,7 @@ sub getColorSsnJob {
     $B->addAction("export EFI_DB_PATH=$blastDbDir");
     $B->addAction("$toolPath/unzip_file.pl --in $conf->{zipped_ssn_in} --out $conf->{ssn_in}") if $conf->{zipped_ssn_in};
     $B->addAction("$toolPath/cluster_gnn.pl $scriptArgs");
-    EFI::GNN::Base::addFileActions($B, $fileInfo);
+    EFI::GNN::Base::addFileActions($B, $fileInfo, $removeTemp);
     $B->addAction("touch $outputDir/1.out.completed");
 
     return $B;

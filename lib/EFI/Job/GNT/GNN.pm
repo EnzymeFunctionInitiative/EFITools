@@ -324,6 +324,7 @@ sub getGnnJob {
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
     my $blastDbDir = $self->getBlastDbDir();
+    my $removeTemp = $self->getRemoveTemp();
     my $diagramVersion = $EFI::GNN::Arrows::Version;
 
     my $scriptArgs =
@@ -371,7 +372,7 @@ sub getGnnJob {
     $B->addAction("export EFI_DB_PATH=$blastDbDir");
     $B->addAction("$toolPath/unzip_file.pl --in $conf->{zipped_ssn_in} --out $conf->{ssn_in}") if $conf->{zipped_ssn_in};
     $B->addAction("$toolPath/cluster_gnn.pl $scriptArgs");
-    EFI::GNN::Base::addFileActions($B, $fileInfo);
+    EFI::GNN::Base::addFileActions($B, $fileInfo, $removeTemp);
     $B->addAction("\n\n$toolPath/save_version.pl > $outputDir/gnn.completed");
     $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
 
