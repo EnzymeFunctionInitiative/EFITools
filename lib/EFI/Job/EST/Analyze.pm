@@ -183,6 +183,9 @@ sub createJobs {
     my $job5 = $self->createStatsJob($S);
     push @jobs, {job => $job5, deps => [{obj => $job4, is_job_array => 1}], name => "stats"};
 
+    my $job6 = $self->createCleanupJob($S);
+    push @jobs, {job => $job6, deps => [$job5], name => "cleanup"};
+
     return @jobs;
 }
 
@@ -337,13 +340,30 @@ sub createStatsJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $S->getBuilder();
-    $B->resource(1, 1, "5gb");
+    $B->resource(1, 1, "3gb");
     
     $self->addStandardEnv($B);
 
     $B->addAction("sleep 5");
     $B->addAction("$toolPath/calc_ssn_stats.pl -run-dir $conf->{output_dir} -out $conf->{output_dir}/stats.tab");
-    $B->addAction("$toolPath/make_ssn_download_table.pl --stats $conf->{output_dir}/stats.tab --table $conf->{output_dir}/");
+    $B->addAction("$toolPath/create_ssn_download_table.pl --stats-file $conf->{output_dir}/stats.tab --html-file $conf->{output_dir}/download.html");
+
+    return $B;
+}
+
+
+sub createCleanupJob {
+    my $self = shift;
+    my $S = shift;
+    my $conf = $self->{conf}->{analyze};
+
+    my $B = $S->getBuilder();
+    $B->resource(1, 1, "1gb");
+    
+    $B->addAction("rm $conf->{output_dir}/cdhit*");
+    $B->addAction("rm $conf->{output_dir}/*.sh");
+    $B->addAction("rm $conf->{output_dir}/sequences.fa");
+    $B->addAction("rm $conf->{output_dir}/*.out");
 
     return $B;
 }

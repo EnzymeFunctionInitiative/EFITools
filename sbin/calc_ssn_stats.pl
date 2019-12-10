@@ -33,7 +33,6 @@ foreach my $filePath (sort {$b cmp $a} glob("$runDir/*")){
     }
 }
 
-close DIR;
 
 system("touch $out.completed");
 

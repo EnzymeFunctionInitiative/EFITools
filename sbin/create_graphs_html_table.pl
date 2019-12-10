@@ -29,7 +29,7 @@ print $fh <<HTML;
 <html lang="en">
 
 <head>
-    <title>EFI-EST Generate Results</title>
+    <title>EFI-EST Dataset Generation Results</title>
     <style>
     <style>
     *+*{box-sizing:border-box;margin:.5em 0}\@media(min-width:35em){.col{display:table-cell}.\31{width:5%}.\33{width:22%}.\34{width:30%}.\35{width:40%}.\32{width:15%}.row{display:table;border-spacing:1em 0}}.row,.w-100{width:100%}.card:focus,hr{outline:0;border:solid #7a0026}.card,pre{padding:1em;border:solid #eee}.btn:hover,a:hover{opacity:.6}.c{max-width:60em;padding:1em;margin:auto;font:1em/1.6 Arial}h6{font:300 1em Arial}h5{font:300 1.2em Arial}h3{font:300 2em Arial}h4{font:300 1.5em Arial}h2{font:300 2.2em Arial}h1{font:300 2.5em Arial}a{color:#7a0026;text-decoration:none}.btn.primary{color:#fff;background:#7a0026;border:solid #7a0026}pre{overflow:auto}td,th{padding:1em;text-align:left;border-bottom:solid #eee}.btn{cursor:pointer;padding:1em;letter-spacing:.1em;text-transform:uppercase;background:#fff;border:solid;font:.7em Arial}

@@ -523,7 +523,6 @@ sub getGraphJob {
     
     $B->mailEnd();
     $B->setScriptAbortOnError(0); # don't abort on error
-    $self->requestHighMemQueue($B);
     $self->addStandardEnv($B);
 
     if ($conf->{graph_version} == 1) {
