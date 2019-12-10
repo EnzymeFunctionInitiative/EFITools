@@ -510,6 +510,7 @@ sub getGraphJob {
     my $S = shift;
     my $conf = $self->{conf}->{generate};
 
+    my $resultsDir = $self->getResultsDir();
     my $outputDir = $self->getOutputDir();
     my $toolPath = $self->getToolPath();
     my $jobId = $self->getJobId();
@@ -546,12 +547,12 @@ sub getGraphJob {
         $B->addAction("LAST=`ls $outputDir/rdata/perid*| tail -1`");
         $B->addAction("LAST=`head -1 \$LAST`");
         $B->addAction("MAXALIGN=`head -1 $outputDir/rdata/maxyal`");
-        $B->addAction("Rscript $toolPath/R/quart-align.r legacy $outputDir/rdata $outputDir/alignment_length.png \$FIRST \$LAST \$MAXALIGN $jobId");
-        $B->addAction("Rscript $toolPath/R/quart-align.r legacy $outputDir/rdata $outputDir/alignment_length_sm.png \$FIRST \$LAST \$MAXALIGN $jobId $smallWidth $smallHeight");
-        $B->addAction("Rscript $toolPath/R/quart-perid.r legacy $outputDir/rdata $outputDir/percent_identity.png \$FIRST \$LAST $jobId");
-        $B->addAction("Rscript $toolPath/R/quart-perid.r legacy $outputDir/rdata $outputDir/percent_identity_sm.png \$FIRST \$LAST $jobId $smallWidth $smallHeight");
-        $B->addAction("Rscript $toolPath/R/hist-edges.r legacy $outputDir/edge.tab $outputDir/number_of_edges.png $jobId");
-        $B->addAction("Rscript $toolPath/R/hist-edges.r legacy $outputDir/edge.tab $outputDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/quart-align.r legacy $outputDir/rdata $resultsDir/alignment_length.png \$FIRST \$LAST \$MAXALIGN $jobId");
+        $B->addAction("Rscript $toolPath/R/quart-align.r legacy $outputDir/rdata $resultsDir/alignment_length_sm.png \$FIRST \$LAST \$MAXALIGN $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/quart-perid.r legacy $outputDir/rdata $resultsDir/percent_identity.png \$FIRST \$LAST $jobId");
+        $B->addAction("Rscript $toolPath/R/quart-perid.r legacy $outputDir/rdata $resultsDir/percent_identity_sm.png \$FIRST \$LAST $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/hist-edges.r legacy $outputDir/edge.tab $resultsDir/number_of_edges.png $jobId");
+        $B->addAction("Rscript $toolPath/R/hist-edges.r legacy $outputDir/edge.tab $resultsDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
         my %lenFiles = ($conf->{len_uniprot_file} => {title => "", file => "length_histogram_uniprot"});
         $lenFiles{$conf->{len_uniprot_file}}->{title} = "UniProt, Full Length" if $unirefVersion or $domain eq "on";
         $lenFiles{$conf->{len_uniprot_dom_file}} = {title => "UniProt, Domain", file => "length_histogram_uniprot_domain"} if $domain eq "on";
@@ -559,27 +560,27 @@ sub getGraphJob {
         $lenFiles{$conf->{len_uniref_dom_file}} = {title => "UniRef$unirefVersion Cluster IDs, Domain", file => "length_histogram_uniref_domain"} if $unirefVersion and $domain eq "on";
         foreach my $file (keys %lenFiles) {
             my $title = $lenFiles{$file}->{title} ? "\"(" . $lenFiles{$file}->{title} . ")\"" : "\"\"";
-            $B->addAction("Rscript $toolPath/R/hist-length.r legacy $file $outputDir/$lenFiles{$file}->{file}.png $jobId $title");
-            $B->addAction("Rscript $toolPath/R/hist-length.r legacy $file $outputDir/$lenFiles{$file}->{file}_sm.png $jobId $title $smallWidth $smallHeight");
+            $B->addAction("Rscript $toolPath/R/hist-length.r legacy $file $resultsDir/$lenFiles{$file}->{file}.png $jobId $title");
+            $B->addAction("Rscript $toolPath/R/hist-length.r legacy $file $resultsDir/$lenFiles{$file}->{file}_sm.png $jobId $title $smallWidth $smallHeight");
         }
+        my $unirefArg = $unirefVersion ? "--uniref-version $unirefVersion" : "";
+        $B->addAction("$toolPath/create_graphs_html_table.pl --results-dir $resultsDir --html-file $resultsDir/graphs.html $unirefArg");
     } else {
         map { $B->addAction($_); } $self->getEnvironment("est-graphs-v2");
         $B->addAction("$toolPath/make_hdf5_graph_data.py -b $outputDir/1.out -f $outputDir/rdata.hdf5 -a $conf->{all_seq_file} -i $conf->{inc_frac}");
-        $B->addAction("Rscript $toolPath/R/quart-align.r hdf5 $outputDir/rdata.hdf5 $outputDir/alignment_length.png $jobId");
-        $B->addAction("Rscript $toolPath/R/quart-align.r hdf5 $outputDir/rdata.hdf5 $outputDir/alignment_length_sm.png $jobId $smallWidth $smallHeight");
-        $B->addAction("Rscript $toolPath/R/quart-perid.r hdf5 $outputDir/rdata.hdf5 $outputDir/percent_identity.png $jobId");
-        $B->addAction("Rscript $toolPath/R/quart-perid.r hdf5 $outputDir/rdata.hdf5 $outputDir/percent_identity_sm.png $jobId $smallWidth $smallHeight");
-        $B->addAction("Rscript $toolPath/R/hist-length.r hdf5 $outputDir/rdata.hdf5 $outputDir/length_histogram.png $jobId");
-        $B->addAction("Rscript $toolPath/R/hist-length.r hdf5 $outputDir/rdata.hdf5 $outputDir/length_histogram_sm.png $jobId $smallWidth $smallHeight");
-        $B->addAction("Rscript $toolPath/R/hist-edges.r hdf5 $outputDir/rdata.hdf5 $outputDir/number_of_edges.png $jobId");
-        $B->addAction("Rscript $toolPath/R/hist-edges.r hdf5 $outputDir/rdata.hdf5 $outputDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/quart-align.r hdf5 $outputDir/rdata.hdf5 $resultsDir/alignment_length.png $jobId");
+        $B->addAction("Rscript $toolPath/R/quart-align.r hdf5 $outputDir/rdata.hdf5 $resultsDir/alignment_length_sm.png $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/quart-perid.r hdf5 $outputDir/rdata.hdf5 $resultsDir/percent_identity.png $jobId");
+        $B->addAction("Rscript $toolPath/R/quart-perid.r hdf5 $outputDir/rdata.hdf5 $resultsDir/percent_identity_sm.png $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/hist-length.r hdf5 $outputDir/rdata.hdf5 $resultsDir/length_histogram.png $jobId");
+        $B->addAction("Rscript $toolPath/R/hist-length.r hdf5 $outputDir/rdata.hdf5 $resultsDir/length_histogram_sm.png $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/hist-edges.r hdf5 $outputDir/rdata.hdf5 $resultsDir/number_of_edges.png $jobId");
+        $B->addAction("Rscript $toolPath/R/hist-edges.r hdf5 $outputDir/rdata.hdf5 $resultsDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
     }
     $B->addAction("touch  $outputDir/1.out.completed");
 
     return $B;
 }
-
-
 
 
 1;

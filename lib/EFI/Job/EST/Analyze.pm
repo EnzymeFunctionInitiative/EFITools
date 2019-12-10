@@ -343,6 +343,7 @@ sub createStatsJob {
 
     $B->addAction("sleep 5");
     $B->addAction("$toolPath/calc_ssn_stats.pl -run-dir $conf->{output_dir} -out $conf->{output_dir}/stats.tab");
+    $B->addAction("$toolPath/make_ssn_download_table.pl --stats $conf->{output_dir}/stats.tab --table $conf->{output_dir}/");
 
     return $B;
 }

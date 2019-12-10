@@ -147,6 +147,7 @@ sub validateOptions {
     $conf->{job_id} = $parms->{"job-id"} // 0;
     $conf->{remove_temp} = defined $parms->{"keep-temp"} ? 0 : 1;
     $conf->{dir_name} = $parms->{"dir-name"} // "output";
+    $conf->{results_dir_name} = $parms->{"results-dir-name"} // "results";
     $conf->{job_dir} = $parms->{"job-dir"} // "";
     $conf->{no_submit} = $parms->{"no-submit"} // 0;
     $conf->{dry_run} = $parms->{"dry-run"} // 0;
@@ -236,6 +237,8 @@ sub createJobStructure {
     mkdir $scriptDir;
     my $logDir = "$dir/log";
     mkdir $logDir;
+    my $resultsDir = "$dir/results";
+    mkdir $resultsDir;
     return ($scriptDir, $logDir, $outputDir);
 }
 
@@ -296,6 +299,14 @@ sub getOutputDir {
     my $self = shift;
     my $dir = $self->{conf}->{job_dir};
     $dir .= "/" . $self->{conf}->{dir_name} if $self->{conf}->{dir_name};
+    return $dir;
+}
+
+
+sub getResultsDir {
+    my $self = shift;
+    my $dir = $self->{conf}->{job_dir};
+    $dir .= "/" . $self->{conf}->{results_dir_name} if $self->{conf}->{results_dir_name};
     return $dir;
 }
 
