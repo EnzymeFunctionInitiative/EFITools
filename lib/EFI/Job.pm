@@ -23,6 +23,7 @@ use EFI::Util qw(getSchedulerType getLmod);
 use EFI::Util::System;
 use EFI::Config;
 use EFI::Constants;
+use EFI::Job::Size;
 
 
 sub new {
@@ -76,6 +77,8 @@ sub new {
     die "Error validating module config: $err\n" if $err;
     $err = addClusterConfig($config, $self->{cluster});
     die "Error validating cluster config: $err\n" if $err;
+    $err = addResourceConfig($config, $self);
+    die "Error validating job.* resource config: $err\n" if $err;
     $err = addDatabaseConfig($config, $self->{db});
     die "Error validating database config: $err\n" if $err;
 
@@ -106,6 +109,20 @@ sub addDatabaseConfig {
 }
 
 
+sub addResourceConfig {
+    my $config = shift;
+    my $self = shift;
+
+    my %sizeArgs;
+    $sizeArgs{memory_config} = $config->{"job.memory"} if $config->{"job.memory"};
+    $sizeArgs{walltime_config} = $config->{"job.walltime"} if $config->{"job.walltime"};
+
+    $self->{cluster}->{resources} = new EFI::Job::Size(%sizeArgs);
+
+    return "";
+}
+
+
 sub addClusterConfig {
     my $config = shift;
     my $conf = shift;
@@ -127,7 +144,7 @@ sub addClusterConfig {
 
     # set-cores == divide the requested amount of RAM by the max_queue_ram and set the number of CPU to that number.
     # set-queue == if > max_queue_ram, use mem_queue
-    my $resMethod = $config->{cluster}->{mem_res_method} // "set-cores";
+    my $resMethod = $config->{cluster}->{mem_res_method} // "set-queue";
     $resMethod = $resMethod eq "set-cores" ? SET_CORES : SET_QUEUE;
     $conf->{mem_res_method} = $resMethod;
 
@@ -408,14 +425,11 @@ sub requestResources {
     my $useHighMem = shift || 0;
 
     #TODO: needs testing!!!!
-
-    #TODO: test if multiple queues work on PBSPro
-    #$B->queue("$self->{cluster}->{mem_queue},$self->{cluster}->{queue}");
-    if ($useHighMem) {
-        $B->queue($self->{cluster}->{mem_queue});
-    }
-    if ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_QUEUE) {
-        $B->queue($self->{cluster}->{mem_queue});
+    my $memQueue = $self->{cluster}->{mem_queue} . ($self->getScheduler->supportsMultiQueue() ? ",$self->{cluster}->{queue}" : "");
+    if ($useHighMem or
+        ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_QUEUE))
+    {
+        $B->queue($memQueue);
     }
     if ($self->{cluster}->{max_mem_queue_ram} and $ram > $self->{cluster}->{max_mem_queue_ram}) {
         $ram = $self->{cluster}->{max_mem_queue_ram};
@@ -426,6 +440,14 @@ sub requestResources {
         $numNode = int($numCpu / $self->{cluster}->{node_np} + 0.5);
     }
     $B->resource($numNode, $numCpu, "${ram}gb");
+}
+
+
+sub getMemorySize {
+    my $self = shift;
+    my $type = shift;
+    my $seqCount = shift || 0;
+    return $self->{cluster}->{resources}->getMemorySize($type, $seqCount);
 }
 
 

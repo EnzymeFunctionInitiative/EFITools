@@ -12,8 +12,6 @@ use parent qw(EFI::Job::EST::Generate);
 
 use Getopt::Long qw(:config pass_through);
 
-use constant DEFAULT_RAM => 4;
-
 
 sub new {
     my $class = shift;
@@ -166,7 +164,7 @@ sub getInitialImportJob {
     my $configFile = $self->getConfigFile();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("initial_import"));
 
     $B->addAction("cd $outputDir");
 
@@ -254,7 +252,7 @@ sub getMultiplexJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("multiplex"));
 
     $self->addStandardEnv($B);
 
@@ -299,7 +297,7 @@ sub getFracFileJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("fracfile"));
     $self->addStandardEnv($B);
     
     $B->addAction("mkdir -p $conf->{frac_dir}");
@@ -318,7 +316,7 @@ sub getCreateDbJob {
     my $outputDir = $self->getOutputDir();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("createdb"));
     $self->addStandardEnv($B);
 
     $B->addAction("cd $outputDir");
@@ -349,7 +347,7 @@ sub getBlastJob {
     my $B = $self->getBuilder();
     $B->setScriptAbortOnError(0); # Disable SLURM aborting on errors, since we want to catch the BLAST error and report it to the user nicely
     $B->jobArray("1-$np") if $conf->{blast_type} eq "blast";
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("blastqsub"));
     $B->resource(1, 24, "14G") if $conf->{blast_type} =~ /diamond/i;
     $B->resource(1, 24, "14G") if $conf->{blast_type} =~ /blast\+/i;
     
@@ -406,7 +404,7 @@ sub getCatJob {
     my $outputDir = $self->getOutputDir();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("catjob"));
     $self->addStandardEnv($B);
 
     $B->addAction("cat $conf->{blast_output_dir}/blastout-*.tab |grep -v '#'|cut -f 1,2,3,4,12 >$conf->{blast_final_file}")
@@ -434,7 +432,7 @@ sub getBlastReduceJob {
 
     my $B = $self->getBuilder();
     # Bounces to high memory queue automatically
-    $self->requestResources($B, 1, 1, 350);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("blastreduce"));
     $self->addStandardEnv($B);
 
     $B->addAction("$toolPath/alphabetize_blast_output.pl -in $conf->{blast_final_file} -out $outputDir/alphabetized.blastfinal.tab -fasta $conf->{filt_seq_file}");
@@ -457,7 +455,7 @@ sub getDemuxJob {
     
     my $normalCdHit = ($conf->{cdhit_seq_id_threshold} == 1 and $conf->{cdhit_length_diff} == 1);
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("demux"));
     $self->addStandardEnv($B);
 
     if ($conf->{multiplex} and $normalCdHit and not $conf->{no_demux}) {
@@ -482,7 +480,7 @@ sub getConvergenceRatioJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("conv_ratio"));
     $self->addStandardEnv($B);
 
     $B->addAction("$toolPath/calc_blast_stats.pl -edge-file $outputDir/1.out -seq-file $conf->{all_seq_file} -unique-seq-file $conf->{filt_seq_file} -seq-count-output $conf->{seq_count_file}");
@@ -516,7 +514,7 @@ sub getGraphJob {
         my $evalueFile = "$outputDir/evalue.tab";
         my $defaultLengthFile = "$outputDir/length.tab";
 
-        $self->requestResources($B, 1, 1, DEFAULT_RAM); #TODO: 50
+        $self->requestResources($B, 1, 1, $self->getMemorySize("graphs"));
 
         map { $B->addAction($_); } $self->getEnvironment("est-graphs");
         $B->addAction("mkdir -p $outputDir/rdata");

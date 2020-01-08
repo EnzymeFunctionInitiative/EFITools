@@ -153,7 +153,6 @@ sub createJobs {
     my $conf = $self->{conf}->{sb};
     
     my @jobs;
-    my $B;
     my $job;
 
     my $job1 = $self->getGetClustersJob();
@@ -184,7 +183,7 @@ sub getGetClustersJob {
 
     my $B = $self->getBuilder();
     $B->setScriptAbortOnError(0); # grep causes the script to abort if we have set -e in the script.
-    $self->requestResources($B, 1, 1, 350);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("sb_get_clusters"));
     $self->addStandardEnv($B);
 
     $B->addAction("$toolPath/unzip_file.pl --in $conf->{zipped_ssn_in} --out $conf->{ssn_in}") if $conf->{zipped_ssn_in};
@@ -227,7 +226,7 @@ sub getFastaJob {
     # Get the FASTA files from the database
     
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, 10);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("sb_get_fasta"));
     $self->addStandardEnv($B);
 
     $B->addAction("sort $conf->{ssn_accession_file} > $sortedAcc");
@@ -276,7 +275,7 @@ sub getIdentifyJob {
     my $diamondSensArg = ($conf->{use_diamond} and $conf->{diamond_sens}) ? "--diamond-sensitivity $conf->{diamond_sens} " : "";
     
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, $np, 300);
+    $self->requestResources($B, 1, $np, $self->getMemorySize("sb_identify"));
     $self->addStandardEnv($B);
 
     $B->addAction("python $sbIdentifyApp --threads $np --goi $conf->{fasta_file} --refdb $seqDbPath --markers $conf->{sb_marker_file} --tmp $conf->{sb_output_dir} $searchTypeArg $cdhitSidArg $consThreshArg $diamondSensArg");
@@ -303,7 +302,7 @@ sub getXgmmlJob {
     
     my $colorFileArg = $conf->{color_file} ? "--color-file $conf->{color_file}" : "";
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, 200);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("sb_xgmml"));
     $self->addStandardEnv($B);
 
     $B->addAction("$conf->{tool_path}/create_metadata.pl " . join(" ", @metaParams));

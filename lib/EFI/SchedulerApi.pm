@@ -23,7 +23,7 @@ sub new {
     my ($class, %args) = @_;
     
     my $self = bless({}, $class);
-    $self->{type} = getType($args{type});
+    $self->{type} = validateType($args{type});
 
     $self->{extra_path} = $args{extra_path} ? $args{extra_path} : "";
 
@@ -80,6 +80,16 @@ sub new {
 }
 
 sub getType {
+    my $self = shift;
+    return $self->{type};
+}
+
+sub supportsMultiQueue {
+    my $self = shift;
+    return $self->getType() eq EFI::SchedulerApi::Builder::Slurm::TYPE;
+}
+
+sub validateType {
     my $argType = shift || "";
     if ($argType eq EFI::SchedulerApi::Builder::Slurm::TYPE or not $argType and usesSlurm()) {
         return EFI::SchedulerApi::Builder::Slurm::TYPE;
@@ -104,6 +114,21 @@ sub getSubmitCmd {
         return EFI::SchedulerApi::Builder::Pbs::Pro::SUBMIT_CMD;
     }
     return "";
+}
+
+sub getSubmitId {
+    my $self = shift;
+    my $result = shift;
+
+    if ($self->{type} eq EFI::SchedulerApi::Builder::Slurm::TYPE) {
+        $result =~ s/[^0-9\[\]]//g;
+    } elsif ($self->{type} eq EFI::SchedulerApi::Builder::Pbs::Torque::TYPE) {
+        $result =~ s/^(\d+)(\..*)?$/$1/;
+    } elsif ($self->{type} eq EFI::SchedulerApi::Builder::Pbs::Pro::TYPE) {
+        $result =~ s/^(\d+)(\..*)?$/$1/;
+    }
+
+    return $result;
 }
 
 sub getBuilder {
@@ -144,7 +169,7 @@ sub submit {
     if (not $self->{dry_run} and not $self->{run_serial}) {
         my $submit = $self->getSubmitCmd();
         $result = `$submit $script`;
-        $result =~ s/^(\d+)(\..*)?$/$1/ if $result;
+        $result = $self->getSubmitId($result) if $result;
     }
 
     return $result;

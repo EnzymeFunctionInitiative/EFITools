@@ -129,8 +129,6 @@ sub runTest {
         $jobIds{$jobObj} = $jobId;
         $lastJobId = $jobId;
     }
-    # For EFI tools web UI
-    print "$lastJobId\n";
 }
 
 

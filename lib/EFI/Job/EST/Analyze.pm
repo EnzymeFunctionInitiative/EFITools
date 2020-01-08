@@ -201,7 +201,7 @@ sub createGetAnnotationsJob {
     my $generateDir = $self->getOutputDir();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("get_annotations"));
 
     #TODO: right now if you useAnnoSpec, we actually just include the bare minimum.  In the future allow the user to determine which annotations to include.
     if ($conf->{use_anno_spec}) {
@@ -240,7 +240,7 @@ sub createFilterBlastJob {
     my $generateDir = $self->getOutputDir();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("filterblast"));
 
     $self->addStandardEnv($B);
 
@@ -271,7 +271,7 @@ sub createFullXgmmlJob {
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("fullxgmml"));
 
     $self->addStandardEnv($B);
 
@@ -294,7 +294,7 @@ sub createRepNodeXgmmlJob {
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("cdhit"));
     $B->jobArray("40-100:5");
     $self->addStandardEnv($B);
 
@@ -316,7 +316,7 @@ sub createFixJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("fix"));
 
     $B->addAction("sleep 5");
 
@@ -332,7 +332,7 @@ sub createStatsJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("stats"));
     
     $self->addStandardEnv($B);
 
@@ -349,7 +349,7 @@ sub createCleanupJob {
     my $conf = $self->{conf}->{analyze};
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, DEFAULT_RAM);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("cleanup"));
     
     $B->addAction("rm $conf->{output_dir}/cdhit*");
     $B->addAction("rm $conf->{output_dir}/*.sh");
