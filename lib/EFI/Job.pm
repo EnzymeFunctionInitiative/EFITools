@@ -479,6 +479,13 @@ sub getScheduler {
 }
 
 
+sub getBuilder {
+    my $self = shift;
+    my $S = $self->getScheduler();
+    return $S->getBuilder();
+}
+
+
 sub getSubmitStatus {
     my $self = shift;
     return (DRY_RUN | NO_SUBMIT) if $self->{cluster}->{dry_run};

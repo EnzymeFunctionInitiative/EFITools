@@ -183,20 +183,18 @@ sub createJobs {
     my $self = shift;
     my $conf = $self->{conf}->{color};
 
-    my $S = $self->getScheduler();
-    die "Need scheduler" if not $S;
-
     my $fileInfo = $self->getFileInfo();
     $self->makeDirs($conf, $fileInfo);
 
     my @jobs;
 
-    my $job1 = $self->getColorSsnJob($S, $fileInfo);
+    my $job1 = $self->getColorSsnJob($fileInfo);
     push @jobs, {job => $job1, deps => [], name => "color_ssn"};
 
     if ($conf->{opt_msa_option}) {
-        my $job2 = $self->getHmmAndStuffJob($S, $fileInfo);
-        push @jobs, {job => $job2, deps => [$job1], name => "hmm_and_stuff"};
+        #TODO: implement this
+        #my $job2 = $self->getHmmAndStuffJob($fileInfo);
+        #push @jobs, {job => $job2, deps => [$job1], name => "hmm_and_stuff"};
     }
 
     return @jobs;
@@ -236,7 +234,6 @@ sub makeDirs {
 
 sub getFileInfo {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{color};
 
     my $outputDir = $self->getOutputDir();
@@ -311,7 +308,6 @@ sub getFileInfo {
 
 sub getColorSsnJob {
     my $self = shift;
-    my $S = shift;
     my $fileInfo = shift;
     my $conf = $self->{conf}->{color};
 
@@ -335,7 +331,7 @@ sub getColorSsnJob {
         ;
     $scriptArgs .= getClusterDataDirArgs($fileInfo);
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     
     my $ramReservation = computeRamReservation($self->{conf}->{color});
     $ramReservation = 4; #TODO: compute deterministically

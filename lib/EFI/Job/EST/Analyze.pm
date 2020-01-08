@@ -162,29 +162,26 @@ sub setupDefaults {
 sub createJobs {
     my $self = shift;
 
-    my $S = $self->getScheduler();
-    die "Need scheduler" if not $S;
-
     my @jobs;
     my $B;
     my $job;
 
-    my $job1 = $self->createGetAnnotationsJob($S);
+    my $job1 = $self->createGetAnnotationsJob();
     push @jobs, {job => $job1, deps => [], name => "get_annotations"};
 
-    my $job2 = $self->createFilterBlastJob($S);
+    my $job2 = $self->createFilterBlastJob();
     push @jobs, {job => $job2, deps => [$job1], name => "filter_blast"};
 
-    my $job3 = $self->createFullXgmmlJob($S);
+    my $job3 = $self->createFullXgmmlJob();
     push @jobs, {job => $job3, deps => [$job2], name => "full_xgmml"};
 
-    my $job4 = $self->createRepNodeXgmmlJob($S);
+    my $job4 = $self->createRepNodeXgmmlJob();
     push @jobs, {job => $job4, deps => [$job3], name => "repnode_xgmml"};
 
-    my $job5 = $self->createStatsJob($S);
+    my $job5 = $self->createStatsJob();
     push @jobs, {job => $job5, deps => [{obj => $job4, is_job_array => 1}], name => "stats"};
 
-    my $job6 = $self->createCleanupJob($S);
+    my $job6 = $self->createCleanupJob();
     push @jobs, {job => $job6, deps => [$job5], name => "cleanup"};
 
     return @jobs;
@@ -197,14 +194,13 @@ sub createJobs {
 # thresholds.
 sub createGetAnnotationsJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
     my $generateDir = $self->getOutputDir();
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, DEFAULT_RAM);
 
     #TODO: right now if you useAnnoSpec, we actually just include the bare minimum.  In the future allow the user to determine which annotations to include.
@@ -237,14 +233,13 @@ ANNO
 
 sub createFilterBlastJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
     my $generateDir = $self->getOutputDir();
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, DEFAULT_RAM);
 
     $self->addStandardEnv($B);
@@ -266,7 +261,6 @@ sub createFilterBlastJob {
 
 sub createFullXgmmlJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
     my $configFile = $self->getConfigFile();
@@ -276,7 +270,7 @@ sub createFullXgmmlJob {
     my $seqsArg = $conf->{include_sequences} ? "--include-sequences" : "";
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, DEFAULT_RAM);
 
     $self->addStandardEnv($B);
@@ -290,7 +284,6 @@ sub createFullXgmmlJob {
 
 sub createRepNodeXgmmlJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
     my $configFile = $self->getConfigFile();
@@ -300,7 +293,7 @@ sub createRepNodeXgmmlJob {
     my $seqsArg = $conf->{include_sequences} ? "--include-sequences" : "";
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, DEFAULT_RAM);
     $B->jobArray("40-100:5");
     $self->addStandardEnv($B);
@@ -317,13 +310,12 @@ sub createRepNodeXgmmlJob {
 
 sub createFixJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, DEFAULT_RAM);
 
     $B->addAction("sleep 5");
@@ -334,13 +326,12 @@ sub createFixJob {
 
 sub createStatsJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, DEFAULT_RAM);
     
     $self->addStandardEnv($B);
@@ -355,10 +346,9 @@ sub createStatsJob {
 
 sub createCleanupJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, DEFAULT_RAM);
     
     $B->addAction("rm $conf->{output_dir}/cdhit*");

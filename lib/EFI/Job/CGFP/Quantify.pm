@@ -225,9 +225,6 @@ sub createJobs {
     my $self = shift;
     my $conf = $self->{conf}->{sb};
     
-    my $S = $self->getScheduler();
-    die "Need scheduler" if not $S;
-
     mkdir $conf->{real_dir} if not -d $conf->{real_dir};
 
     my @jobs;
@@ -236,15 +233,15 @@ sub createJobs {
 
     my $job1;
     if (not $conf->{parent_quantify_id}) {
-        $job1 = $self->getQuantifyJob($S);
+        $job1 = $self->getQuantifyJob();
         push @jobs, {job => $job1, deps => [], name => "quantify"};
     }
 
     my $job2Deps = $job1 ? [$job1] : [];
-    my $job2 = $self->getMergeQuantifyJob($S);
+    my $job2 = $self->getMergeQuantifyJob();
     push @jobs, {job => $job2, deps => $job2Deps, name => "merge_quantify"};
 
-    my $job3 = $self->getXgmmlJob($S);
+    my $job3 = $self->getXgmmlJob();
     push @jobs, {job => $job3, deps => [$job2], name => "make_quantify_xgmml"};
 
     return @jobs;
@@ -253,7 +250,6 @@ sub createJobs {
 
 sub getQuantifyJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{sb};
 
     # Path to generic EFITools scripts
@@ -264,7 +260,7 @@ sub getQuantifyJob {
     #
     # Don't run this if we are creating SSNs from another job's results.
     
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->addStandardEnv($B);
 
     if ($conf->{use_tasks}) {
@@ -353,7 +349,6 @@ sub getQuantifyTasks {
 
 sub getMergeQuantifyJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{sb};
 
     my $localMergeApp = "$conf->{tool_path}/merge_shortbred.py";
@@ -369,7 +364,7 @@ sub getMergeQuantifyJob {
     my $resFileMedianList = join(" ", map { $conf->{resFilesMedian}->{$_} } @sortedMgIds);
     my $resFileMeanList = join(" ", map { $conf->{resFilesMean}->{$_} } @sortedMgIds);
     
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, 20);
     $self->addStandardEnv($B);
 
@@ -395,7 +390,6 @@ sub getMergeQuantifyJob {
 
 sub getXgmmlJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{sb};
 
     my $metagenomeIdList = join(",", @{$conf->{metagenome_ids}});
@@ -403,7 +397,7 @@ sub getXgmmlJob {
     #######################################################################################################################
     # Build the XGMML file with the marker attributes and the abundances added added
     
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $B->setScriptAbortOnError(0); # Disable abort on error, so that we can disable the merged output lock.
     $self->requestResources($B, 1, 1, 200);
     $self->addStandardEnv($B);

@@ -178,23 +178,20 @@ sub createJobs {
     my $self = shift;
     my $conf = $self->{conf}->{gnd};
     
-    my $S = $self->getScheduler();
-    die "Need scheduler" if not $S;
-
     my @jobs;
     my $B;
 
     if ($conf->{blast_seq}) {
-        my $job = $self->getBlastJob($S);
+        my $job = $self->getBlastJob();
         push @jobs, {job => $job, deps => [], name => "diagram_blast"};
     } elsif ($conf->{id_file}) {
-        my $job = $self->getIdLookupJob($S);
+        my $job = $self->getIdLookupJob();
         push @jobs, {job => $job, deps => [], name => "diagram_id_lookup"};
     } elsif ($conf->{fasta_file}) {
-        my $job = $self->getFastaFileJob($S);
+        my $job = $self->getFastaFileJob();
         push @jobs, {job => $job, deps => [], name => "diagram_fasta"};
     } elsif ($conf->{upload_file}) {
-        my $job = $self->getUploadFileJob($S);
+        my $job = $self->getUploadFileJob();
         push @jobs, {job => $job, deps => [], name => "diagram_upload"};
     }
 
@@ -204,7 +201,6 @@ sub createJobs {
 
 sub getBlastJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{gnd};
 
     my $configFile = $self->getConfigFile();
@@ -213,7 +209,7 @@ sub getBlastJob {
     my $blastDb = $self->getBlastDbPath("uniprot");
     my $diagramVersion = $EFI::GNN::Arrows::Version;
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
 
     my $seqFile = "$outputDir/query.fa";
     my $blastOutFile = "$outputDir/blast.raw";
@@ -239,7 +235,6 @@ sub getBlastJob {
 
 sub getIdLookupJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{gnd};
 
     my $configFile = $self->getConfigFile();
@@ -247,7 +242,7 @@ sub getIdLookupJob {
     my $toolPath = $self->getToolPath();
     my $diagramVersion = $EFI::GNN::Arrows::Version;
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
 
     $self->requestResources($B, 1, 1, 4); #TODO: 10
     $B->addAction("$toolPath/create_diagram_db.pl --id-file $conf->{id_file} --db-file $conf->{output} --job-type $conf->{job_type} --title $conf->{title} --nb-size $conf->{nb_size} --do-id-mapping --config $configFile");
@@ -261,7 +256,6 @@ sub getIdLookupJob {
 
 sub getFastaFileJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{gnd};
 
     my $configFile = $self->getConfigFile();
@@ -269,7 +263,7 @@ sub getFastaFileJob {
     my $toolPath = $self->getToolPath();
     my $diagramVersion = $EFI::GNN::Arrows::Version;
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
 
     my $tempIdFile = "$conf->{output}.temp-ids";
 
@@ -286,14 +280,13 @@ sub getFastaFileJob {
 
 sub getUploadFileJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{gnd};
 
     my $outputDir = $self->getOutputDir();
     my $toolPath = $self->getToolPath();
     my $diagramVersion = $EFI::GNN::Arrows::Version;
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     
     $self->requestResources($B, 1, 1, 4);
     if ($conf->{upload_file} =~ m/\.zip$/i) {

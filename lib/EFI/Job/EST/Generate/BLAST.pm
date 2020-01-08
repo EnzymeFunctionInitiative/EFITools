@@ -132,11 +132,10 @@ sub getRetrievalScriptSuffix {
 
 sub getPrecursorJobs {
     my $self = shift;
-    my $S = shift;
 
     my @jobs;
     
-    my $job1 = $self->getInitialBlastJob($S);
+    my $job1 = $self->getInitialBlastJob();
     push @jobs, {job => $job1, deps => [], name => "initial_blast"};
 
     return @jobs;
@@ -145,7 +144,6 @@ sub getPrecursorJobs {
 
 sub getInitialBlastJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{blast};
 
     my $outputDir = $self->getOutputDir();
@@ -155,7 +153,7 @@ sub getInitialBlastJob {
 
     EFI::Util::BLAST::save_input_sequence($queryFile, $conf->{sequence}, $conf->{input_id});
     
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, 70);
 
     $self->addStandardEnv($B);
@@ -203,13 +201,12 @@ sub getInitialImportArgs {
 #TODO: share this code with FamilyShared?
 sub getFracFileJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{generate};
 
     my $np = $self->getNp();
     my $toolPath = $self->getToolPath();
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, 4); 
     
     $B->addAction("NP=$np");
@@ -240,7 +237,6 @@ sub getFracFileJob {
 #TODO: implement this
 sub getBlastJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{generate};
 
     mkdir $conf->{blast_output_dir};
@@ -250,7 +246,7 @@ sub getBlastJob {
     my $blasthits = $conf->{max_blast_hits};
     my $evalue = $conf->{evalue};
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $B->setScriptAbortOnError(0); # Disable SLURM aborting on errors, since we want to catch the BLAST error and report it to the user nicely
     $B->jobArray("1-$np") if $conf->{blast_type} eq "blast";
     $self->requestResources($B, 1, 1, 10); 

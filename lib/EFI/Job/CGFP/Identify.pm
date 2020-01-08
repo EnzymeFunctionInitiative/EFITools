@@ -152,23 +152,20 @@ sub createJobs {
     my $self = shift;
     my $conf = $self->{conf}->{sb};
     
-    my $S = $self->getScheduler();
-    die "Need scheduler" if not $S;
-
     my @jobs;
     my $B;
     my $job;
 
-    my $job1 = $self->getGetClustersJob($S);
+    my $job1 = $self->getGetClustersJob();
     push @jobs, {job => $job1, deps => [], name => "get_clusters"};
 
-    my $job2 = $self->getFastaJob($S);
+    my $job2 = $self->getFastaJob();
     push @jobs, {job => $job2, deps => [$job1], name => "get_fasta"};
 
-    my $job3 = $self->getIdentifyJob($S);
+    my $job3 = $self->getIdentifyJob();
     push @jobs, {job => $job3, deps => [$job2], name => "identify"};
 
-    my $job4 = $self->getXgmmlJob($S);
+    my $job4 = $self->getXgmmlJob();
     push @jobs, {job => $job4, deps => [$job3], name => "make_xgmml"};
 
     return @jobs;
@@ -177,7 +174,6 @@ sub createJobs {
 
 sub getGetClustersJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{sb};
 
     # Path to generic EFITools scripts
@@ -186,7 +182,7 @@ sub getGetClustersJob {
     my $minSeqLenArg = $conf->{min_seq_len} ? "--min-seq-len $conf->{min_seq_len}" : "";
     my $maxSeqLenArg = $conf->{max_seq_len} ? "--max-seq-len $conf->{max_seq_len}" : "";
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $B->setScriptAbortOnError(0); # grep causes the script to abort if we have set -e in the script.
     $self->requestResources($B, 1, 1, 350);
     $self->addStandardEnv($B);
@@ -211,7 +207,6 @@ sub getGetClustersJob {
 
 sub getFastaJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{sb};
 
     my $outputDir = $self->getOutputDir();
@@ -231,7 +226,7 @@ sub getFastaJob {
     #######################################################################################################################
     # Get the FASTA files from the database
     
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, 10);
     $self->addStandardEnv($B);
 
@@ -262,7 +257,6 @@ sub getFastaJob {
 
 sub getIdentifyJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{sb};
     
     my $np = $self->getNodeNp();
@@ -281,7 +275,7 @@ sub getIdentifyJob {
     my $consThreshArg = $conf->{cons_thresh} ? "--consthresh $conf->{cons_thresh}" : "";
     my $diamondSensArg = ($conf->{use_diamond} and $conf->{diamond_sens}) ? "--diamond-sensitivity $conf->{diamond_sens} " : "";
     
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, $np, 300);
     $self->addStandardEnv($B);
 
@@ -293,7 +287,6 @@ sub getIdentifyJob {
 
 sub getXgmmlJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{sb};
 
     #######################################################################################################################
@@ -309,7 +302,7 @@ sub getXgmmlJob {
     }
     
     my $colorFileArg = $conf->{color_file} ? "--color-file $conf->{color_file}" : "";
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, 200);
     $self->addStandardEnv($B);
 
