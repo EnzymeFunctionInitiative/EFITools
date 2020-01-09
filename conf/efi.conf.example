@@ -38,6 +38,7 @@ scratch_dir=/scratch
 ;   max_mem_queue_ram=1500
 ; This would work in a Slurm-scheduled system with 380GB of RAM, 24 cores per node and there is no
 ; cap on the amount of RAM a job is allowed to request per core.
+; Available keys are provided in the job.walltime section.
 ;DEFAULT=5
 ;initial_blast=70
 ;blastreduce=350
@@ -62,7 +63,7 @@ scratch_dir=/scratch
 ;   max_mem_queue_ram=300
 ; This would work on a PBS-scheduled system that allows for a maximum 4 GB of RAM to be requested per
 ; core.
-;DEFAULT=3.5
+;DEFAULT=4
 ;graphs=20
 ;colorssn=20
 ;gnn=20
@@ -70,8 +71,13 @@ scratch_dir=/scratch
 ; Additional memory configurations can be used. It is only necessary to specify the specific job
 ; type/steps that are to be overridden; anything else will come from the default job.memory
 ; configuration. Values are in GB.
-;[job.memory.extra_ram]
+; This configuration is used with the --memory <NAME> command line argument.
+; A specical value ALL is provided to assign all values (even the default configuration) to
+; a constant value.
+;[job.memory.large]
 ;colorssn=800
+;[job.memory.small]
+;ALL=3
 
 ; This section contains the walltime that is requested for a given EFI job step.
 ; Unspecified mean that it is not included in the job header.
@@ -103,6 +109,24 @@ DEFAULT=24
 ;   diagram
 ;   bigscape
 ;   hmm
+;   sb_identify
+;   sb_xgmml
+;   sb_get_clusters
+;   sb_get_fasta
+;   sb_quantify_par
+;   sb_quantify_tasks
+;   sb_merge
+
+; Additional walltime configurations can be used. It is only necessary to specify the specific job
+; type/steps that are to be overridden; anything else will come from the default job.walltime
+; configuration. Values are in hours, or HH:MM:SS format.
+; This configuration is used with the --walltime <NAME> command line argument.
+; A specical value ALL is provided to assign all values (even the default configuration) to
+; a constant value.
+;[job.walltime.short]
+;ALL=00:30:00
+;[job.walltime.long]
+;ALL=48:00:00
 
 [cgfp]
 search=diamond

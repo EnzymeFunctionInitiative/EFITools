@@ -128,7 +128,7 @@ sub getHelp {
     $msg = "$msg\n\n" if $msg;
     my $jobTypes = "<" . join("|", EFI::Job::Factory::get_available_types()) . ">";
 
-    my $globalArgs = EFI::Job::getGlobalUsageArgs();
+    my $globalArgs = "\n    " . EFI::Job::getGlobalUsageArgs();
     my $globalUsage = EFI::Job::getGlobalUsage(not $job);
     my $jobUsage = "\n";
     if ($job and $jobType) {

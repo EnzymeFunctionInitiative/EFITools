@@ -43,6 +43,8 @@ sub new {
         "dir-name|tmp=s",
         "job-dir|out-dir=s",
         "no-submit", # create the script files but don't submit them
+        "memory=s",
+        "walltime=s",
         "help",
         "serial-script=s", # file to place the serial execute commands into (has a default value)
     );
@@ -78,7 +80,7 @@ sub new {
     die "Error validating module config: $err\n" if $err;
     $err = addClusterConfig($config, $self->{cluster});
     die "Error validating cluster config: $err\n" if $err;
-    $err = addResourceConfig($config, $self);
+    $err = addResourceConfig($config, $self->{cluster}, $parms);
     die "Error validating job.* resource config: $err\n" if $err;
     $err = addDatabaseConfig($config, $self->{db});
     die "Error validating database config: $err\n" if $err;
@@ -112,13 +114,19 @@ sub addDatabaseConfig {
 
 sub addResourceConfig {
     my $config = shift;
-    my $self = shift;
+    my $conf = shift;
+    my $parms = shift;
+
+    my $memEnv = $parms->{"memory"} // "";
+    my $walltimeEnv = $parms->{"walltime"} // "";
 
     my %sizeArgs;
     $sizeArgs{memory_config} = $config->{"job.memory"} if $config->{"job.memory"};
     $sizeArgs{walltime_config} = $config->{"job.walltime"} if $config->{"job.walltime"};
+    $sizeArgs{extra_memory_config} = $config->{"job.memory.$memEnv"} if $memEnv and $config->{"job.memory.$memEnv"};
+    $sizeArgs{extra_walltime_config} = $config->{"job.walltime.$walltimeEnv"} if $walltimeEnv and $config->{"job.walltime.$walltimeEnv"};
 
-    $self->{cluster}->{resources} = new EFI::Job::Size(%sizeArgs);
+    $conf->{resources} = new EFI::Job::Size(%sizeArgs);
 
     return "";
 }
@@ -207,7 +215,7 @@ sub getUsage {
     return getGlobalUsageArgs() . "\n\n" . getGlobalUsage(admin => 1);
 }
 sub getGlobalUsageArgs {
-    return "[--job-id # --job-dir <JOB_DIR>]";
+    return "[--job-id # --job-dir <JOB_DIR> --memory <CONFIG> --walltime <CONFIG>]";
 }
 sub getGlobalUsage {
     my $admin = shift || 0;
@@ -219,6 +227,8 @@ sub getGlobalUsage {
                         contain scripts/ (the location for scripts submitted ot the cluster), log/
                         (the output from cluster jobs), and output/ (the directory where results
                         will be stored).
+    --memory            the memory environment to use, if specified in the config file.
+    --walltime          the walltime environment to use, if specified in the config file.
 HELP
     if ($admin) {
         $help .= <<HELP;

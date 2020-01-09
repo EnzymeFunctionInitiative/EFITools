@@ -12,10 +12,7 @@ use lib dirname(abs_path(__FILE__)) . "/../../";
 
 our @EXPORT_OK = qw(family_count fasta_file_count id_file_count);
 
-
 use constant DEFAULT_RAM => 3;
-#TODO: create formulas for RAM size
-
 
 sub new {
     my ($class, %args) = @_;
@@ -25,25 +22,27 @@ sub new {
 
     $self->{dbh} = $args{dbh} if $args{dbh};
 
-    if ($args{memory_config}) {
-        foreach my $key (keys %{$args{memory_config}}) {
+    my $confHandler = sub {
+        my $struct = shift;
+        my $hash = shift;
+        foreach my $key (keys %$hash) {
             if ($key =~ m/DEFAULT/) {
-                $self->{mem}->{DEFAULT} = makeFunction($args{memory_config}->{$key});
-            } else {
-                $self->{mem}->{$key} = makeFunction($args{memory_config}->{$key});
+                $struct->{DEFAULT} = makeFunction($hash->{$key});
+            } elsif ($key ne "ALL") {
+                $struct->{$key} = makeFunction($hash->{$key});
             }
         }
-    }
+        if ($hash->{ALL}) {
+            foreach my $key (keys %$struct) {
+                $struct->{$key} = makeFunction($hash->{ALL});
+            }
+        }
+    };
 
-    if ($args{walltime_config}) {
-        foreach my $key (keys %{$args{walltime_config}}) {
-            if ($key =~ m/DEFAULT/) {
-                $self->{walltime}->{DEFAULT} = makeFunction($args{walltime_config}->{$key});
-            } else {
-                $self->{walltime}->{$key} = makeFunction($args{walltime_config}->{$key});
-            }
-        }
-    }
+    $confHandler->($self->{mem}, $args{memory_config}) if $args{memory_config};
+    $confHandler->($self->{mem}, $args{extra_memory_config}) if $args{extra_memory_config};
+    $confHandler->($self->{walltime}, $args{walltime_config}) if $args{walltime_config};
+    $confHandler->($self->{walltime}, $args{extra_walltime_config}) if $args{extra_walltime_config};
 
     return $self;
 }
@@ -71,7 +70,7 @@ sub getMemorySize {
     if ($self->{mem}->{$jobType}) {
         return $self->{mem}->{$jobType}($seqCount);
     } else {
-        return DEFAULT_RAM;
+        return $self->{mem}->{DEFAULT}($seqCount);
     }
 }
 
