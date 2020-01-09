@@ -70,7 +70,7 @@ sub new {
     $bin =~ s/analyze/alz/g;
     $bin = "t_$bin";
 
-    @ARGV = @args;
+    push @ARGV, @args;
     push @ARGV, "--config", "$FindBin::Bin/../conf/efi.conf";
     push @ARGV, "--dry-run" if $dryRun;
     push @ARGV, "--no-submit" if $noSubmit;
@@ -97,8 +97,12 @@ sub make_test_dir {
 
 sub runTest {
     my $self = shift;
-
     my $jobBuilder = shift;
+
+    my @errors = $jobBuilder->getErrors();
+    if (scalar @errors) {
+        die "ERRORS:\n" . join("\n", @errors) . "\n";
+    }
 
     $jobBuilder->createJobStructure();
     my $S = $jobBuilder->createScheduler();
