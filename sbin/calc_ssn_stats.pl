@@ -34,8 +34,6 @@ foreach my $filePath (sort {$b cmp $a} glob("$runDir/*")){
 }
 
 
-system("touch $out.completed");
-
 
 
 sub saveFile {
