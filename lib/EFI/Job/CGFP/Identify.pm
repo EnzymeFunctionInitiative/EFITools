@@ -313,7 +313,7 @@ sub getXgmmlJob {
     #if ($self->getRemoveTemp()) {
     #    $B->addAction("rm -rf $conf->{sb_output_dir}");
     #}
-    $B->addAction("touch $conf->{identify_real_dir}/job.completed");
+    $B->addAction("touch $conf->{identify_real_dir}/$self->{completed_name}");
 
     return $B;
 }

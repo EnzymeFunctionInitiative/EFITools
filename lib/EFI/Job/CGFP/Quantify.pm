@@ -414,7 +414,7 @@ sub getXgmmlJob {
     $B->addAction("fi");
     $B->addAction("zip -j $conf->{ssn_out}.zip $conf->{ssn_out}");
     $B->addAction("$conf->{tool_path}/create_quantify_metadata.pl --protein-abundance $conf->{protein_file_median} --metadata $conf->{metadata_file}");
-    $B->addAction("touch $conf->{real_dir}/job.completed");
+    $B->addAction("touch $conf->{real_dir}/$self->{completed_name}");
 
     return $B;
 }

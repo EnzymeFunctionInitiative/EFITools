@@ -344,7 +344,7 @@ sub getColorSsnJob {
     $B->addAction("$toolPath/unzip_file.pl --in $conf->{zipped_ssn_in} --out $conf->{ssn_in}") if $conf->{zipped_ssn_in};
     $B->addAction("$toolPath/cluster_gnn.pl $scriptArgs");
     EFI::GNN::Base::addFileActions($B, $fileInfo);
-    $B->addAction("touch $outputDir/1.out.completed");
+    $B->addAction("touch $outputDir/$self->{completed_name}");
 
     return $B;
 }

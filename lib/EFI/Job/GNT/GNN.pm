@@ -369,7 +369,7 @@ sub getGnnJob {
     $B->addAction("$toolPath/unzip_file.pl --in $conf->{zipped_ssn_in} --out $conf->{ssn_in}") if $conf->{zipped_ssn_in};
     $B->addAction("$toolPath/cluster_gnn.pl $scriptArgs");
     EFI::GNN::Base::addFileActions($B, $fileInfo);
-    $B->addAction("\n\n$toolPath/save_version.pl > $outputDir/gnn.completed");
+    $B->addAction("\n\n$toolPath/save_version.pl > $outputDir/$self->{completed_name}");
     $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
 
     return $B;

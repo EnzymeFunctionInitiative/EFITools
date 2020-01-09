@@ -92,7 +92,7 @@ if (not $clusterInfoFile) {
 
 my $outputDir = "$bigscapeDir/fasta";
 my $errorFile = "$bigscapeDir/error.message";
-my $jobCompletedFile = "$bigscapeDir/job.completed";
+my $jobCompletedFile = "$bigscapeDir/COMPLETED";
 my $jobErrorFile = "$bigscapeDir/job.error";
 my $logDir = "$bigscapeDir/log";
 my $metaFile = "cluster.metadata";

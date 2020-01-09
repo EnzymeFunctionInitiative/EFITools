@@ -502,6 +502,8 @@ sub getGraphJob {
     my $domain = $self->{conf}->{domain} ? "on" : "off";
     my $unirefVersion = $self->{conf}->{family}->{uniref_version};
 
+    my $flagFile = "$outputDir/$self->{completed_name}";
+
     my $B = $self->getBuilder();
 
     my ($smallWidth, $smallHeight) = (700, 315);
@@ -524,7 +526,7 @@ sub getGraphJob {
         $B->addAction("if [ -z \"\$FIRST\" ]; then");
         $B->addAction("    echo \"Graphs failed, there were no edges. Continuing without graphs.\"");
         $B->addAction("    touch $outputDir/graphs.failed");
-        $B->addAction("    touch  $outputDir/1.out.completed");
+        $B->addAction("    touch  $flagFile");
         $B->addAction("    exit 0 #Exit with no error");
         $B->addAction("fi");
         $B->addAction("FIRST=`head -1 \$FIRST`");
@@ -561,7 +563,7 @@ sub getGraphJob {
         $B->addAction("Rscript $toolPath/R/hist-edges.r hdf5 $outputDir/rdata.hdf5 $resultsDir/number_of_edges.png $jobId");
         $B->addAction("Rscript $toolPath/R/hist-edges.r hdf5 $outputDir/rdata.hdf5 $resultsDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
     }
-    $B->addAction("touch  $outputDir/1.out.completed");
+    $B->addAction("touch  $flagFile");
 
     return $B;
 }

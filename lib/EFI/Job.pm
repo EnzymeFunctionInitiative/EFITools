@@ -67,6 +67,7 @@ sub new {
     $self->{modules} = {};
     $self->{conf} = {};
     $self->{startup_errors} = [];
+    $self->{completed_name} = "0.COMPLETED"; # completed flag file name
 
     $self->{cluster}->{dry_run} = $parms->{"dry-run"} ? 1 : 0;
 

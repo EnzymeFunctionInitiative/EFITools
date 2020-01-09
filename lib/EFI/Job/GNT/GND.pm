@@ -106,8 +106,8 @@ sub setupDefaults {
     $conf->{job_type} = "unzip" if $conf->{upload_file};
 
     $conf->{error_file} = "$outputDir/stderr.log";
-    $conf->{completed_file} = "$outputDir/job.completed";
-    $conf->{job_error_file} = "$outputDir/job.error";
+    $conf->{completed_file} = "$outputDir/$self->{completed_name}";
+    $conf->{job_error_file} = "$outputDir/ERROR";
 }
 
 

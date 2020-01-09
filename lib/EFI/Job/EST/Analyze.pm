@@ -49,7 +49,7 @@ sub new {
 
     $self->setupDefaults($conf);
 
-    my $flagFile = $self->getOutputDir() . "/1.out.completed";
+    my $flagFile = $self->getOutputDir() . "/$self->{completed_name}";
     push @{$self->{startup_errors}}, "Output directory and results must exist to run analyze." if not -f $flagFile;
 
     $self->{conf}->{analyze} = $conf;
@@ -339,6 +339,7 @@ sub createStatsJob {
     $B->addAction("sleep 5");
     $B->addAction("$toolPath/calc_ssn_stats.pl -run-dir $conf->{output_dir} -out $conf->{output_dir}/stats.tab");
     $B->addAction("$toolPath/create_ssn_download_table.pl --stats-file $conf->{output_dir}/stats.tab --html-file $conf->{output_dir}/download.html");
+    $B->addAction("touch $conf->{output_dir}/$self->{completed_name}");
 
     return $B;
 }
