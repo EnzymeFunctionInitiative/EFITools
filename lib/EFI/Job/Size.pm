@@ -13,11 +13,13 @@ use lib dirname(abs_path(__FILE__)) . "/../../";
 our @EXPORT_OK = qw(family_count fasta_file_count id_file_count);
 
 use constant DEFAULT_RAM => 3;
+use constant DEFAULT_WALLTIME => 4;
+
 
 sub new {
     my ($class, %args) = @_;
 
-    my $self = {mem => {DEFAULT => DEFAULT_RAM}, walltime => {DEFAULT => 1}};
+    my $self = {mem => {DEFAULT => makeFunction(&DEFAULT_RAM)}, walltime => {DEFAULT => makeFunction(&DEFAULT_WALLTIME)}};
     bless $self, $class;
 
     $self->{dbh} = $args{dbh} if $args{dbh};

@@ -365,7 +365,7 @@ sub getBlastJob {
             chmod 0755, "$scriptDir/blast.sh";
             $B->addAction("echo {1..$np} | xargs -n 1 -P $np $scriptDir/blast.sh");
         } else {
-            $B->addAction("blastall -p blastp -i $conf->{frac_dir}/fracfile-{JOB_ARRAYID}.fa -d $outputDir/database -m 8 -e $evalue -b $blasthits -o $conf->{blast_output_dir}/blastout-\${PBS_ARRAY_INDEX}.fa.tab");
+            $B->addAction("blastall -p blastp -i $conf->{frac_dir}/fracfile-{JOB_ARRAYID}.fa -d $outputDir/database -m 8 -e $evalue -b $blasthits -o $conf->{blast_output_dir}/blastout-{JOB_ARRAYID}.fa.tab");
         }
     } elsif ($conf->{blast_type} eq "blast+") {
         map { $B->addAction($_); } $self->getEnvironment("est-blast+");
