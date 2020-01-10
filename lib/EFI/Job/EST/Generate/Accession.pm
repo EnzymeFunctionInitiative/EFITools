@@ -146,8 +146,8 @@ sub addInitialImportFileActions {
 
     my $file = $self->{conf}->{accession}->{accession_file};
     $B->addAction("unzip -p $file.zip > $file") if $self->{conf}->{accession}->{file_is_zipped};
-    $B->addAction("dos2unix -q $file");
-    $B->addAction("mac2unix -q $file");
+    #$B->addAction("dos2unix -q $file");
+    #$B->addAction("mac2unix -q $file");
 }
 
 

@@ -761,6 +761,7 @@ sub writeGnnListField {
 sub addFileActions {
     my $B = shift; # This is an EFI::SchedulerApi::Builder object
     my $info = shift;
+    my $removeTemp = shift;
 
     my $fastaTool = "$info->{fasta_tool_path} -config $info->{config_file}";
     $fastaTool .= " -input-sequences $info->{input_seqs_file}" if $info->{input_seqs_file};
@@ -813,6 +814,13 @@ sub addFileActions {
     $B->addAction("zip -jq -r $info->{all_split_pfam_zip} $info->{all_split_pfam_dir} -i '*'") if $info->{all_split_pfam_zip} and $info->{all_split_pfam_dir};
     $B->addAction("zip -jq -r $info->{none_zip} $info->{none_dir}") if $info->{none_zip} and $info->{none_dir};
     $B->addAction("zip -jq $info->{arrow_zip} $info->{arrow_file}") if $info->{arrow_zip} and $info->{arrow_file};
+    if ($removeTemp) {
+        my $outDir = $info->{output_dir};
+        $B->addAction(<<CLEANUP);
+rm -f $outDir/storable.hubdata
+rm -rf $outDir/cluster-data
+CLEANUP
+     }
 }
 
 sub getColor {

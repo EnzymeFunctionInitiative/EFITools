@@ -55,6 +55,7 @@ if (not $job->getJobDirArgumentSet() and not($job->getSubmitStatus() & EFI::Job:
     }
 }
 
+mkdir $dir if not -d $dir;
 
 print "Job Dir: $dir\n";
 
@@ -127,7 +128,7 @@ sub getHelp {
     $msg = "$msg\n\n" if $msg;
     my $jobTypes = "<" . join("|", EFI::Job::Factory::get_available_types()) . ">";
 
-    my $globalArgs = EFI::Job::getGlobalUsageArgs();
+    my $globalArgs = "\n    " . EFI::Job::getGlobalUsageArgs();
     my $globalUsage = EFI::Job::getGlobalUsage(not $job);
     my $jobUsage = "\n";
     if ($job and $jobType) {

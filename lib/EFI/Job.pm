@@ -7,6 +7,8 @@ use warnings;
 use constant RUN => 1;
 use constant DRY_RUN => 2;
 use constant NO_SUBMIT => 4;
+use constant SET_CORES => 1;
+use constant SET_QUEUE => 2;
 
 use Cwd qw(abs_path);
 use File::Basename qw(dirname);
@@ -21,6 +23,7 @@ use EFI::Util qw(getSchedulerType getLmod);
 use EFI::Util::System;
 use EFI::Config;
 use EFI::Constants;
+use EFI::Job::Size;
 
 
 sub new {
@@ -33,13 +36,15 @@ sub new {
     my $parms = {};
     my $result = GetOptions(
         $parms, # options are stored in this hash
-        "job-id=i",
+        "job-id|j=s",
         "config=s",
         "dry-run|dryrun",
         "keep-temp",
         "dir-name|tmp=s",
         "job-dir|out-dir=s",
         "no-submit", # create the script files but don't submit them
+        "memory=s",
+        "walltime=s",
         "help",
         "serial-script=s", # file to place the serial execute commands into (has a default value)
     );
@@ -64,6 +69,7 @@ sub new {
     $self->{modules} = {};
     $self->{conf} = {};
     $self->{startup_errors} = [];
+    $self->{completed_name} = "0.COMPLETED"; # completed flag file name
 
     $self->{cluster}->{dry_run} = $parms->{"dry-run"} ? 1 : 0;
 
@@ -74,6 +80,8 @@ sub new {
     die "Error validating module config: $err\n" if $err;
     $err = addClusterConfig($config, $self->{cluster});
     die "Error validating cluster config: $err\n" if $err;
+    $err = addResourceConfig($config, $self->{cluster}, $parms);
+    die "Error validating job.* resource config: $err\n" if $err;
     $err = addDatabaseConfig($config, $self->{db});
     die "Error validating database config: $err\n" if $err;
 
@@ -104,6 +112,26 @@ sub addDatabaseConfig {
 }
 
 
+sub addResourceConfig {
+    my $config = shift;
+    my $conf = shift;
+    my $parms = shift;
+
+    my $memEnv = $parms->{"memory"} // "";
+    my $walltimeEnv = $parms->{"walltime"} // "";
+
+    my %sizeArgs;
+    $sizeArgs{memory_config} = $config->{"job.memory"} if $config->{"job.memory"};
+    $sizeArgs{walltime_config} = $config->{"job.walltime"} if $config->{"job.walltime"};
+    $sizeArgs{extra_memory_config} = $config->{"job.memory.$memEnv"} if $memEnv and $config->{"job.memory.$memEnv"};
+    $sizeArgs{extra_walltime_config} = $config->{"job.walltime.$walltimeEnv"} if $walltimeEnv and $config->{"job.walltime.$walltimeEnv"};
+
+    $conf->{resources} = new EFI::Job::Size(%sizeArgs);
+
+    return "";
+}
+
+
 sub addClusterConfig {
     my $config = shift;
     my $conf = shift;
@@ -122,6 +150,12 @@ sub addClusterConfig {
     $conf->{max_queue_ram} = $config->{cluster}->{max_queue_ram} // 0;
     $conf->{max_mem_queue_ram} = $config->{cluster}->{max_mem_queue_ram} // 0;
     $conf->{default_wall_time} = $config->{cluster}->{default_wall_time} if $config->{cluster}->{default_wall_time};
+
+    # set-cores == divide the requested amount of RAM by the max_queue_ram and set the number of CPU to that number.
+    # set-queue == if > max_queue_ram, use mem_queue
+    my $resMethod = $config->{cluster}->{mem_res_method} // "set-queue";
+    $resMethod = $resMethod eq "set-cores" ? SET_CORES : SET_QUEUE;
+    $conf->{mem_res_method} = $resMethod;
 
     return "No queue is provided in configuration file." if not $conf->{queue};
 }
@@ -147,6 +181,7 @@ sub validateOptions {
     $conf->{job_id} = $parms->{"job-id"} // 0;
     $conf->{remove_temp} = defined $parms->{"keep-temp"} ? 0 : 1;
     $conf->{dir_name} = $parms->{"dir-name"} // "output";
+    $conf->{results_dir_name} = $parms->{"results-dir-name"} // "results";
     $conf->{job_dir} = $parms->{"job-dir"} // "";
     $conf->{no_submit} = $parms->{"no-submit"} // 0;
     $conf->{dry_run} = $parms->{"dry-run"} // 0;
@@ -180,7 +215,7 @@ sub getUsage {
     return getGlobalUsageArgs() . "\n\n" . getGlobalUsage(admin => 1);
 }
 sub getGlobalUsageArgs {
-    return "[--job-id # --job-dir <JOB_DIR>]";
+    return "[--job-id # --job-dir <JOB_DIR> --memory <CONFIG> --walltime <CONFIG>]";
 }
 sub getGlobalUsage {
     my $admin = shift || 0;
@@ -192,6 +227,8 @@ sub getGlobalUsage {
                         contain scripts/ (the location for scripts submitted ot the cluster), log/
                         (the output from cluster jobs), and output/ (the directory where results
                         will be stored).
+    --memory            the memory environment to use, if specified in the config file.
+    --walltime          the walltime environment to use, if specified in the config file.
 HELP
     if ($admin) {
         $help .= <<HELP;
@@ -236,6 +273,8 @@ sub createJobStructure {
     mkdir $scriptDir;
     my $logDir = "$dir/log";
     mkdir $logDir;
+    my $resultsDir = "$dir/results";
+    mkdir $resultsDir;
     return ($scriptDir, $logDir, $outputDir);
 }
 
@@ -296,6 +335,14 @@ sub getOutputDir {
     my $self = shift;
     my $dir = $self->{conf}->{job_dir};
     $dir .= "/" . $self->{conf}->{dir_name} if $self->{conf}->{dir_name};
+    return $dir;
+}
+
+
+sub getResultsDir {
+    my $self = shift;
+    my $dir = $self->{conf}->{job_dir};
+    $dir .= "/" . $self->{conf}->{results_dir_name} if $self->{conf}->{results_dir_name};
     return $dir;
 }
 
@@ -387,31 +434,31 @@ sub requestResources {
     my $numCpu = shift;
     my $ram = shift;
     my $useHighMem = shift || 0;
-    if ($useHighMem or ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram})) {
-        $B->queue("$self->{cluster}->{mem_queue},$self->{cluster}->{queue}");
+
+    #TODO: needs testing!!!!
+    my $memQueue = $self->{cluster}->{mem_queue} . ($self->getScheduler->supportsMultiQueue() ? ",$self->{cluster}->{queue}" : "");
+    if ($useHighMem or
+        ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_QUEUE))
+    {
+        $B->queue($memQueue);
     }
     if ($self->{cluster}->{max_mem_queue_ram} and $ram > $self->{cluster}->{max_mem_queue_ram}) {
         $ram = $self->{cluster}->{max_mem_queue_ram};
+    } elsif ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_CORES) {
+        $numCpu = int($ram / $self->{cluster}->{max_queue_ram} + 0.5);
     }
-    # We don't need to specify this, since it's defaulted in the SchedulerApi setup
-    #} else {
-    #} $B->queue($self->{cluster}->{queue});
+    if ($numCpu > $self->{cluster}->{node_np}) {
+        $numNode = int($numCpu / $self->{cluster}->{node_np} + 0.5);
+    }
     $B->resource($numNode, $numCpu, "${ram}gb");
 }
 
 
-sub requestRam {
+sub getMemorySize {
     my $self = shift;
-    my $ram = shift;
-    return $ram;
-}
-
-
-sub requestHighMemQueue {
-    my $self = shift;
-    my $B = shift;
-    my $queue = $self->{cluster}->{mem_queue};
-    $B->queue($queue);
+    my $type = shift;
+    my $seqCount = shift || 0;
+    return $self->{cluster}->{resources}->getMemorySize($type, $seqCount);
 }
 
 
@@ -462,6 +509,13 @@ sub getScheduler {
     my $self = shift;
     $self->createScheduler() if not $self->{scheduler};
     return $self->{scheduler};
+}
+
+
+sub getBuilder {
+    my $self = shift;
+    my $S = $self->getScheduler();
+    return $S->getBuilder();
 }
 
 

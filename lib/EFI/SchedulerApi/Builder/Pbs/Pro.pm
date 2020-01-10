@@ -22,9 +22,9 @@ sub new {
     #$self->{output} = "-j oe";
     $self->{shell} = "-S /bin/bash";
     $self->{sched_prefix} = "#PBS";
-    $self->{output_file_seq_num} = "\$PBS_JOBID";
-    $self->{output_file_seq_num_array} = "\$PBS_JOBID";
-    $self->{arrayid_var_name} = "PBS_ARRAYID";
+    $self->{output_file_seq_num} = "";
+    $self->{output_file_seq_num_array} = "";
+    $self->{arrayid_var_name} = "PBS_ARRAY_INDEX";
     $self->{default_wall_time} = $args{default_wall_time} // "01:00:00";
 
     return $self;
@@ -85,15 +85,22 @@ sub resource {
         my $s = int($wallTime * 3600) % 3600 - $m * 60;
         $wallTime = sprintf("%02d:%02d:%02d", $h, $m, $s);
     }
+    
+    #TODO:
+    # REMOVE THIS HARDCODED 4 GB parameter
+    $ram = 4;
 
-    $self->{res} = ["-l select=$numNodes:ncpus=$procPerNode:walltime=$wallTime"];
+    my $mem = defined $ram ? "mem=$ram" : "mem=4";
+    $mem .= "gb" if $mem !~ m/gb$/i;
+
+    $self->{res} = ["-l select=$numNodes:ncpus=$procPerNode:$mem,walltime=$wallTime"];
 }
 
 sub dependency {
     my ($self, $isArray, $jobId) = @_;
 
     if (defined $jobId) {
-        my $okStr = $isArray ? "afterokarray" : "afterok";
+        my $okStr = $isArray ? "afterok" : "afterok";
         my $depStr = "";
         if (ref $jobId eq "ARRAY") {
             $depStr = join(",", map { s/\s//sg; "$okStr:$_" } @$jobId);
