@@ -106,8 +106,8 @@ sub setupDefaults {
     $conf->{job_type} = "unzip" if $conf->{upload_file};
 
     $conf->{error_file} = "$outputDir/stderr.log";
-    $conf->{completed_file} = "$outputDir/job.completed";
-    $conf->{job_error_file} = "$outputDir/job.error";
+    $conf->{completed_file} = "$outputDir/$self->{completed_name}";
+    $conf->{job_error_file} = "$outputDir/ERROR";
 }
 
 
@@ -178,23 +178,20 @@ sub createJobs {
     my $self = shift;
     my $conf = $self->{conf}->{gnd};
     
-    my $S = $self->getScheduler();
-    die "Need scheduler" if not $S;
-
     my @jobs;
     my $B;
 
     if ($conf->{blast_seq}) {
-        my $job = $self->getBlastJob($S);
+        my $job = $self->getBlastJob();
         push @jobs, {job => $job, deps => [], name => "diagram_blast"};
     } elsif ($conf->{id_file}) {
-        my $job = $self->getIdLookupJob($S);
+        my $job = $self->getIdLookupJob();
         push @jobs, {job => $job, deps => [], name => "diagram_id_lookup"};
     } elsif ($conf->{fasta_file}) {
-        my $job = $self->getFastaFileJob($S);
+        my $job = $self->getFastaFileJob();
         push @jobs, {job => $job, deps => [], name => "diagram_fasta"};
     } elsif ($conf->{upload_file}) {
-        my $job = $self->getUploadFileJob($S);
+        my $job = $self->getUploadFileJob();
         push @jobs, {job => $job, deps => [], name => "diagram_upload"};
     }
 
@@ -204,7 +201,6 @@ sub createJobs {
 
 sub getBlastJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{gnd};
 
     my $configFile = $self->getConfigFile();
@@ -213,7 +209,7 @@ sub getBlastJob {
     my $blastDb = $self->getBlastDbPath("uniprot");
     my $diagramVersion = $EFI::GNN::Arrows::Version;
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
 
     my $seqFile = "$outputDir/query.fa";
     my $blastOutFile = "$outputDir/blast.raw";
@@ -223,7 +219,7 @@ sub getBlastJob {
     print QUERY $conf->{blast_seq};
     close QUERY;
 
-    $B->resource(1, 1, "70gb");
+    $self->requestResources($B, 1, 1, 4); #TODO: 70
     map { $B->addAction($_); } $self->getEnvironment("gnt");
 
     $B->addAction("blastall -p blastp -i $seqFile -d $blastDb -m 8 -e $conf->{evalue} -b $conf->{max_seq} -o $blastOutFile");
@@ -239,7 +235,6 @@ sub getBlastJob {
 
 sub getIdLookupJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{gnd};
 
     my $configFile = $self->getConfigFile();
@@ -247,9 +242,9 @@ sub getIdLookupJob {
     my $toolPath = $self->getToolPath();
     my $diagramVersion = $EFI::GNN::Arrows::Version;
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
 
-    $B->resource(1, 1, "10gb");
+    $self->requestResources($B, 1, 1, 4); #TODO: 10
     $B->addAction("$toolPath/create_diagram_db.pl --id-file $conf->{id_file} --db-file $conf->{output} --job-type $conf->{job_type} --title $conf->{title} --nb-size $conf->{nb_size} --do-id-mapping --config $configFile");
     $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
 
@@ -261,7 +256,6 @@ sub getIdLookupJob {
 
 sub getFastaFileJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{gnd};
 
     my $configFile = $self->getConfigFile();
@@ -269,11 +263,11 @@ sub getFastaFileJob {
     my $toolPath = $self->getToolPath();
     my $diagramVersion = $EFI::GNN::Arrows::Version;
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
 
     my $tempIdFile = "$conf->{output}.temp-ids";
 
-    $B->resource(1, 1, "10gb");
+    $self->requestResources($B, 1, 1, 4); #TODO: 10
     $B->addAction("$toolPath/extract_ids_from_fasta.pl --fasta-file $conf->{fasta_file} --output-file $tempIdFile --config $configFile");
     $B->addAction("$toolPath/create_diagram_db.pl --id-file $tempIdFile --db-file $conf->{output} --job-type $conf->{job_type} --title $conf->{title} --nb-size $conf->{nb_size} --do-id-mapping --config $configFile");
     $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
@@ -286,16 +280,15 @@ sub getFastaFileJob {
 
 sub getUploadFileJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{gnd};
 
     my $outputDir = $self->getOutputDir();
     my $toolPath = $self->getToolPath();
     my $diagramVersion = $EFI::GNN::Arrows::Version;
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     
-    $B->resource(1, 1, "5gb");
+    $self->requestResources($B, 1, 1, 4);
     if ($conf->{upload_file} =~ m/\.zip$/i) {
         $B->addAction("$toolPath/unzip_file.pl --in $conf->{upload_file} --out $conf->{output} --out-ext sqlite 2> $conf->{error_file}");
     }

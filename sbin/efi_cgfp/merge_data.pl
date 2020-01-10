@@ -51,7 +51,7 @@ my @dirs = glob("$inputDir/$qDirPattern*");
 my $allData = {metagenomes => {}, proteins => {}, clusters => {}};
 
 foreach my $dir (@dirs) {
-    if (not -f "$dir/job.completed" and not ($qDirInclude and $dir =~ m/$qDirInclude$/)) {
+    if (not -f "$dir/COMPLETED" and not ($qDirInclude and $dir =~ m/$qDirInclude$/)) {
         print "Skipping $dir since it doesn't appear to be completed.\n";
         next; # Skip failed jobs
     }

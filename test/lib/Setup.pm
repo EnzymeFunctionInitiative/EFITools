@@ -6,6 +6,7 @@ use warnings;
 
 use Exporter qw(import);
 
+use File::Basename;
 use FindBin;
 use File::Temp;
 use Data::Dumper;
@@ -58,11 +59,23 @@ sub new {
     my $dir = $opts->{job_dir} // "";
     $dir = make_test_dir() if not $dir;
 
-    @ARGV = @args;
+    (my $bin = basename($0)) =~ s/\.pl$//;
+    $bin =~ s/uniprot/up/g;
+    $bin =~ s/uniref/ur/g;
+    $bin =~ s/^ssn_//;
+    $bin =~ s/family/fam/g;
+    $bin =~ s/accession/acc/g;
+    $bin =~ s/domain/dom/g;
+    $bin =~ s/header/hdr/g;
+    $bin =~ s/analyze/alz/g;
+    $bin = "t_$bin";
+
+    push @ARGV, @args;
     push @ARGV, "--config", "$FindBin::Bin/../conf/efi.conf";
     push @ARGV, "--dry-run" if $dryRun;
     push @ARGV, "--no-submit" if $noSubmit;
     push @ARGV, "--job-dir", $dir;
+    push @ARGV, "--job-id", $bin;
 
     my $self = {job_dir => $dir};
 
@@ -84,8 +97,12 @@ sub make_test_dir {
 
 sub runTest {
     my $self = shift;
-
     my $jobBuilder = shift;
+
+    my @errors = $jobBuilder->getErrors();
+    if (scalar @errors) {
+        die "ERRORS:\n" . join("\n", @errors) . "\n";
+    }
 
     $jobBuilder->createJobStructure();
     my $S = $jobBuilder->createScheduler();
@@ -129,8 +146,6 @@ sub runTest {
         $jobIds{$jobObj} = $jobId;
         $lastJobId = $jobId;
     }
-    # For EFI tools web UI
-    print "$lastJobId\n";
 }
 
 

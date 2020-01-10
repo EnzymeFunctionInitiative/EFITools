@@ -293,9 +293,6 @@ sub createJobs {
     my $self = shift;
     my $conf = $self->{conf}->{gnn};
     
-    my $S = $self->getScheduler();
-    die "Need scheduler" if not $S;
-
     my $fileInfo = {};
 
     if ($conf->{full_gnt_run}) {
@@ -307,7 +304,7 @@ sub createJobs {
     my $B;
     my $job;
 
-    my $job1 = $self->getGnnJob($S, $fileInfo);
+    my $job1 = $self->getGnnJob($fileInfo);
     push @jobs, {job => $job1, deps => [], name => "submit_gnn"};
 
     return @jobs;
@@ -316,7 +313,6 @@ sub createJobs {
 
 sub getGnnJob {
     my $self = shift;
-    my $S = shift;
     my $fileInfo = shift;
     my $conf = $self->{conf}->{gnn};
 
@@ -361,11 +357,12 @@ sub getGnnJob {
         $scriptArgs .= " --parent-dir $conf->{parent_dir}" if $conf->{parent_dir};
     }
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     
     my $ramReservation = computeRamReservation($conf);
+    $ramReservation = 4; #TODO: compute deterministically
+    $self->requestResources($B, 1, 1, $ramReservation);
 
-    $B->resource(1, 1, "${ramReservation}gb");
     map { $B->addAction($_); } $self->getEnvironment("gnt");
     
     $B->addAction("cd $outputDir");
@@ -373,7 +370,7 @@ sub getGnnJob {
     $B->addAction("$toolPath/unzip_file.pl --in $conf->{zipped_ssn_in} --out $conf->{ssn_in}") if $conf->{zipped_ssn_in};
     $B->addAction("$toolPath/cluster_gnn.pl $scriptArgs");
     EFI::GNN::Base::addFileActions($B, $fileInfo, $removeTemp);
-    $B->addAction("\n\n$toolPath/save_version.pl > $outputDir/gnn.completed");
+    $B->addAction("\n\n$toolPath/save_version.pl > $outputDir/$self->{completed_name}");
     $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
 
     return $B;
