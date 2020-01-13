@@ -89,6 +89,7 @@ sub make_test_dir {
     (my $dirName = $0) =~ s%^.*?([^/]+)\.pl$%$1%;
     my $dir = "$TMP/$dirName";
     `rm -rf $dir`;
+    mkdir $TMP if not -d $TMP;
     mkdir $dir;
     push @tmps, $dir;
     return $dir;

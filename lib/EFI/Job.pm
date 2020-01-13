@@ -227,8 +227,8 @@ sub getGlobalUsage {
                         contain scripts/ (the location for scripts submitted ot the cluster), log/
                         (the output from cluster jobs), and output/ (the directory where results
                         will be stored).
-    --memory            the memory environment to use, if specified in the config file.
-    --walltime          the walltime environment to use, if specified in the config file.
+    --memory            the memory profile to use, if specified in the config file.
+    --walltime          the walltime profile to use, if specified in the config file.
 HELP
     if ($admin) {
         $help .= <<HELP;
