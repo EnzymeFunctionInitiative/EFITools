@@ -23,7 +23,7 @@ sub new {
     my ($class, %args) = @_;
     
     my $self = bless({}, $class);
-    $self->{type} = getType($args{type});
+    $self->{type} = validateType($args{type});
 
     $self->{extra_path} = $args{extra_path} ? $args{extra_path} : "";
 
@@ -65,12 +65,31 @@ sub new {
         $self->{abort_script_on_action_fail} = $args{abort_script_on_action_fail};
     }
 
+    if (exists $args{default_wall_time}) {
+        $self->{default_wall_time} = $args{default_wall_time};
+    }
+
+    # Array reference
+    if (exists $args{extra_headers}) {
+        $self->{extra_headers} = [@{$args{extra_headers}}];
+    }
+
     $self->{run_serial} = $args{run_serial} ? 1 : 0;
 
     return $self;
 }
 
 sub getType {
+    my $self = shift;
+    return $self->{type};
+}
+
+sub supportsMultiQueue {
+    my $self = shift;
+    return $self->getType() eq EFI::SchedulerApi::Builder::Slurm::TYPE;
+}
+
+sub validateType {
     my $argType = shift || "";
     if ($argType eq EFI::SchedulerApi::Builder::Slurm::TYPE or not $argType and usesSlurm()) {
         return EFI::SchedulerApi::Builder::Slurm::TYPE;
@@ -97,12 +116,29 @@ sub getSubmitCmd {
     return "";
 }
 
+sub getSubmitId {
+    my $self = shift;
+    my $result = shift;
+
+    if ($self->{type} eq EFI::SchedulerApi::Builder::Slurm::TYPE) {
+        $result =~ s/[^0-9\[\]]//g;
+    } elsif ($self->{type} eq EFI::SchedulerApi::Builder::Pbs::Torque::TYPE) {
+        $result =~ s/^(\d+)(\..*)?$/$1/;
+    } elsif ($self->{type} eq EFI::SchedulerApi::Builder::Pbs::Pro::TYPE) {
+        $result =~ s/^(\d+)(\..*)?$/$1/;
+    }
+
+    return $result;
+}
+
 sub getBuilder {
     my ($self) = @_;
 
     my %args = ("dry_run" => $self->{dry_run});
     $args{extra_path} = $self->{extra_path} if $self->{extra_path};
     $args{run_serial} = $self->{run_serial};
+    $args{default_wall_time} = $self->{default_wall_time} if $self->{default_wall_time};
+    $args{extra_headers} = $self->{extra_headers} if $self->{extra_headers};
 
     my $b;
     if ($self->{type} eq EFI::SchedulerApi::Builder::Slurm::TYPE) {
@@ -133,7 +169,7 @@ sub submit {
     if (not $self->{dry_run} and not $self->{run_serial}) {
         my $submit = $self->getSubmitCmd();
         $result = `$submit $script`;
-        $result =~ s/[^0-9\[\]]//g;
+        $result = $self->getSubmitId($result) if $result;
     }
 
     return $result;

@@ -15,6 +15,7 @@ use Getopt::Long qw(:config pass_through);
 use EFI::Config;
 
 use constant JOB_TYPE => "analyze";
+use constant DEFAULT_RAM => 4;
 
 
 sub new {
@@ -48,7 +49,7 @@ sub new {
 
     $self->setupDefaults($conf);
 
-    my $flagFile = $self->getOutputDir() . "/1.out.completed";
+    my $flagFile = $self->getOutputDir() . "/$self->{completed_name}";
     push @{$self->{startup_errors}}, "Output directory and results must exist to run analyze." if not -f $flagFile;
 
     $self->{conf}->{analyze} = $conf;
@@ -161,27 +162,27 @@ sub setupDefaults {
 sub createJobs {
     my $self = shift;
 
-    my $S = $self->getScheduler();
-    die "Need scheduler" if not $S;
-
     my @jobs;
     my $B;
     my $job;
 
-    my $job1 = $self->createGetAnnotationsJob($S);
+    my $job1 = $self->createGetAnnotationsJob();
     push @jobs, {job => $job1, deps => [], name => "get_annotations"};
 
-    my $job2 = $self->createFilterBlastJob($S);
+    my $job2 = $self->createFilterBlastJob();
     push @jobs, {job => $job2, deps => [$job1], name => "filter_blast"};
 
-    my $job3 = $self->createFullXgmmlJob($S);
+    my $job3 = $self->createFullXgmmlJob();
     push @jobs, {job => $job3, deps => [$job2], name => "full_xgmml"};
 
-    my $job4 = $self->createRepNodeXgmmlJob($S);
+    my $job4 = $self->createRepNodeXgmmlJob();
     push @jobs, {job => $job4, deps => [$job3], name => "repnode_xgmml"};
 
-    my $job5 = $self->createStatsJob($S);
+    my $job5 = $self->createStatsJob();
     push @jobs, {job => $job5, deps => [{obj => $job4, is_job_array => 1}], name => "stats"};
+
+    my $job6 = $self->createCleanupJob();
+    push @jobs, {job => $job6, deps => [$job5], name => "cleanup"};
 
     return @jobs;
 }
@@ -193,15 +194,14 @@ sub createJobs {
 # thresholds.
 sub createGetAnnotationsJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
     my $generateDir = $self->getOutputDir();
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "5gb");
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("get_annotations"));
 
     #TODO: right now if you useAnnoSpec, we actually just include the bare minimum.  In the future allow the user to determine which annotations to include.
     if ($conf->{use_anno_spec}) {
@@ -233,15 +233,14 @@ ANNO
 
 sub createFilterBlastJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
     my $generateDir = $self->getOutputDir();
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "5gb");
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("filterblast"));
 
     $self->addStandardEnv($B);
 
@@ -262,7 +261,6 @@ sub createFilterBlastJob {
 
 sub createFullXgmmlJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
     my $configFile = $self->getConfigFile();
@@ -272,8 +270,8 @@ sub createFullXgmmlJob {
     my $seqsArg = $conf->{include_sequences} ? "--include-sequences" : "";
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "10gb");
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("fullxgmml"));
 
     $self->addStandardEnv($B);
 
@@ -286,7 +284,6 @@ sub createFullXgmmlJob {
 
 sub createRepNodeXgmmlJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
     my $configFile = $self->getConfigFile();
@@ -296,11 +293,9 @@ sub createRepNodeXgmmlJob {
     my $seqsArg = $conf->{include_sequences} ? "--include-sequences" : "";
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "10gb");
-
-    $B->jobArray("40,45,50,55,60,65,70,75,80,85,90,95,100");
-
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("cdhit"));
+    $B->jobArray("40-100:5");
     $self->addStandardEnv($B);
 
     $B->addAction("CDHIT=\$(echo \"scale=2; {JOB_ARRAYID}/100\" |bc -l)");
@@ -315,14 +310,13 @@ sub createRepNodeXgmmlJob {
 
 sub createFixJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "1gb");
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("fix"));
 
     $B->addAction("sleep 5");
 
@@ -332,19 +326,36 @@ sub createFixJob {
 
 sub createStatsJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{analyze};
 
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "5gb");
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("stats"));
     
     $self->addStandardEnv($B);
 
     $B->addAction("sleep 5");
     $B->addAction("$toolPath/calc_ssn_stats.pl -run-dir $conf->{output_dir} -out $conf->{output_dir}/stats.tab");
+    $B->addAction("$toolPath/create_ssn_download_table.pl --stats-file $conf->{output_dir}/stats.tab --html-file $conf->{output_dir}/download.html");
+    $B->addAction("touch $conf->{output_dir}/$self->{completed_name}");
+
+    return $B;
+}
+
+
+sub createCleanupJob {
+    my $self = shift;
+    my $conf = $self->{conf}->{analyze};
+
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("cleanup"));
+    
+    $B->addAction("rm $conf->{output_dir}/cdhit*");
+    $B->addAction("rm $conf->{output_dir}/*.sh");
+    $B->addAction("rm $conf->{output_dir}/sequences.fa");
+    $B->addAction("rm $conf->{output_dir}/*.out");
 
     return $B;
 }

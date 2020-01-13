@@ -140,6 +140,7 @@ sub computeRamReservation {
     }
     
     # Y = MX+B, M=emperically determined, B = safety factor; X = file size in MB; Y = RAM reservation in GB
+    #TODO: move this to a more dynamic location, like in Job.pm getMemorySize
     my $ramReservation = $conf->{extra_ram} ? 800 : 150;
     if ($fileSize) {
         my $ramPredictionM = 0.03;

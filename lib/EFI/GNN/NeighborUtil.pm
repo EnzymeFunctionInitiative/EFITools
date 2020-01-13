@@ -204,15 +204,6 @@ SQL
     my $neighbors = $self->{dbh}->prepare($query);
     $neighbors->execute;
 
-    if ($neighbors->rows > 1) {
-        $noNeighbors = 0;
-        push @{$pfam{'withneighbors'}{$queryPfam}}, $ac;
-        push @{$ipro{'withneighbors'}{$queryIpro}}, $ac;
-    } else {
-        $noNeighbors = 1;
-        print $warning_fh "$ac\tnoneighbor\n" if $warning_fh;
-    }
-
     my $isBound = ($low < 1 ? 1 : 0);
     $isBound = $isBound | ($high > $max ? 2 : 0);
 
@@ -223,7 +214,9 @@ SQL
        strain => $acc_strain, direction => $origdirection, is_bound => $isBound,
        type => $acc_type, seq_len => $acc_seq_len, ipro_family => $queryIpro, ipro_info => \@ipInfo};
 
+    my $numRows = 0;
     while(my $neighbor=$neighbors->fetchrow_hashref){
+        $numRows++;
         my $pfamFam = join('-', sort {$a <=> $b} uniq split(",",$neighbor->{pfam_fam}));
         @ipInfo = $self->parseInterpro($neighbor);
         my $iproFam = join('-', map { $_->{family} } @ipInfo);
@@ -299,6 +292,15 @@ SQL
                                            direction => "$origdirection-$direction"
                                          };
         }	
+    }
+
+    if ($numRows > 1) {
+        $noNeighbors = 0;
+        push @{$pfam{'withneighbors'}{$queryPfam}}, $ac;
+        push @{$ipro{'withneighbors'}{$queryIpro}}, $ac;
+    } else {
+        $noNeighbors = 1;
+        print $warning_fh "$ac\tnoneighbor\n" if $warning_fh;
     }
 
     foreach my $key (keys %{$pfam{'orig'}}){

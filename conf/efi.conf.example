@@ -14,7 +14,11 @@ blast_db_dir=
 diamond_db_dir=
 
 [cluster]
-np=48
+np=48 ; number of processors to use for BLAST jobs
+node_np=24 ; number of processors on a single node
+max_queue_ram=300 ; maximum amount of RAM (GB) allowed to be requested on a queue node
+max_mem_queue_ram=1500 ; maximum amount of RAM (GB) allowed to be requested on a mem_queue node
+mem_res_method=set-cores ;set-cores or set-queue
 queue=
 mem_queue=
 ;scheduler=slurm|torque|pbspro
@@ -22,10 +26,124 @@ scheduler=slurm
 ; =yes means to create a script that runs all of the actions in serial mode, i.e. for a single computer.
 serial=no
 scratch_dir=/scratch
+; this is an optional parameter that is required by PBSPro. It can be in hours (with fractions) or HH:MM:SS format.
+;default_wall_time= 
+
+; This section contains the amount of RAM that will be requested for a given EFI job type/step.
+; Values are given in GB.
+[job.memory]
+; These parameters are used for the following type of system config:
+;   mem_res_method=set-queue
+;   max_queue_ram=350
+;   max_mem_queue_ram=1500
+; This would work in a Slurm-scheduled system with 380GB of RAM, 24 cores per node and there is no
+; cap on the amount of RAM a job is allowed to request per core.
+; Available keys are provided in the job.walltime section.
+;DEFAULT=5
+;initial_blast=70
+;blastreduce=350
+;graphs=50
+;colorssn=150
+;TODO: support equations, like: colorssn=0.03*$file_size+10
+;gnn=150
+;diagram=50
+;hmm=20
+;bigscape=50
+;sb_identify=300
+;sb_xgmml=200
+;sb_get_clusters=350
+;sb_get_fasta=10
+;sb_quantify_par=200
+;sb_quantify_tasks=13
+;sb_merge=20
+
+; These parameters are used for the following type of system config:
+;   mem_res_method=set-cores
+;   max_queue_ram=4
+;   max_mem_queue_ram=300
+; This would work on a PBS-scheduled system that allows for a maximum 4 GB of RAM to be requested per
+; core.
+;DEFAULT=4
+;graphs=20
+;colorssn=20
+;gnn=20
+
+; Additional memory configurations can be used. It is only necessary to specify the specific job
+; type/steps that are to be overridden; anything else will come from the default job.memory
+; configuration. Values are in GB.
+; This configuration is used with the --memory <NAME> command line argument.
+; A specical value ALL is provided to assign all values (even the default configuration) to
+; a constant value.
+;[job.memory.large]
+;colorssn=800
+;[job.memory.small]
+;ALL=3
+
+; This section contains the walltime that is requested for a given EFI job step.
+; Unspecified mean that it is not included in the job header.
+; Values are in hours.
+[job.walltime]
+DEFAULT=24
+; Available types are:
+;   blastqsub
+;   blastreduce
+;   catjob
+;   cdhit
+;   cleanup
+;   conv_ratio
+;   createdb
+;   demux
+;   filterblast
+;   fix
+;   fracfile
+;   fullxgmml
+;   get_annotations
+;   get_sequences
+;   graphs
+;   initial_blast
+;   initial_import
+;   multiplex
+;   stats
+;   colorssn
+;   gnn
+;   diagram
+;   bigscape
+;   hmm
+;   sb_identify
+;   sb_xgmml
+;   sb_get_clusters
+;   sb_get_fasta
+;   sb_quantify_par
+;   sb_quantify_tasks
+;   sb_merge
+
+; Additional walltime configurations can be used. It is only necessary to specify the specific job
+; type/steps that are to be overridden; anything else will come from the default job.walltime
+; configuration. Values are in hours, or HH:MM:SS format.
+; This configuration is used with the --walltime <NAME> command line argument.
+; A specical value ALL is provided to assign all values (even the default configuration) to
+; a constant value.
+;[job.walltime.short]
+;ALL=00:30:00
+;[job.walltime.long]
+;ALL=48:00:00
+
+[cgfp]
+search=diamond
+; Relative paths means it's local to the EFITools repo
+shortbred_repo=sbin/efi_cgfp/shortbred_20180817 ; ShortBRED from Huttenhower
+
+[cgfp.database]
+hmp=
+
+; Any extra job scheduler headers that are required must be place in here; the other environment
+; sections are not guaranteed to immediately follow the scheduler headers.
+[environment.headers]
 
 ; Anytime the "est-std" environment is requested by the scripts, the following directives are inserted
 ; into the job script.
-; These are used to add environment variables to job scripts, and are directly inserted into the job script files (use source ... or module load)
+; These are used to add environment variables to job scripts, and are directly inserted into the
+; job script files (use source ... or module load)
 [environment.est-std]
 module load efidb/ip76
 module load BLAST
@@ -34,7 +152,8 @@ module load CD-HIT
 
 ; Anytime the "est-graphs" environment is requested by the scripts, the following directives are inserted
 ; into the job script.
-; These are used to add environment variables to job scripts, and are directly inserted into the job script files (use source ... or module load)
+; These are used to add environment variables to job scripts, and are directly inserted into the job
+; script files (use source ... or module load)
 [environment.est-graphs]
 module load GD
 module load R
@@ -64,4 +183,5 @@ module load USEARCH/9
 module load MUSCLE/3
 module load BLAST+
 module load CD-HIT
+module load DIAMOND
 

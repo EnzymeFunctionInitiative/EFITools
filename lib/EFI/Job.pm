@@ -7,6 +7,8 @@ use warnings;
 use constant RUN => 1;
 use constant DRY_RUN => 2;
 use constant NO_SUBMIT => 4;
+use constant SET_CORES => 1;
+use constant SET_QUEUE => 2;
 
 use Cwd qw(abs_path);
 use File::Basename qw(dirname);
@@ -21,6 +23,7 @@ use EFI::Util qw(getSchedulerType getLmod);
 use EFI::Util::System;
 use EFI::Config;
 use EFI::Constants;
+use EFI::Job::Size;
 
 
 sub new {
@@ -33,24 +36,22 @@ sub new {
     my $parms = {};
     my $result = GetOptions(
         $parms, # options are stored in this hash
-        "job-id=i",
+        "job-id|j=s",
         "config=s",
-        "np=i",
-        "queue=s",
-        "mem-queue|memqueue=s",
-        "scheduler=s",
         "dry-run|dryrun",
-        #"cluster-node=s",
-        "remove-temp=i",
+        "keep-temp",
         "dir-name|tmp=s",
         "job-dir|out-dir=s",
         "no-submit", # create the script files but don't submit them
+        "memory=s",
+        "walltime=s",
         "help",
         "serial-script=s", # file to place the serial execute commands into (has a default value)
     );
 
     my $homeDir = abs_path(dirname(__FILE__) . "/../../");
     $self->{tool_path} = "$homeDir/sbin"; #TODO: change sbin to whatever it should be.
+    $self->{home_dir} = $homeDir;
 
     my $configFile = $parms->{config} // "";
     if (not $configFile or not -f $configFile) {
@@ -68,6 +69,7 @@ sub new {
     $self->{modules} = {};
     $self->{conf} = {};
     $self->{startup_errors} = [];
+    $self->{completed_name} = "0.COMPLETED"; # completed flag file name
 
     $self->{cluster}->{dry_run} = $parms->{"dry-run"} ? 1 : 0;
 
@@ -78,11 +80,15 @@ sub new {
     die "Error validating module config: $err\n" if $err;
     $err = addClusterConfig($config, $self->{cluster});
     die "Error validating cluster config: $err\n" if $err;
+    $err = addResourceConfig($config, $self->{cluster}, $parms);
+    die "Error validating job.* resource config: $err\n" if $err;
     $err = addDatabaseConfig($config, $self->{db});
     die "Error validating database config: $err\n" if $err;
 
     $err = validateOptions($parms, $self, $self->{conf});
     die "Error validating options: $err\n" if $err;
+
+    $self->{raw_config} = $config;
 
     return $self;
 }
@@ -106,6 +112,26 @@ sub addDatabaseConfig {
 }
 
 
+sub addResourceConfig {
+    my $config = shift;
+    my $conf = shift;
+    my $parms = shift;
+
+    my $memEnv = $parms->{"memory"} // "";
+    my $walltimeEnv = $parms->{"walltime"} // "";
+
+    my %sizeArgs;
+    $sizeArgs{memory_config} = $config->{"job.memory"} if $config->{"job.memory"};
+    $sizeArgs{walltime_config} = $config->{"job.walltime"} if $config->{"job.walltime"};
+    $sizeArgs{extra_memory_config} = $config->{"job.memory.$memEnv"} if $memEnv and $config->{"job.memory.$memEnv"};
+    $sizeArgs{extra_walltime_config} = $config->{"job.walltime.$walltimeEnv"} if $walltimeEnv and $config->{"job.walltime.$walltimeEnv"};
+
+    $conf->{resources} = new EFI::Job::Size(%sizeArgs);
+
+    return "";
+}
+
+
 sub addClusterConfig {
     my $config = shift;
     my $conf = shift;
@@ -115,11 +141,21 @@ sub addClusterConfig {
     my $defaultScratch = "/scratch";
 
     $conf->{np} = $config->{cluster}->{np} // $numSysCpu;
+    $conf->{node_np} = $config->{cluster}->{node_np} // $numSysCpu;
     $conf->{queue} = $config->{cluster}->{queue} // "";
     $conf->{mem_queue} = $config->{cluster}->{mem_queue} // $conf->{queue};
     $conf->{scheduler} = $config->{cluster}->{scheduler} // $autoSched;
     $conf->{run_serial} = ($config->{cluster}->{serial} and $config->{cluster}->{serial} eq "yes") ? 1 : 0;
     $conf->{scratch_dir} = $config->{cluster}->{scratch_dir} // $defaultScratch;
+    $conf->{max_queue_ram} = $config->{cluster}->{max_queue_ram} // 0;
+    $conf->{max_mem_queue_ram} = $config->{cluster}->{max_mem_queue_ram} // 0;
+    $conf->{default_wall_time} = $config->{cluster}->{default_wall_time} if $config->{cluster}->{default_wall_time};
+
+    # set-cores == divide the requested amount of RAM by the max_queue_ram and set the number of CPU to that number.
+    # set-queue == if > max_queue_ram, use mem_queue
+    my $resMethod = $config->{cluster}->{mem_res_method} // "set-queue";
+    $resMethod = $resMethod eq "set-cores" ? SET_CORES : SET_QUEUE;
+    $conf->{mem_res_method} = $resMethod;
 
     return "No queue is provided in configuration file." if not $conf->{queue};
 }
@@ -143,8 +179,9 @@ sub validateOptions {
     my $conf = shift;
 
     $conf->{job_id} = $parms->{"job-id"} // 0;
-    $conf->{remove_temp} = $parms->{"remove-temp"} // 1;
+    $conf->{remove_temp} = defined $parms->{"keep-temp"} ? 0 : 1;
     $conf->{dir_name} = $parms->{"dir-name"} // "output";
+    $conf->{results_dir_name} = $parms->{"results-dir-name"} // "results";
     $conf->{job_dir} = $parms->{"job-dir"} // "";
     $conf->{no_submit} = $parms->{"no-submit"} // 0;
     $conf->{dry_run} = $parms->{"dry-run"} // 0;
@@ -178,7 +215,7 @@ sub getUsage {
     return getGlobalUsageArgs() . "\n\n" . getGlobalUsage(admin => 1);
 }
 sub getGlobalUsageArgs {
-    return "[--job-id # --job-dir <JOB_DIR>]";
+    return "[--job-id # --job-dir <JOB_DIR> --memory <CONFIG> --walltime <CONFIG>]";
 }
 sub getGlobalUsage {
     my $admin = shift || 0;
@@ -190,6 +227,8 @@ sub getGlobalUsage {
                         contain scripts/ (the location for scripts submitted ot the cluster), log/
                         (the output from cluster jobs), and output/ (the directory where results
                         will be stored).
+    --memory            the memory profile to use, if specified in the config file.
+    --walltime          the walltime profile to use, if specified in the config file.
 HELP
     if ($admin) {
         $help .= <<HELP;
@@ -201,7 +240,7 @@ ADVANCED OPTIONS: (only for administrators for testing purposes)
                         what would be submitted to the cluster.
     --no-submit         only create the job scripts, do not submit them to the cluster.
     --dir-name          the output directory name to put results into (defaults to output/).
-    --remove-temp       setting this to 0 will not remove intermediate files; useful for debugging;
+    --keep-temp         adding this flag will not remove intermediate files; useful for debugging;
                         defaults to true (remove all intermediate files)
     --serial-script     output all of the cluster jobs into a single file that can be run on a
                         single cluster node, or on a stand-alone system.
@@ -219,6 +258,11 @@ sub getUseResults {
     my $self = shift;
     return 0;
 }
+# This must be overridden in each job type.
+sub createJobs {
+    my $self = shift;
+    return ();
+}
 # This can be overridden so specific job types can create extra directories as needed, but this function MUST be called by invoking $self->SUPER::getJobInfo().
 sub createJobStructure {
     my $self = shift;
@@ -229,6 +273,8 @@ sub createJobStructure {
     mkdir $scriptDir;
     my $logDir = "$dir/log";
     mkdir $logDir;
+    my $resultsDir = "$dir/results";
+    mkdir $resultsDir;
     return ($scriptDir, $logDir, $outputDir);
 }
 
@@ -253,7 +299,7 @@ sub getEnvironment {
     my $name = shift;
 
     if ($self->{modules}->{group}->{$name}) {
-        return @{$self->{modules}->{group}->{$name}} 
+        return @{$self->{modules}->{group}->{$name}};
     } else {
         return ();
     }
@@ -293,6 +339,14 @@ sub getOutputDir {
 }
 
 
+sub getResultsDir {
+    my $self = shift;
+    my $dir = $self->{conf}->{job_dir};
+    $dir .= "/" . $self->{conf}->{results_dir_name} if $self->{conf}->{results_dir_name};
+    return $dir;
+}
+
+
 sub getHasResults {
     my $self = shift;
     my $dir = $self->{conf}->{job_dir};
@@ -326,9 +380,21 @@ sub getNp {
 }
 
 
+sub getNodeNp {
+    my $self = shift;
+    return $self->{cluster}->{node_np};
+}
+
+
 sub getDryRun {
     my $self = shift;
     return $self->{cluster}->{dry_run};
+}
+
+
+sub getRemoveTemp {
+    my $self = shift;
+    return $self->{conf}->{remove_temp};
 }
 
 
@@ -344,19 +410,55 @@ sub getConfigFile {
 }
 
 
-sub requestRam {
+sub getConfigValue {
     my $self = shift;
-    my $ram = shift;
-    #TODO: implement a check that prevents requesting more memory than is available
-    return $ram;
+    my $section = shift || "";
+    my $key = shift || "";
+    return $self->{raw_config}->{$section} // {} if not $key;
+    return $self->{raw_config}->{$section}->{$key} // "";
 }
 
 
-sub requestHighMemQueue {
+sub getHomePath {
     my $self = shift;
-    my $B = shift;
-    my $queue = $self->{cluster}->{mem_queue};
-    $B->queue($queue);
+    return $self->{home_dir};
+}
+
+
+#TODO: build a bit of logic in here, so that if a single core is requested but max memory, that we
+#bounce this to the mem_queue.
+sub requestResources {
+    my $self = shift;
+    my $B = shift; # SchedulerApi::Builder object
+    my $numNode = shift;
+    my $numCpu = shift;
+    my $ram = shift;
+    my $useHighMem = shift || 0;
+
+    #TODO: needs testing!!!!
+    my $memQueue = $self->{cluster}->{mem_queue} . ($self->getScheduler->supportsMultiQueue() ? ",$self->{cluster}->{queue}" : "");
+    if ($useHighMem or
+        ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_QUEUE))
+    {
+        $B->queue($memQueue);
+    }
+    if ($self->{cluster}->{max_mem_queue_ram} and $ram > $self->{cluster}->{max_mem_queue_ram}) {
+        $ram = $self->{cluster}->{max_mem_queue_ram};
+    } elsif ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_CORES) {
+        $numCpu = int($ram / $self->{cluster}->{max_queue_ram} + 0.5);
+    }
+    if ($numCpu > $self->{cluster}->{node_np}) {
+        $numNode = int($numCpu / $self->{cluster}->{node_np} + 0.5);
+    }
+    $B->resource($numNode, $numCpu, "${ram}gb");
+}
+
+
+sub getMemorySize {
+    my $self = shift;
+    my $type = shift;
+    my $seqCount = shift || 0;
+    return $self->{cluster}->{resources}->getMemorySize($type, $seqCount);
 }
 
 
@@ -370,6 +472,12 @@ sub setJobDir {
     my $self = shift;
     my $dir = shift;
     $self->{conf}->{job_dir} = $dir;
+}
+
+
+sub getDbHome {
+    my $self = shift;
+    return ($self->{db}->{db_home} // "");
 }
 
 
@@ -387,6 +495,8 @@ sub createScheduler {
         run_serial => $self->{cluster}->{run_serial},
         output_base_dirpath => $logDir,
     );
+    $schedArgs{default_wall_time} = $self->{cluster}->{default_wall_time} if $self->{cluster}->{default_wall_time};
+    $schedArgs{extra_headers} = $self->{modules}->{group}->{headers} if $self->{modules}->{group}->{headers};
     my $S = new EFI::SchedulerApi(%schedArgs);
 
     $self->{scheduler} = $S;
@@ -399,6 +509,13 @@ sub getScheduler {
     my $self = shift;
     $self->createScheduler() if not $self->{scheduler};
     return $self->{scheduler};
+}
+
+
+sub getBuilder {
+    my $self = shift;
+    my $S = $self->getScheduler();
+    return $S->getBuilder();
 }
 
 
@@ -437,7 +554,13 @@ sub getBlastDbDir {
 }
 
 
-sub getBlastDbName {
+sub getDiamondDbDir {
+    my $self = shift;
+    return $self->{db}->{blast}->{diamond_db_dir};
+}
+
+
+sub getSequenceDbName {
     my $self = shift;
     my $type = shift;
 
@@ -447,6 +570,20 @@ sub getBlastDbName {
     die "BLAST database $type does not exist\n" if not $name;
 
     return $name;
+}
+
+
+sub getBlastDbPath {
+    my $self = shift;
+    my $type = shift || "uniprot";
+    return $self->getBlastDbDir() . "/" . $self->getSequenceDbName($type);
+}
+
+
+sub getDiamondDbPath {
+    my $self = shift;
+    my $type = shift || "uniprot";
+    return $self->getDiamondDbDir() . "/" . $self->getSequenceDbName($type) . ".dmnd";
 }
 
 
@@ -460,7 +597,7 @@ sub addBlastEnvVars {
 
     my $dbDir = $self->getBlastDbDir();
     $B->addAction("export EFI_DB_DIR=$dbDir");
-    my $name = $self->getBlastDbName($type);
+    my $name = $self->getSequenceDbName($type);
 
     $B->addAction("export EFI_${varName}_DB=$name");
 }

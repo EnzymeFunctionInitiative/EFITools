@@ -136,6 +136,8 @@ my $CompletedFlagFile = "$BuildDir/progress/completed";
 my $LocalSupportDir = "$BuildDir/support";
 my $CombinedDir = "$BuildDir/combined";
 my $PdbBuildDir = "$BuildDir/pdbblast";
+my $RemoveFragsDir = "$BuildDir/remove_frags";
+my $UniRefDir = "$BuildDir/uniref";
 
 
 # Number of processors to use for the blast job.
@@ -148,8 +150,10 @@ mkdir $OutputDir if not -d $OutputDir;
 mkdir "$BuildDir/progress" if not -d "$BuildDir/progress";
 mkdir $LocalSupportDir if not -d $LocalSupportDir;
 mkdir $CombinedDir if not -d $CombinedDir;
+mkdir $UniRefDir if not -d $UniRefDir;
 mkdir $PdbBuildDir if not -d $PdbBuildDir;
 mkdir "$PdbBuildDir/output" if not -d "$PdbBuildDir/output";
+mkdir $RemoveFragsDir if not -d $RemoveFragsDir;
 
 
 # Setup logging. Also redirect stderr to console stdout.
@@ -261,6 +265,9 @@ if (defined $buildEna and $buildEna) {
     
     logprint "#CREATE ANNOTATIONS (STRUCT) TAB FILES\n";
     my $structJobId = submitAnnotationsJob($S->getBuilder(), [$idmappingJobId, $ffJobId], $fileNum++);
+
+    logprint "#CREATE NO-FRAGMENT FASTA FILES\n";
+    my $noFragJobId = submitNoFragmentJob($S->getBuilder(), $structJobId, $fileNum++);
     
     # Create uniref table
     logprint "#CREATING UNIREF TABLE\n";
@@ -272,7 +279,7 @@ if (defined $buildEna and $buildEna) {
     
     # We try to do this after everything else has completed so that we don't hog the queue.
     logprint "#FORMAT BLAST DATABASE\n";
-    my $splitJobId = submitFormatDbAndSplitFastaJob($S->getBuilder(), $structJobId, $np, $PdbBuildDir, $doPdbBlast, $fileNum++);
+    my $splitJobId = submitFormatDbAndSplitFastaJob($S->getBuilder(), $noFragJobId, $np, $PdbBuildDir, $doPdbBlast, $fileNum++);
     
     if ($doPdbBlast) {
        logprint "#DO PDB BLAST\n";
@@ -444,17 +451,14 @@ sub submitBuildUnirefJob {
     addStandardEnv($B);
     
     if (not $skipIfExists or not -f "$OutputDir/uniref.tab") {
-        my $urDir = "$BuildDir/uniref";
-        mkdir $urDir if not -d $urDir;
-
         foreach my $ver ("50", "90") {
-            my $outDir = "$BuildDir/uniref/uniref$ver";
+            my $outDir = "$UniRefDir/uniref$ver";
             mkdir $outDir if not -d $outDir;
             $B->addAction("rm -rf $outDir/*");
             $B->addAction("$ScriptDir/chop_uniref_xml.pl -in $InputDir/uniref$ver.xml -outdir $outDir");
-            $B->addAction("$ScriptDir/make_uniref_table.pl -in-dir $outDir -out-list $BuildDir/uniref/uniref$ver.list -out-map $BuildDir/uniref/uniref$ver.tab -out-seq $BuildDir/uniref/uniref$ver.fasta");
+            $B->addAction("$ScriptDir/make_uniref_table.pl -in-dir $outDir -out-list $UniRefDir/uniref$ver.list -out-map $UniRefDir/uniref$ver.tab -out-seq $UniRefDir/uniref$ver.fasta");
         }
-        $B->addAction("$ScriptDir/merge_uniref_tables.pl $BuildDir/uniref/uniref50.tab $BuildDir/uniref/uniref90.tab $OutputDir/uniref.tab");
+        $B->addAction("$ScriptDir/merge_uniref_tables.pl $UniRefDir/uniref50.tab $UniRefDir/uniref90.tab $OutputDir/uniref.tab");
         $B->addAction("date > $CompletedFlagFile.make-merge_uniref\n");
     }
 
@@ -782,6 +786,38 @@ sub submitAnnotationsJob {
     }
 
     $B->addAction("date > $CompletedFlagFile.$fileNum-annotations\n");
+
+    $B->outputBaseFilepath($file);
+    $B->renderToFile($file);
+
+    return $DoSubmit ? $S->submit($file) : undef;
+}
+
+
+sub submitNoFragmentJob {
+    my ($B, $depId, $fileNum) = @_;
+
+    my $file = "$BuildDir/$fileNum-remove-fragments.sh";
+
+    $B->resource(1, 1, "15gb");
+    $B->dependency(0, $depId);
+
+    addStandardEnv($B);
+
+    waitForInput();
+
+    if (not $skipIfExists or not -f "$OutputDir/annotations.tab") {
+        my $fragTab = "$RemoveFragsDir/anno_frag_col.tab";
+        my $fragIds = "$RemoveFragsDir/fragment_ids.list";
+        $B->addAction("cut -f1,22 $OutputDir/annotations.tab > $fragTab");
+        $B->addAction("awk '{ if (\$2 == 1) { print \$1 } }' $fragTab > $fragIds");
+        $B->addAction($ScriptDir . "/remove_ids_from_file.pl --id-list $fragIds --in $CombinedDir/combined.fasta --out $CombinedDir/combined_no_frags.fasta");
+        $B->addAction($ScriptDir . "/remove_ids_from_file.pl --id-list $fragIds --in $UniRefDir/uniref90.fasta --out $UniRefDir/uniref90_no_frags.fasta");
+        $B->addAction($ScriptDir . "/remove_ids_from_file.pl --id-list $fragIds --in $UniRefDir/uniref50.fasta --out $UniRefDir/uniref50_no_frags.fasta");
+        $B->addAction("date > $CompletedFlagFile.remove_ids_from_file\n");
+    }
+
+    $B->addAction("date > $CompletedFlagFile.$fileNum-remove-fragments\n");
 
     $B->outputBaseFilepath($file);
     $B->renderToFile($file);

@@ -120,8 +120,8 @@ sub addInitialImportFileActions {
 
     my $file = $self->{conf}->{fasta}->{fasta_file};
     $B->addAction("unzip -p $self->{conf}->{fasta}->{zipped_file} > $file") if $self->{conf}->{fasta}->{zipped_file};
-    $B->addAction("dos2unix -q $file");
-    $B->addAction("mac2unix -q $file");
+    #$B->addAction("dos2unix -q $file");
+    #$B->addAction("mac2unix -q $file");
 }
 
 

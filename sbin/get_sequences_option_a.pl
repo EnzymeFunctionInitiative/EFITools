@@ -45,7 +45,8 @@ if (exists $familyConfig->{data}) {
 
 
 my %blastArgs = EFI::EST::BLAST::getBLASTCmdLineArgs();
-my $blastData = new EFI::EST::BLAST();
+$blastArgs{uniref_version} = $familyConfig->{config}->{uniref_version};
+my $blastData = new EFI::EST::BLAST(dbh => $dbh);
 $blastData->configure(%blastArgs);
 $blastData->parseFile();
 

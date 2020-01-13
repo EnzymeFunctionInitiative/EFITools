@@ -120,13 +120,14 @@ sub parseConfigFile {
     open my $fh, $filePath or die "Unable to read config file $filePath: $!";
     while (<$fh>) {
         s/^\s*(.*?)\s*$/$1/s;
-        s/;.+$//;
+        s/\s*;.+$//;
         next if not $_;
         if (m/^\[(.*)\]/) {
             $section = $1;
         } elsif ($section =~ m/^environment/ and length) {
             push @{$data->{$section}->{_raw}}, $_;
         } elsif (length) {
+            s/\s+$//;
             my @parts = split(m/=/, $_, 2);
             if (scalar @parts == 1) {
                 push @{$data->{$section}->{_raw}}, $parts[0];

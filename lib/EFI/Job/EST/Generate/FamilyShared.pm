@@ -103,45 +103,42 @@ sub getUniRefVersion {
 sub createJobs {
     my $self = shift;
 
-    my $S = $self->getScheduler();
-    die "Need scheduler" if not $S;
-
     my @jobs;
     my $B;
     my $job;
 
-    @jobs = $self->getPrecursorJobs($S);
+    @jobs = $self->getPrecursorJobs();
 
-    my $job1 = $self->getInitialImportJob($S);
+    my $job1 = $self->getInitialImportJob();
     my $imp = {job => $job1, deps => [], name => "initial_import"};
     $imp->{deps} = [$jobs[$#jobs]->{job}] if scalar @jobs;
     push @jobs, $imp;
 
-    my $job2 = $self->getMultiplexJob($S);
+    my $job2 = $self->getMultiplexJob();
     push @jobs, {job => $job2, deps => [$job1], name => "multiplex"};
 
-    my $job3 = $self->getFracFileJob($S);
+    my $job3 = $self->getFracFileJob();
     push @jobs, {job => $job3, deps => [$job2], name => "fracfile"};
 
-    my $job4 = $self->getCreateDbJob($S);
+    my $job4 = $self->getCreateDbJob();
     push @jobs, {job => $job4, deps => [$job3], name => "createdb"};
 
-    my $job5 = $self->getBlastJob($S);
+    my $job5 = $self->getBlastJob();
     push @jobs, {job => $job5, deps => [$job4], name => "blastqsub"};
     
-    my $job6 = $self->getCatJob($S);
+    my $job6 = $self->getCatJob();
     push @jobs, {job => $job6, deps => [{obj => $job5, is_job_array => 1}], name => "catjob"};
     
-    my $job7 = $self->getBlastReduceJob($S);
+    my $job7 = $self->getBlastReduceJob();
     push @jobs, {job => $job7, deps => [$job6], name => "blastreduce"};
 
-    my $job8 = $self->getDemuxJob($S);
+    my $job8 = $self->getDemuxJob();
     push @jobs, {job => $job8, deps => [$job7], name => "demux"};
 
-    my $job9 = $self->getConvergenceRatioJob($S);
+    my $job9 = $self->getConvergenceRatioJob();
     push @jobs, {job => $job9, deps => [$job8], name => "conv_ratio"};
 
-    my $job10 = $self->getGraphJob($S);
+    my $job10 = $self->getGraphJob();
     $self->addRemoveTempFiles($job10);
     push @jobs, {job => $job10, deps => [$job8], name => "graphs"};
 
@@ -149,7 +146,6 @@ sub createJobs {
 }
 sub getPrecursorJobs {
     my $self = shift;
-    my $S = shift;
     return ();
 }
 
@@ -158,7 +154,6 @@ sub getPrecursorJobs {
 # Get sequences and annotations.  This creates fasta and struct.out files.
 sub getInitialImportJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{family};
     my $gconf = $self->{conf}->{generate};
 
@@ -168,8 +163,8 @@ sub getInitialImportJob {
     my $metaFile = "$outputDir/" . EFI::Config::FASTA_META_FILENAME;
     my $configFile = $self->getConfigFile();
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "5gb");
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("initial_import"));
 
     $B->addAction("cd $outputDir");
 
@@ -251,14 +246,13 @@ sub addInitialImportFileActions {
 # If not, just copy allsequences.fa to sequences.fa so next part of program is set up right.
 sub getMultiplexJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{generate};
     
     my $domain = $self->{conf}->{domain} ? "on" : "off";
     my $toolPath = $self->getToolPath();
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "10gb");
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("multiplex"));
 
     $self->addStandardEnv($B);
 
@@ -297,14 +291,14 @@ CMDS
 # Break sequenes.fa into parts so we can run blast in parallel.
 sub getFracFileJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{generate};
 
     my $np = $self->getNp();
     my $toolPath = $self->getToolPath();
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "5gb");
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("fracfile"));
+    $self->addStandardEnv($B);
     
     $B->addAction("mkdir -p $conf->{frac_dir}");
     $B->addAction("$toolPath/split_fasta.pl --parts $np --tmp $conf->{frac_dir} --source $conf->{filt_seq_file}");
@@ -317,13 +311,12 @@ sub getFracFileJob {
 # Make the blast database and put it into the temp directory
 sub getCreateDbJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{generate};
 
     my $outputDir = $self->getOutputDir();
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "5gb");
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("createdb"));
     $self->addStandardEnv($B);
 
     $B->addAction("cd $outputDir");
@@ -342,7 +335,6 @@ sub getCreateDbJob {
 # Generate job array to blast files from fracfile step
 sub getBlastJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{generate};
 
     mkdir $conf->{blast_output_dir};
@@ -352,10 +344,10 @@ sub getBlastJob {
     my $blasthits = $conf->{max_blast_hits};
     my $evalue = $conf->{evalue};
 
-    my $B = $S->getBuilder();
+    my $B = $self->getBuilder();
     $B->setScriptAbortOnError(0); # Disable SLURM aborting on errors, since we want to catch the BLAST error and report it to the user nicely
     $B->jobArray("1-$np") if $conf->{blast_type} eq "blast";
-    $B->resource(1, 1, "5gb");
+    $self->requestResources($B, 1, 1, $self->getMemorySize("blastqsub"));
     $B->resource(1, 24, "14G") if $conf->{blast_type} =~ /diamond/i;
     $B->resource(1, 24, "14G") if $conf->{blast_type} =~ /blast\+/i;
     
@@ -407,13 +399,14 @@ sub getBlastJob {
 # Join all the blast outputs back together
 sub getCatJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{generate};
 
     my $outputDir = $self->getOutputDir();
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "5gb");
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("catjob"));
+    $self->addStandardEnv($B);
+
     $B->addAction("cat $conf->{blast_output_dir}/blastout-*.tab |grep -v '#'|cut -f 1,2,3,4,12 >$conf->{blast_final_file}")
         if $conf->{blast_type} eq "blast";
     $B->addAction("SZ=`stat -c%s $conf->{blast_final_file}`");
@@ -431,17 +424,16 @@ sub getCatJob {
 # Remove like vs like and reverse matches
 sub getBlastReduceJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{generate};
 
     my $outputDir = $self->getOutputDir();
     my $toolPath = $self->getToolPath();
-    my $reqRam = $self->requestRam(350);
     my $sortdir = $self->getScratchDir();
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "${reqRam}gb");
-    $self->requestHighMemQueue($B);
+    my $B = $self->getBuilder();
+    # Bounces to high memory queue automatically
+    $self->requestResources($B, 1, 1, $self->getMemorySize("blastreduce"));
+    $self->addStandardEnv($B);
 
     $B->addAction("$toolPath/alphabetize_blast_output.pl -in $conf->{blast_final_file} -out $outputDir/alphabetized.blastfinal.tab -fasta $conf->{filt_seq_file}");
     $B->addAction("sort -T $sortdir -k1,1 -k2,2 -k5,5nr -t\$\'\\t\' $outputDir/alphabetized.blastfinal.tab > $outputDir/sorted.alphabetized.blastfinal.tab");
@@ -456,15 +448,16 @@ sub getBlastReduceJob {
 # If multiplexing is on, demultiplex sequences back so all are present
 sub getDemuxJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{generate};
 
     my $outputDir = $self->getOutputDir();
     my $toolPath = $self->getToolPath();
     
     my $normalCdHit = ($conf->{cdhit_seq_id_threshold} == 1 and $conf->{cdhit_length_diff} == 1);
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "5gb");
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("demux"));
+    $self->addStandardEnv($B);
+
     if ($conf->{multiplex} and $normalCdHit and not $conf->{no_demux}) {
         $B->addAction("mv $outputDir/1.out $outputDir/mux.out");
         $B->addAction("$toolPath/demux.pl -blastin $outputDir/mux.out -blastout $outputDir/1.out -cluster $conf->{filt_seq_file}.clstr");
@@ -481,14 +474,15 @@ sub getDemuxJob {
 # Compute convergence ratio
 sub getConvergenceRatioJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{generate};
 
     my $outputDir = $self->getOutputDir();
     my $toolPath = $self->getToolPath();
 
-    my $B = $S->getBuilder();
-    $B->resource(1, 1, "5gb");
+    my $B = $self->getBuilder();
+    $self->requestResources($B, 1, 1, $self->getMemorySize("conv_ratio"));
+    $self->addStandardEnv($B);
+
     $B->addAction("$toolPath/calc_blast_stats.pl -edge-file $outputDir/1.out -seq-file $conf->{all_seq_file} -unique-seq-file $conf->{filt_seq_file} -seq-count-output $conf->{seq_count_file}");
 
     return $B;
@@ -499,29 +493,30 @@ sub getConvergenceRatioJob {
 # Create information for R to make graphs and then have R make them
 sub getGraphJob {
     my $self = shift;
-    my $S = shift;
     my $conf = $self->{conf}->{generate};
 
+    my $resultsDir = $self->getResultsDir();
     my $outputDir = $self->getOutputDir();
     my $toolPath = $self->getToolPath();
     my $jobId = $self->getJobId();
     my $domain = $self->{conf}->{domain} ? "on" : "off";
     my $unirefVersion = $self->{conf}->{family}->{uniref_version};
 
-    my $B = $S->getBuilder();
+    my $flagFile = "$outputDir/$self->{completed_name}";
+
+    my $B = $self->getBuilder();
 
     my ($smallWidth, $smallHeight) = (700, 315);
     
     $B->mailEnd();
     $B->setScriptAbortOnError(0); # don't abort on error
-    $self->requestHighMemQueue($B);
     $self->addStandardEnv($B);
 
     if ($conf->{graph_version} == 1) {
         my $evalueFile = "$outputDir/evalue.tab";
         my $defaultLengthFile = "$outputDir/length.tab";
 
-        $B->resource(1, 1, "50gb");
+        $self->requestResources($B, 1, 1, $self->getMemorySize("graphs"));
 
         map { $B->addAction($_); } $self->getEnvironment("est-graphs");
         $B->addAction("mkdir -p $outputDir/rdata");
@@ -531,19 +526,19 @@ sub getGraphJob {
         $B->addAction("if [ -z \"\$FIRST\" ]; then");
         $B->addAction("    echo \"Graphs failed, there were no edges. Continuing without graphs.\"");
         $B->addAction("    touch $outputDir/graphs.failed");
-        $B->addAction("    touch  $outputDir/1.out.completed");
+        $B->addAction("    touch  $flagFile");
         $B->addAction("    exit 0 #Exit with no error");
         $B->addAction("fi");
         $B->addAction("FIRST=`head -1 \$FIRST`");
         $B->addAction("LAST=`ls $outputDir/rdata/perid*| tail -1`");
         $B->addAction("LAST=`head -1 \$LAST`");
         $B->addAction("MAXALIGN=`head -1 $outputDir/rdata/maxyal`");
-        $B->addAction("Rscript $toolPath/R/quart-align.r legacy $outputDir/rdata $outputDir/alignment_length.png \$FIRST \$LAST \$MAXALIGN $jobId");
-        $B->addAction("Rscript $toolPath/R/quart-align.r legacy $outputDir/rdata $outputDir/alignment_length_sm.png \$FIRST \$LAST \$MAXALIGN $jobId $smallWidth $smallHeight");
-        $B->addAction("Rscript $toolPath/R/quart-perid.r legacy $outputDir/rdata $outputDir/percent_identity.png \$FIRST \$LAST $jobId");
-        $B->addAction("Rscript $toolPath/R/quart-perid.r legacy $outputDir/rdata $outputDir/percent_identity_sm.png \$FIRST \$LAST $jobId $smallWidth $smallHeight");
-        $B->addAction("Rscript $toolPath/R/hist-edges.r legacy $outputDir/edge.tab $outputDir/number_of_edges.png $jobId");
-        $B->addAction("Rscript $toolPath/R/hist-edges.r legacy $outputDir/edge.tab $outputDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/quart-align.r legacy $outputDir/rdata $resultsDir/alignment_length.png \$FIRST \$LAST \$MAXALIGN $jobId");
+        $B->addAction("Rscript $toolPath/R/quart-align.r legacy $outputDir/rdata $resultsDir/alignment_length_sm.png \$FIRST \$LAST \$MAXALIGN $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/quart-perid.r legacy $outputDir/rdata $resultsDir/percent_identity.png \$FIRST \$LAST $jobId");
+        $B->addAction("Rscript $toolPath/R/quart-perid.r legacy $outputDir/rdata $resultsDir/percent_identity_sm.png \$FIRST \$LAST $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/hist-edges.r legacy $outputDir/edge.tab $resultsDir/number_of_edges.png $jobId");
+        $B->addAction("Rscript $toolPath/R/hist-edges.r legacy $outputDir/edge.tab $resultsDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
         my %lenFiles = ($conf->{len_uniprot_file} => {title => "", file => "length_histogram_uniprot"});
         $lenFiles{$conf->{len_uniprot_file}}->{title} = "UniProt, Full Length" if $unirefVersion or $domain eq "on";
         $lenFiles{$conf->{len_uniprot_dom_file}} = {title => "UniProt, Domain", file => "length_histogram_uniprot_domain"} if $domain eq "on";
@@ -551,27 +546,27 @@ sub getGraphJob {
         $lenFiles{$conf->{len_uniref_dom_file}} = {title => "UniRef$unirefVersion Cluster IDs, Domain", file => "length_histogram_uniref_domain"} if $unirefVersion and $domain eq "on";
         foreach my $file (keys %lenFiles) {
             my $title = $lenFiles{$file}->{title} ? "\"(" . $lenFiles{$file}->{title} . ")\"" : "\"\"";
-            $B->addAction("Rscript $toolPath/R/hist-length.r legacy $file $outputDir/$lenFiles{$file}->{file}.png $jobId $title");
-            $B->addAction("Rscript $toolPath/R/hist-length.r legacy $file $outputDir/$lenFiles{$file}->{file}_sm.png $jobId $title $smallWidth $smallHeight");
+            $B->addAction("Rscript $toolPath/R/hist-length.r legacy $file $resultsDir/$lenFiles{$file}->{file}.png $jobId $title");
+            $B->addAction("Rscript $toolPath/R/hist-length.r legacy $file $resultsDir/$lenFiles{$file}->{file}_sm.png $jobId $title $smallWidth $smallHeight");
         }
+        my $unirefArg = $unirefVersion ? "--uniref-version $unirefVersion" : "";
+        $B->addAction("$toolPath/create_graphs_html_table.pl --results-dir $resultsDir --html-file $resultsDir/graphs.html $unirefArg");
     } else {
         map { $B->addAction($_); } $self->getEnvironment("est-graphs-v2");
         $B->addAction("$toolPath/make_hdf5_graph_data.py -b $outputDir/1.out -f $outputDir/rdata.hdf5 -a $conf->{all_seq_file} -i $conf->{inc_frac}");
-        $B->addAction("Rscript $toolPath/R/quart-align.r hdf5 $outputDir/rdata.hdf5 $outputDir/alignment_length.png $jobId");
-        $B->addAction("Rscript $toolPath/R/quart-align.r hdf5 $outputDir/rdata.hdf5 $outputDir/alignment_length_sm.png $jobId $smallWidth $smallHeight");
-        $B->addAction("Rscript $toolPath/R/quart-perid.r hdf5 $outputDir/rdata.hdf5 $outputDir/percent_identity.png $jobId");
-        $B->addAction("Rscript $toolPath/R/quart-perid.r hdf5 $outputDir/rdata.hdf5 $outputDir/percent_identity_sm.png $jobId $smallWidth $smallHeight");
-        $B->addAction("Rscript $toolPath/R/hist-length.r hdf5 $outputDir/rdata.hdf5 $outputDir/length_histogram.png $jobId");
-        $B->addAction("Rscript $toolPath/R/hist-length.r hdf5 $outputDir/rdata.hdf5 $outputDir/length_histogram_sm.png $jobId $smallWidth $smallHeight");
-        $B->addAction("Rscript $toolPath/R/hist-edges.r hdf5 $outputDir/rdata.hdf5 $outputDir/number_of_edges.png $jobId");
-        $B->addAction("Rscript $toolPath/R/hist-edges.r hdf5 $outputDir/rdata.hdf5 $outputDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/quart-align.r hdf5 $outputDir/rdata.hdf5 $resultsDir/alignment_length.png $jobId");
+        $B->addAction("Rscript $toolPath/R/quart-align.r hdf5 $outputDir/rdata.hdf5 $resultsDir/alignment_length_sm.png $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/quart-perid.r hdf5 $outputDir/rdata.hdf5 $resultsDir/percent_identity.png $jobId");
+        $B->addAction("Rscript $toolPath/R/quart-perid.r hdf5 $outputDir/rdata.hdf5 $resultsDir/percent_identity_sm.png $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/hist-length.r hdf5 $outputDir/rdata.hdf5 $resultsDir/length_histogram.png $jobId");
+        $B->addAction("Rscript $toolPath/R/hist-length.r hdf5 $outputDir/rdata.hdf5 $resultsDir/length_histogram_sm.png $jobId $smallWidth $smallHeight");
+        $B->addAction("Rscript $toolPath/R/hist-edges.r hdf5 $outputDir/rdata.hdf5 $resultsDir/number_of_edges.png $jobId");
+        $B->addAction("Rscript $toolPath/R/hist-edges.r hdf5 $outputDir/rdata.hdf5 $resultsDir/number_of_edges_sm.png $jobId $smallWidth $smallHeight");
     }
-    $B->addAction("touch  $outputDir/1.out.completed");
+    $B->addAction("touch  $flagFile");
 
     return $B;
 }
-
-
 
 
 1;

@@ -25,7 +25,7 @@ sub new {
     $self->{output_file_seq_num} = "";
     $self->{output_file_seq_num_array} = "";
     $self->{arrayid_var_name} = "";
-    $self->{other_config} = [];
+    $self->{other_config} = $args{extra_headers} ? [@{$args{extra_headers}}] : [];
     $self->{dry_run} = ($args{dryrun} or $args{dry_run}) ? 1 : 0;
     # Echo the first part of all acctions
     $self->{echo_actions} = exists $args{echo_actions} ? $args{echo_actions} : 0;
@@ -70,6 +70,15 @@ sub workingDirectory {
 
 sub node {
     my ($self, $node) = @_;
+}
+
+sub extraHeaders {
+    my ($self, $extra) = @_;
+    if (ref($extra) eq "ARRAY") {
+        push @{$self->{other_config}}, @$extra;
+    } else {
+        push @{$self->{other_config}}, $extra;
+    }
 }
 
 sub setScriptAbortOnError {

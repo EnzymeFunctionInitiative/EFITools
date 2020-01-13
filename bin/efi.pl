@@ -55,6 +55,7 @@ if (not $job->getJobDirArgumentSet() and not($job->getSubmitStatus() & EFI::Job:
     }
 }
 
+mkdir $dir if not -d $dir;
 
 print "Job Dir: $dir\n";
 
@@ -93,6 +94,7 @@ foreach my $jobInfo (@jobs) {
     my $jobId = 1;
     if ($doSubmit & EFI::Job::RUN) {
         $jobId = $S->submit($jobFile);
+        $jobId = "undefined-failure" if not $jobId;
         chomp $jobId;
         ($jobId) = split(m/\./, $jobId);
     }
@@ -110,7 +112,7 @@ sub saveJobInfo {
     my $file = "$dir/job_parameters.txt";
     open my $fh, ">", $file or die "Unable to save job info to $file: $!\n";
     foreach my $row (@$info) {
-        print $fh join("\t", @$row), "\n";
+        print $fh join("\t", map { defined($_) ? $_ : "" } @$row), "\n";
     }
     close $fh;
 }
@@ -126,7 +128,7 @@ sub getHelp {
     $msg = "$msg\n\n" if $msg;
     my $jobTypes = "<" . join("|", EFI::Job::Factory::get_available_types()) . ">";
 
-    my $globalArgs = EFI::Job::getGlobalUsageArgs();
+    my $globalArgs = "\n    " . EFI::Job::getGlobalUsageArgs();
     my $globalUsage = EFI::Job::getGlobalUsage(not $job);
     my $jobUsage = "\n";
     if ($job and $jobType) {
@@ -135,7 +137,7 @@ sub getHelp {
         $globalArgs = "";
     }
 
-    print "${msg}usage: $script $jobTypes $globalArgs${jobUsage}\nGLOBAL OPTIONS:\n$globalUsage\n";
+    return "${msg}usage: $script $jobTypes $globalArgs${jobUsage}\nGLOBAL OPTIONS:\n$globalUsage\n";
 }
 
 
