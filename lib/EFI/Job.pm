@@ -475,7 +475,6 @@ sub requestResources {
     my $ram = shift;
     my $useHighMem = shift || 0;
 
-    #TODO: needs testing!!!!
     my $memQueue = $self->{cluster}->{mem_queue} . ($self->getScheduler->supportsMultiQueue() ? ",$self->{cluster}->{queue}" : "");
     if ($useHighMem or
         ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_QUEUE))
