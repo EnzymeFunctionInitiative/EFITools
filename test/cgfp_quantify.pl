@@ -19,18 +19,20 @@ die "Require an existing job results directory" if not $testDir or not -d $testD
 
 my $test = new Setup(getArgs(), {job_dir => $testDir});
 
-use EFI::Job::EST::Analyze;
-my $jobBuilder = new EFI::Job::EST::Analyze();
+use EFI::Job::CGFP::Identify;
+my $jobBuilder = new EFI::Job::CGFP::Identify();
 
 $test->runTest($jobBuilder);
 
 
-
 sub getArgs {
     my @a = (
-        "analyze",
-        "--filter", "eval",
-        "--minval", 23,
+        "cgfp-quantify",
+        "--ssn-in", "$testDir/results/identify.xgmml",
+        "--ssn-out-name", "quantify.xgmml",
+        "--quantify-dir", "quantify-test",
+        "--metagenome-db", "hmp",
+        "--metagenome-ids", "SRS011061,SRS011090,SRS011098,SRS011126,SRS011132",
     );
 
     return @a;

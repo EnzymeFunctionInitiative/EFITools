@@ -22,6 +22,7 @@ our @EXPORT =
         $SSN_UNIPROT
         $SSN_UNIREF50
         $SSN_UNIREF90
+        $SSN_COLORED_SSN
         $TMP
         make_test_dir
         run_test
@@ -36,6 +37,7 @@ our $SSN_UNIREF90_DOMAIN = "$DATADIR/ssn_uniprot_domain.xgmml";
 our $SSN_UNIPROT = "$DATADIR/ssn_uniprot.xgmml";
 our $SSN_UNIREF50 = "$DATADIR/ssn_uniprot.xgmml";
 our $SSN_UNIREF90 = "$DATADIR/ssn_uniprot.xgmml";
+our $SSN_COLORED_SSN = "$DATADIR/ssn_uniprot_domain_colored.xgmml";
 
 our $TMP = "$WDIR/tmp";
 
