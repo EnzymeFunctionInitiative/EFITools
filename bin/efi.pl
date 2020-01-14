@@ -57,7 +57,6 @@ if (not $job->getJobDirArgumentSet() and not($job->getSubmitStatus() & EFI::Job:
 
 mkdir $dir if not -d $dir;
 
-print "Job Dir: $dir\n";
 
 my $S = $job->getScheduler();
 my $doSubmit = $job->getSubmitStatus();
@@ -69,12 +68,14 @@ saveJobInfo($job);
 my @jobs = $job->createJobs();
 my $jobId = $job->getJobId();
 my $jobNamePrefix = $jobId ? "${jobId}_" : "";
+my $serialMode = $job->getSerialMode();
+my $serialFile = $serialMode ? $job->getSerialScript() : "";
 
 my $lastJobId = 0;
 my %jobIds;
 foreach my $jobInfo (@jobs) {
     my $jobName = $jobInfo->{name};
-    my $jobFile = "$scriptDir/$jobName.sh";
+    my $jobFile = $serialMode ? $serialFile : "$scriptDir/$jobName.sh";
     my $jobObj = $jobInfo->{job};
     my @jobDeps = @{$jobInfo->{deps}};
 
@@ -98,10 +99,12 @@ foreach my $jobInfo (@jobs) {
         chomp $jobId;
         ($jobId) = split(m/\./, $jobId);
     }
-    print "$jobId\t$jobName\n";
+    print "$jobId\t$jobName\n" if not $serialMode;
     $jobIds{$jobObj} = $jobId;
     $lastJobId = $jobId;
 }
+
+print "Job script created for serial execution at $serialFile\n" if $serialMode;
 
 
 sub saveJobInfo {

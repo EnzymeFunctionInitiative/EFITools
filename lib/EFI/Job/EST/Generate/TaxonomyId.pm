@@ -30,6 +30,7 @@ sub new {
     my ($conf, $errors) = validateOptions($parms, $self);
 
     $self->{conf}->{taxonomy} = $conf;
+    $self->{TYPE} = JOB_TYPE;
 
     push @{$self->{startup_errors}}, @$errors;
 

@@ -50,6 +50,7 @@ sub new {
     }
 
     $self->{conf}->{color} = $conf;
+    $self->{TYPE} = JOB_TYPE;
 
     push @{$self->{startup_errors}}, @$errors;
 
@@ -179,7 +180,7 @@ sub createJobStructure {
 }
 
 
-sub createJobs {
+sub makeJobs {
     my $self = shift;
     my $conf = $self->{conf}->{color};
 

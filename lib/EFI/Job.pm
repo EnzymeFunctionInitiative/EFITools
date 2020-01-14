@@ -197,6 +197,10 @@ sub validateOptions {
     }
     $conf->{job_dir} = abs_path($conf->{job_dir});
 
+    if ($conf->{serial_script}) {
+        $self->{cluster}->{run_serial} = 1;
+    }
+
     return "";
 }
 
@@ -215,7 +219,7 @@ sub getUsage {
     return getGlobalUsageArgs() . "\n\n" . getGlobalUsage(admin => 1);
 }
 sub getGlobalUsageArgs {
-    return "[--job-id # --job-dir <JOB_DIR> --memory <CONFIG> --walltime <CONFIG>]";
+    return "[--job-id # --job-dir <JOB_DIR> --memory <CONFIG> --walltime <CONFIG> --config <FILE>]";
 }
 sub getGlobalUsage {
     my $admin = shift || 0;
@@ -229,6 +233,9 @@ sub getGlobalUsage {
                         will be stored).
     --memory            the memory profile to use, if specified in the config file.
     --walltime          the walltime profile to use, if specified in the config file.
+    --config            path to config file; by default this looks for a 'efi.conf' file in the
+                        conf/ directory of EFITools. This can be overridden by adding this
+                        parameter.
 HELP
     if ($admin) {
         $help .= <<HELP;
@@ -243,15 +250,18 @@ ADVANCED OPTIONS: (only for administrators for testing purposes)
     --keep-temp         adding this flag will not remove intermediate files; useful for debugging;
                         defaults to true (remove all intermediate files)
     --serial-script     output all of the cluster jobs into a single file that can be run on a
-                        single cluster node, or on a stand-alone system.
+                        single cluster node, or on a stand-alone system. If serial mode is
+                        enabled and this is not provided, then output is written to a script
+                        file in scripts/.  If serial mode is not enabled in the conf file and
+                        this is provided, it behaves like serial mode for the run of this script.
 HELP
     }
     return $help;
 }
-# This should be overridden in each job type.
+# Each sub class saves it's job type into a global TYPE key.
 sub getJobType {
     my $self = shift;
-    return "";
+    return $self->{TYPE} // "";
 }
 # This can be overridden to indicate that results in the current directory should be used.
 sub getUseResults {
@@ -259,7 +269,7 @@ sub getUseResults {
     return 0;
 }
 # This must be overridden in each job type.
-sub createJobs {
+sub makeJobs {
     my $self = shift;
     return ();
 }
@@ -276,6 +286,24 @@ sub createJobStructure {
     my $resultsDir = "$dir/results";
     mkdir $resultsDir;
     return ($scriptDir, $logDir, $outputDir);
+}
+
+
+# This is the public interface.  It does post-processing after the job objects are created
+# before returning them to be executed.
+sub createJobs {
+    my $self = shift;
+    my @jobs = $self->makeJobs();
+    if ($self->{cluster}->{run_serial}) {
+        my $name = $self->getJobType() // "efi";
+        map {
+            my $str = "#" x 10 . uc(" $_->{name} ") . "#" x (88-length($_->{name}));
+            $_->{job}->prependAction("echo \"$str\"");
+            $_->{job}->prependAction("\n#\n" . $str . "\n#");
+            $_->{name} = $name;
+        } @jobs;
+    }
+    return @jobs;
 }
 
 
@@ -370,7 +398,19 @@ sub getLogDir {
 
 sub getSerialScript {
     my $self = shift;
-    return $self->{conf}->{serial_script};
+    if ($self->{conf}->{serial_script}) {
+        return $self->{conf}->{serial_script};
+    } else {
+        my $scriptDir = "$self->{conf}->{job_dir}/scripts";
+        mkdir $scriptDir if not -d $scriptDir;
+        return "$scriptDir/$self->{TYPE}.sh";
+    }
+}
+
+
+sub getSerialMode {
+    my $self = shift;
+    return $self->{cluster}->{run_serial} ? 1 : 0;
 }
 
 

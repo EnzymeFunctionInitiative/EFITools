@@ -45,6 +45,7 @@ sub new {
     }
 
     $self->{conf}->{sb} = $conf;
+    $self->{TYPE} = JOB_TYPE;
 
     return $self;
 }
@@ -221,7 +222,7 @@ sub getJobInfo {
 }
 
 
-sub createJobs {
+sub makeJobs {
     my $self = shift;
     my $conf = $self->{conf}->{sb};
     

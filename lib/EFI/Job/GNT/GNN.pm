@@ -61,6 +61,7 @@ sub new {
     }
 
     $self->{conf}->{gnn} = $conf;
+    $self->{TYPE} = JOB_TYPE;
 
     return $self;
 }
@@ -289,7 +290,7 @@ sub makeDirs {
 }
 
 
-sub createJobs {
+sub makeJobs {
     my $self = shift;
     my $conf = $self->{conf}->{gnn};
     

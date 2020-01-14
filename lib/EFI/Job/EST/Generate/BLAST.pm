@@ -43,6 +43,8 @@ sub new {
 
     push @{$self->{startup_errors}}, @$errors;
 
+    $self->{TYPE} = JOB_TYPE;
+
     return $self;
 }
 

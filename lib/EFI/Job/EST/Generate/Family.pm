@@ -30,6 +30,8 @@ sub new {
 
     validateOptions($parms, $self);
 
+    $self->{TYPE} = JOB_TYPE;
+
     return $self;
 }
 

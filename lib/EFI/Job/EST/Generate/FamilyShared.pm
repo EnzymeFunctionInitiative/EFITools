@@ -100,7 +100,7 @@ sub getUniRefVersion {
 }
 
 
-sub createJobs {
+sub makeJobs {
     my $self = shift;
 
     my @jobs;
@@ -355,11 +355,11 @@ sub getBlastJob {
     $self->addStandardEnv($B);
 
     if ($conf->{blast_type} eq "blast") {
-        if ($self->getSerialScript()) {
+        if ($self->getSerialMode()) {
             my $scriptDir = $outputDir;
             open my $fh, ">", "$scriptDir/blast.sh";
             print $fh "#!/bin/bash\n";
-            $self->addStandardEnv(sub { $fh->print(shift); });
+            $self->addStandardEnv(sub { $fh->print(shift . "\n"); });
             print $fh "blastall -p blastp -d $outputDir/database -m 8 -e $evalue -b $blasthits -o $conf->{blast_output_dir}/blastout-\$1.fa.tab -i $conf->{frac_dir}/fracfile-\$1.fa\n";
             close $fh;
             chmod 0755, "$scriptDir/blast.sh";

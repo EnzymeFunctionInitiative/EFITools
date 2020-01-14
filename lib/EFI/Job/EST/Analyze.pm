@@ -53,15 +53,12 @@ sub new {
     push @{$self->{startup_errors}}, "Output directory and results must exist to run analyze." if not -f $flagFile;
 
     $self->{conf}->{analyze} = $conf;
+    $self->{TYPE} = JOB_TYPE;
 
     return $self;
 }
 
 
-sub getJobType {
-    my $self = shift;
-    return JOB_TYPE;
-}
 sub getUseResults {
     my $self = shift;
     return 1;
@@ -159,7 +156,7 @@ sub setupDefaults {
 }
 
 
-sub createJobs {
+sub makeJobs {
     my $self = shift;
 
     my @jobs;
