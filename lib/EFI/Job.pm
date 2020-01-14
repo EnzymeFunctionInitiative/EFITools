@@ -476,18 +476,20 @@ sub requestResources {
     my $useHighMem = shift || 0;
 
     my $memQueue = $self->{cluster}->{mem_queue} . ($self->getScheduler->supportsMultiQueue() ? ",$self->{cluster}->{queue}" : "");
-    if ($useHighMem or
-        ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_QUEUE))
-    {
-        $B->queue($memQueue);
+    if ($useHighMem or $self->{cluster}->{mem_res_method} eq SET_QUEUE) {
+        if ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram}) {
+            $B->queue($memQueue);
+        }
+        if ($self->{cluster}->{max_mem_queue_ram} and $ram > $self->{cluster}->{max_mem_queue_ram}) {
+            $ram = $self->{cluster}->{max_mem_queue_ram};
+        }
     }
-    if ($self->{cluster}->{max_mem_queue_ram} and $ram > $self->{cluster}->{max_mem_queue_ram}) {
-        $ram = $self->{cluster}->{max_mem_queue_ram};
-    } elsif ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_CORES) {
+    if ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_CORES) {
         $numCpu = int($ram / $self->{cluster}->{max_queue_ram} + 0.5);
     }
     if ($numCpu > $self->{cluster}->{node_np}) {
         $numNode = int($numCpu / $self->{cluster}->{node_np} + 0.5);
+        $numCpu = int($numCpu / $numNode + 0.5); # Divide equally among systems
     }
     $B->resource($numNode, $numCpu, "${ram}gb");
 }
