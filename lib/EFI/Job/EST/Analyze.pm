@@ -286,20 +286,30 @@ sub createRepNodeXgmmlJob {
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
 
-    my $outFile = "$conf->{output_dir}/$conf->{file_name}repnode-\${CDHIT}_ssn.xgmml";
     my $seqsArg = $conf->{include_sequences} ? "--include-sequences" : "";
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
+    my $serialMode = $self->getSerialMode();
 
     my $B = $self->getBuilder();
     $self->requestResources($B, 1, 1, $self->getMemorySize("cdhit"));
-    $B->jobArray("40-100:5");
     $self->addStandardEnv($B);
 
-    $B->addAction("CDHIT=\$(echo \"scale=2; {JOB_ARRAYID}/100\" |bc -l)");
-    
-    $B->addAction("cd-hit -n 2 -s 1 -i $conf->{output_dir}/sequences.fa -o $conf->{output_dir}/cdhit\$CDHIT -c \$CDHIT -d 0");
-    $B->addAction("$toolPath/make_repnode_ssn.pl --blast $conf->{blast_file} --cdhit $conf->{output_dir}/cdhit\$CDHIT.clstr --fasta $conf->{output_dir}/sequences.fa --struct $conf->{anno_file} --out $outFile --title=\"$conf->{title}\" --dbver $conf->{dbver} --maxfull $conf->{maxfull} $seqsArg $useMinArg");
-    $B->addAction("zip -j $outFile.zip $outFile");
+    if ($serialMode) {
+        for (my $pct = 40; $pct <= 100; $pct += 5) {
+            (my $fmt = sprintf("%.2f", $pct / 100)) =~ s/^0//;
+            my $outFile = "$conf->{output_dir}/$conf->{file_name}repnode-${fmt}_ssn.xgmml";
+            $B->addAction("cd-hit -n 2 -s 1 -i $conf->{output_dir}/sequences.fa -o $conf->{output_dir}/cdhit$fmt -c $fmt -d 0");
+            $B->addAction("$toolPath/make_repnode_ssn.pl --blast $conf->{blast_file} --cdhit $conf->{output_dir}/cdhit$fmt.clstr --fasta $conf->{output_dir}/sequences.fa --struct $conf->{anno_file} --out $outFile --title=\"$conf->{title}\" --dbver $conf->{dbver} --maxfull $conf->{maxfull} $seqsArg $useMinArg");
+            $B->addAction("zip -j $outFile.zip $outFile");
+        }
+    } else {
+        my $outFile = "$conf->{output_dir}/$conf->{file_name}repnode-\${CDHIT}_ssn.xgmml";
+        $B->jobArray("40-100:5");
+        $B->addAction("CDHIT=\$(echo \"scale=2; {JOB_ARRAYID}/100\" |bc -l)");
+        $B->addAction("cd-hit -n 2 -s 1 -i $conf->{output_dir}/sequences.fa -o $conf->{output_dir}/cdhit\$CDHIT -c \$CDHIT -d 0");
+        $B->addAction("$toolPath/make_repnode_ssn.pl --blast $conf->{blast_file} --cdhit $conf->{output_dir}/cdhit\$CDHIT.clstr --fasta $conf->{output_dir}/sequences.fa --struct $conf->{anno_file} --out $outFile --title=\"$conf->{title}\" --dbver $conf->{dbver} --maxfull $conf->{maxfull} $seqsArg $useMinArg");
+        $B->addAction("zip -j $outFile.zip $outFile");
+    }
 
     return $B;
 }
