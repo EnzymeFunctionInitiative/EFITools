@@ -276,7 +276,7 @@ sub makeJobs {
 # This can be overridden so specific job types can create extra directories as needed, but this function MUST be called by invoking $self->SUPER::getJobInfo().
 sub createJobStructure {
     my $self = shift;
-    my $dir = $self->{conf}->{job_dir};
+    my $dir = $self->getJobDir();
     my $outputDir = "$dir/output";
     mkdir $outputDir;
     my $scriptDir = "$dir/scripts";
@@ -303,6 +303,15 @@ sub createJobs {
             $_->{name} = $name;
         } @jobs;
     }
+
+    my $job = $self->getBuilder();
+    $self->requestResources($job, 1, 1, $self->getMemorySize("fix_perms"));
+    my $dir = $self->getJobDir();
+    $job->addAction("find $dir -type d -exec chmod a+rx \\{\\} \\;");
+    $job->addAction("find $dir -type f -exec chmod a+r \\{\\} \\;");
+
+    push @jobs, {job => $job, deps => [map { $_->{job} } @jobs], name => "fix_perms"};
+
     return @jobs;
 }
 
@@ -361,7 +370,7 @@ sub setOutputDirName {
 
 sub getOutputDir {
     my $self = shift;
-    my $dir = $self->{conf}->{job_dir};
+    my $dir = $self->getJobDir();
     $dir .= "/" . $self->{conf}->{dir_name} if $self->{conf}->{dir_name};
     return $dir;
 }
@@ -369,7 +378,7 @@ sub getOutputDir {
 
 sub getResultsDir {
     my $self = shift;
-    my $dir = $self->{conf}->{job_dir};
+    my $dir = $self->getJobDir();
     $dir .= "/" . $self->{conf}->{results_dir_name} if $self->{conf}->{results_dir_name};
     return $dir;
 }
@@ -377,7 +386,7 @@ sub getResultsDir {
 
 sub getHasResults {
     my $self = shift;
-    my $dir = $self->{conf}->{job_dir};
+    my $dir = $self->getJobDir();
     $dir .= "/" . $self->{conf}->{dir_name};
     return -d $dir;
 }
@@ -391,7 +400,7 @@ sub getWantsHelp {
 
 sub getLogDir {
     my $self = shift;
-    my $dir = $self->{conf}->{job_dir} . "/log";
+    my $dir = $self->getJobDir() . "/log";
     return $dir;
 }
 
@@ -401,7 +410,7 @@ sub getSerialScript {
     if ($self->{conf}->{serial_script}) {
         return $self->{conf}->{serial_script};
     } else {
-        my $scriptDir = "$self->{conf}->{job_dir}/scripts";
+        my $scriptDir = $self->getJobDir() . "/scripts";
         mkdir $scriptDir if not -d $scriptDir;
         return "$scriptDir/$self->{TYPE}.sh";
     }
