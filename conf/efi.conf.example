@@ -21,10 +21,9 @@ max_mem_queue_ram=1500 ; maximum amount of RAM (GB) allowed to be requested on a
 mem_res_method=set-cores ;set-cores or set-queue
 queue=
 mem_queue=
-;scheduler=slurm|torque|pbspro
+;scheduler=slurm|torque|pbspro|serial
+; scheduler=serial means to create a script that runs all of the actions in serial mode, i.e. for a single computer.
 scheduler=slurm
-; =yes means to create a script that runs all of the actions in serial mode, i.e. for a single computer.
-serial=no
 scratch_dir=/scratch
 ; this is an optional parameter that is required by PBSPro. It can be in hours (with fractions) or HH:MM:SS format.
 ;default_wall_time= 

@@ -8,41 +8,8 @@ use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 $VERSION     = 1.00;
 @ISA         = qw(Exporter);
 @EXPORT      = ();
-@EXPORT_OK   = qw(usesSlurm getSchedulerType getLmod defaultScheduler validateConfigFile checkNetworkType);
+@EXPORT_OK   = qw(getLmod checkNetworkType);
 
-
-use constant SCHEDULER_SLURM => "slurm";
-use constant SCHEDULER_PBS => "pbs";
-
-
-sub usesSlurm {
-    my $usesSlurm = `which sbatch 2>/dev/null`;
-    if (length $usesSlurm > 0) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
-sub getSchedulerType {
-    my $scheduler = shift;
-    $scheduler = autoDetectScheduler() if not $scheduler;
-    if ($scheduler eq SCHEDULER_SLURM or $scheduler eq SCHEDULER_PBS) {
-        return $scheduler;
-    } else {
-        return "";
-    }
-}
-
-sub autoDetectScheduler {
-    return SCHEDULER_SLURM if `command -v sbatch`;
-    return SCHEDULER_PBS if `command -v qsub`;
-    return defaultScheduler();
-}
-
-sub defaultScheduler {
-    return SCHEDULER_SLURM;
-}
 
 sub getLmod {
     my ($pattern, $default) = @_;

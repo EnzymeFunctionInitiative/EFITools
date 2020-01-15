@@ -101,10 +101,8 @@ my $bigscapeWindowArg = (defined $bigscapeWindow and $bigscapeWindow > 0) ? "-wi
 mkdir $bigscapeDir if not -d $bigscapeDir;
 mkdir $logDir if not -d $logDir;
 
-my $schedType = "torque";
-$schedType = "slurm" if (defined($scheduler) and $scheduler eq "slurm") or (not defined($scheduler) and usesSlurm());
-
-my %schedArgs = (type => $schedType, queue => $queue, resource => [1, 24, "50GB"], dryrun => $dryRun);
+$scheduler = "" if not $scheduler;
+my %schedArgs = (type => $scheduler, queue => $queue, resource => [1, 24, "50GB"], dryrun => $dryRun);
 $schedArgs{output_base_dirpath} = $logDir;
 
 

@@ -9,7 +9,6 @@ use constant SLURM  => 2;
 use File::Basename;
 use Cwd 'abs_path';
 use lib abs_path(dirname(__FILE__) . "/../");
-use EFI::Util qw(usesSlurm);
 
 #TODO: use an automatic loading mechanism here (eventually)
 #TODO: move the submit() code to the specific scheduler implementations.
@@ -17,13 +16,14 @@ use EFI::Util qw(usesSlurm);
 use EFI::SchedulerApi::Builder::Pbs::Torque;
 use EFI::SchedulerApi::Builder::Pbs::Pro;
 use EFI::SchedulerApi::Builder::Slurm;
+use EFI::SchedulerApi::Builder::Serial;
 
 
 sub new {
     my ($class, %args) = @_;
     
     my $self = bless({}, $class);
-    $self->{type} = validateType($args{type});
+    $self->{type} = validateSchedulerType($args{type});
 
     $self->{extra_path} = $args{extra_path} ? $args{extra_path} : "";
 
@@ -74,7 +74,7 @@ sub new {
         $self->{extra_headers} = [@{$args{extra_headers}}];
     }
 
-    $self->{run_serial} = $args{run_serial} ? 1 : 0;
+    $self->{run_serial} = $self->{type} eq EFI::SchedulerApi::Builder::Serial::TYPE ? 1 : 0;
 
     return $self;
 }
@@ -89,16 +89,34 @@ sub supportsMultiQueue {
     return $self->getType() eq EFI::SchedulerApi::Builder::Slurm::TYPE;
 }
 
-sub validateType {
-    my $argType = shift || "";
-    if ($argType eq EFI::SchedulerApi::Builder::Slurm::TYPE or not $argType and usesSlurm()) {
+sub validateSchedulerType {
+    my $type = shift || "";
+    $type = autoDetectScheduler() if not $type;
+    if ($type eq EFI::SchedulerApi::Builder::Slurm::TYPE) {
         return EFI::SchedulerApi::Builder::Slurm::TYPE;
-    } elsif ($argType eq EFI::SchedulerApi::Builder::Pbs::Torque::TYPE) {
+    } elsif ($type eq EFI::SchedulerApi::Builder::Pbs::Torque::TYPE) {
         return EFI::SchedulerApi::Builder::Pbs::Torque::TYPE;
-    } elsif ($argType eq EFI::SchedulerApi::Builder::Pbs::Pro::TYPE) {
+    } elsif ($type eq EFI::SchedulerApi::Builder::Pbs::Pro::TYPE) {
         return EFI::SchedulerApi::Builder::Pbs::Pro::TYPE;
+    } else {
+        return EFI::SchedulerApi::Builder::Serial::TYPE;
     }
     return "";
+}
+
+sub isSerialScheduler {
+    my $type = shift || "";
+    return $type eq EFI::SchedulerApi::Builder::Serial::TYPE;
+}
+
+sub getSerialScheduler {
+    return EFI::SchedulerApi::Builder::Serial::TYPE;
+}
+
+sub autoDetectScheduler {
+    return EFI::SchedulerApi::Builder::Slurm::TYPE          if `command -v sbatch`;
+    return EFI::SchedulerApi::Builder::Pbs::Torque::TYPE    if `command -v qsub`;
+    return EFI::SchedulerApi::Builder::Serial::TYPE;
 }
 
 sub getSubmitCmd {
@@ -147,8 +165,10 @@ sub getBuilder {
         $b = new EFI::SchedulerApi::Builder::Pbs::Torque(%args);
     } elsif ($self->{type} eq EFI::SchedulerApi::Builder::Pbs::Pro::TYPE) {
         $b = new EFI::SchedulerApi::Builder::Pbs::Pro(%args);
+    } elsif ($self->{type} eq EFI::SchedulerApi::Builder::Serial::TYPE) {
+        $b = new EFI::SchedulerApi::Builder::Serial(%args);
     } else {
-        die "Invalid scheduler type.";
+        die "Invalid scheduler type $self->{type}\n";
     }
 
     $b->queue($self->{queue}) if defined $self->{queue};

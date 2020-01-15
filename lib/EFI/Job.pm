@@ -19,7 +19,7 @@ use Getopt::Long qw(:config pass_through);
 use FindBin;
 
 use EFI::SchedulerApi;
-use EFI::Util qw(getSchedulerType getLmod);
+use EFI::Util qw(getLmod);
 use EFI::Util::System;
 use EFI::Config;
 use EFI::Constants;
@@ -62,6 +62,7 @@ sub new {
     if (not -f $configFile) {
         die "--config file parameter is required.\n";
     }
+    $configFile = abs_path($configFile);
 
     $self->{config_file} = $configFile;
     $self->{db} = {};
@@ -136,16 +137,14 @@ sub addClusterConfig {
     my $config = shift;
     my $conf = shift;
 
-    my $numSysCpu = getSystemSpec()->{num_cpu} - 1;
-    my $autoSched = getSchedulerType();
+    my $numSysCpu = getSystemSpec()->{num_cpu};
     my $defaultScratch = "/scratch";
 
     $conf->{np} = $config->{cluster}->{np} // $numSysCpu;
     $conf->{node_np} = $config->{cluster}->{node_np} // $numSysCpu;
     $conf->{queue} = $config->{cluster}->{queue} // "";
     $conf->{mem_queue} = $config->{cluster}->{mem_queue} // $conf->{queue};
-    $conf->{scheduler} = $config->{cluster}->{scheduler} // $autoSched;
-    $conf->{run_serial} = ($config->{cluster}->{serial} and $config->{cluster}->{serial} eq "yes") ? 1 : 0;
+    $conf->{scheduler} = $config->{cluster}->{scheduler} // "";
     $conf->{scratch_dir} = $config->{cluster}->{scratch_dir} // $defaultScratch;
     $conf->{max_queue_ram} = $config->{cluster}->{max_queue_ram} // 0;
     $conf->{max_mem_queue_ram} = $config->{cluster}->{max_mem_queue_ram} // 0;
@@ -156,8 +155,11 @@ sub addClusterConfig {
     my $resMethod = $config->{cluster}->{mem_res_method} // "set-queue";
     $resMethod = $resMethod eq "set-cores" ? SET_CORES : SET_QUEUE;
     $conf->{mem_res_method} = $resMethod;
+    
+    $conf->{scheduler} = EFI::SchedulerApi::validateSchedulerType($conf->{scheduler});
+    $conf->{run_serial} = EFI::SchedulerApi::isSerialScheduler($conf->{scheduler}) ? 1 : 0;
 
-    return "No queue is provided in configuration file." if not $conf->{queue};
+    return "No queue is provided in configuration file." if not $conf->{queue} and not $conf->{run_serial};
 }
 
 
@@ -195,10 +197,12 @@ sub validateOptions {
             $conf->{job_dir_arg_set} = 0;
         }
     }
-    $conf->{job_dir} = abs_path($conf->{job_dir});
+    $conf->{job_dir} = abs_path($conf->{job_dir}) // "";
 
     if ($conf->{serial_script}) {
         $self->{cluster}->{run_serial} = 1;
+        $self->{cluster}->{scheduler} = EFI::SchedulerApi::getSerialScheduler();
+        unlink $conf->{serial_script} if -f $conf->{serial_script};
     }
 
     return "";
@@ -542,7 +546,6 @@ sub createScheduler {
         queue => $self->{cluster}->{queue},
         resource => [1, 1, "35gb"],
         dry_run => $self->{cluster}->{dry_run},
-        run_serial => $self->{cluster}->{run_serial},
         output_base_dirpath => $logDir,
     );
     $schedArgs{default_wall_time} = $self->{cluster}->{default_wall_time} if $self->{cluster}->{default_wall_time};
