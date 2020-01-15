@@ -90,6 +90,21 @@ sub validateOptions {
     # Fourth mode
     $conf->{upload_file} = $parms->{"upload-file"} // "";
 
+    $conf->{output} = "$outputDir/$conf->{output}" if $conf->{output} !~ m%^/%;
+
+    if ($conf->{blast_seq} and -f $conf->{blast_seq}) {
+        my $seq = "";
+        my $result = open my $fh, "<", $conf->{blast_seq};
+        if ($result) {
+            while (<$fh>) {
+                s/^\s*(.*?)[\s\r\n]*$/$1/s;
+                $seq .= $_;
+            }
+            close $fh;
+        }
+        $conf->{blast_seq} = $seq;
+    }
+
     return "Requires one of --blast-seq, --id-file, --fasta-file, or --upload-file" if not -f $conf->{upload_file} and not $conf->{blast_seq} and not -f $conf->{id_file} and not -f $conf->{fasta_file};
     return "";
 }
@@ -120,7 +135,7 @@ sub getUsage {
     [--blast-seq <SEQ> [--evalue # --max-seq #]] [--id-file <FILE>] [--fasta-file <FILE>]
     [--upload-file <FILE>]
 
-    --diagram-file      the file to output arrow/diagram data to
+    --output            the file to output arrow/diagram data to
 
     # OPTION 1: provide a FASTA sequence and retrievel related sequences for GND viewer
     --blast-seq         the sequence for Option A, which uses BLAST to get similar sequences
