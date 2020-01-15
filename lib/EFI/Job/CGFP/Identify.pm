@@ -189,16 +189,15 @@ sub getGetClustersJob {
     $self->addStandardEnv($B);
 
     $B->addAction("$toolPath/unzip_file.pl --in $conf->{zipped_ssn_in} --out $conf->{ssn_in}") if $conf->{zipped_ssn_in};
-    $B->addAction("HASCLUSTERNUM=`head -2000 $conf->{ssn_in} | grep -m1 -e \"Cluster Number\" -e \"Singleton Number\"`");
-    $B->addAction("if [[ \$HASCLUSTERNUM == \"\" ]]; then");
-    $B->addAction("    echo \"ERROR: Cluster Number is not present in SSN\"");
+    $B->addAction("$conf->{tool_path}/get_clusters.pl --ssn $conf->{ssn_in} --accession-file $conf->{ssn_accession_file} --cluster-file $conf->{ssn_cluster_file} --sequence-file $conf->{ssn_sequence_file} $minSeqLenArg $maxSeqLenArg");
+    # Add this check because we disable set -e above for grep.
+    $B->addAction("if [ \$? == 10 ]; then");
+    $B->addAction("    echo \"ERROR: Cluster Number is not present in SSN\" 1>&2");
     $B->addAction("    touch $conf->{ssn_error_dir}/ssn_cl_num.failed");
     $B->addAction("    exit 1");
     $B->addAction("fi");
-    $B->addAction("$conf->{tool_path}/get_clusters.pl --ssn $conf->{ssn_in} --accession-file $conf->{ssn_accession_file} --cluster-file $conf->{ssn_cluster_file} --sequence-file $conf->{ssn_sequence_file} $minSeqLenArg $maxSeqLenArg");
-    # Add this check because we disable set -e above for grep.
-    $B->addAction("if [ $? != 0 ]; then");
-    $B->addAction("    echo \"ERROR: in get_clusters.pl\"");
+    $B->addAction("if [ \$? != 0 ]; then");
+    $B->addAction("    echo \"ERROR: in get_clusters.pl\" 1>&2");
     $B->addAction("    exit 1");
     $B->addAction("fi");
 
