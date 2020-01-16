@@ -3,12 +3,19 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 OPTS=""
 
-if [[ -z "$1" || "$1" == "colorssn" ]]; then
+J=$1
+
+if [[ -z "$J" ]]; then
+    echo "use one of all, colorssn, accession, analyze, blast, family, fasta, gnt, identify, quantify as test types"
+    exit
+fi
+
+if [[ "$J" == "all" || "$J" == "colorssn" ]]; then
     echo "RUNNING color_uniprot_domain"
     perl $DIR/color_uniprot_domain.pl $OPTS
 fi
 
-if [[ -z "$1" || "$1" == "accession" ]]; then
+if [[ "$J" == "all" || "$J" == "accession" ]]; then
     echo "RUNNING ssn_accession_domain_family"
     perl $DIR/ssn_accession_domain_family.pl $OPTS
     echo "RUNNING ssn_accession_domain_region"
@@ -21,13 +28,13 @@ if [[ -z "$1" || "$1" == "accession" ]]; then
     perl $DIR/ssn_accession_uniref90.pl $OPTS
 fi
 
-if [[ "$1" == "analyze" ]]; then
+if [[ "$J" == "analyze" ]]; then
     echo "RUNNING analyze"
     PARENT=ssn_family_uniprot_full perl $DIR/ssn_analyze_uniprot_full.pl $OPTS
     PARENT=ssn_family_uniprot_full perl $DIR/ssn_analyze_uniref50_full.pl $OPTS
 fi
 
-if [[ -z "$1" || "$1" == "blast" ]]; then
+if [[ "$J" == "all" || "$J" == "blast" ]]; then
    echo "RUNNING ssn_blast_uniprot_pfam_uniprot"
    perl $DIR/ssn_blast_uniprot_pfam_uniprot.pl $OPTS
    echo "RUNNING ssn_blast_uniprot_pfam_uniref50"
@@ -40,7 +47,7 @@ if [[ -z "$1" || "$1" == "blast" ]]; then
    perl $DIR/ssn_blast_uniref50.pl $OPTS
 fi
 
-if [[ -z "$1" || "$1" == "family" ]]; then
+if [[ "$J" == "all" || "$J" == "family" ]]; then
     echo "RUNNING ssn_family_uniprot_domain"
     perl $DIR/ssn_family_uniprot_domain.pl $OPTS
     echo "RUNNING ssn_family_uniprot_full"
@@ -51,7 +58,7 @@ if [[ -z "$1" || "$1" == "family" ]]; then
     perl $DIR/ssn_family_uniref50_full.pl $OPTS
 fi
 
-if [[ -z "$1" || "$1" == "fasta" ]]; then
+if [[ "$J" == "all" || "$J" == "fasta" ]]; then
     echo "RUNNING ssn_fasta_headers_family_uniprot"
     perl $DIR/ssn_fasta_headers_family_uniprot.pl $OPTS
     echo "RUNNING ssn_fasta_headers_family_uniref90"
@@ -62,19 +69,19 @@ if [[ -z "$1" || "$1" == "fasta" ]]; then
     perl $DIR/ssn_fasta_no_headers.pl $OPTS
 fi
 
-if [[ -z "$1" || "$1" == "gnt" ]]; then
+if [[ "$J" == "all" || "$J" == "gnt" ]]; then
     echo "RUNNING gnt_gnd"
     perl $DIR/gnt_gnd.pl $OPTS
     echo "RUNNING gnt_gnn"
     perl $DIR/gnt_gnn.pl $OPTS
 fi
 
-if [[ "$1" == "identify" ]]; then
+if [[ "$J" == "identify" ]]; then
     echo "RUNNING cgfp_identify"
     perl $DIR/cgfp_identify.pl $OPTS
 fi
-if [[ "$1" == "quantify" ]]; then
+if [[ "$J" == "quantify" ]]; then
     echo "RUNNING cgfp_quantify"
-    PARENT=cgfp_identfy perl $DIR/cgfp_quantify.pl $OPTS
+    PARENT=cgfp_identify perl $DIR/cgfp_quantify.pl $OPTS
 fi
 

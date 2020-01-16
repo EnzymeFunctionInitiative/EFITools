@@ -15,7 +15,7 @@ use Setup;
 
 my $testDir = $ENV{PARENT} // "";
 $testDir = "$TMP/$testDir" if $testDir;
-die "Require an existing job results directory" if not $testDir or not -d $testDir;
+die "Require an existing job results directory $testDir" if not $testDir or not -d $testDir;
 
 my $test = new Setup(getArgs(), {job_dir => $testDir});
 
@@ -28,7 +28,7 @@ $test->runTest($jobBuilder);
 sub getArgs {
     my @a = (
         "cgfp-quantify",
-        "--ssn-in", "$testDir/results/identify.xgmml",
+        "--ssn-in", "$testDir/output/identify.xgmml",
         "--ssn-out-name", "quantify.xgmml",
         "--quantify-dir", "quantify-test",
         "--metagenome-db", "hmp",
