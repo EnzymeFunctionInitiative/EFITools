@@ -62,11 +62,18 @@ if [[ -z "$1" || "$1" == "fasta" ]]; then
     perl $DIR/ssn_fasta_no_headers.pl $OPTS
 fi
 
-if [[ -z "$1" || "$1" == "identify" ]]; then
+if [[ -z "$1" || "$1" == "gnt" ]]; then
+    echo "RUNNING gnt_gnd"
+    perl $DIR/gnt_gnd.pl $OPTS
+    echo "RUNNING gnt_gnn"
+    perl $DIR/gnt_gnn.pl $OPTS
+fi
+
+if [[ "$1" == "identify" ]]; then
     echo "RUNNING cgfp_identify"
     perl $DIR/cgfp_identify.pl $OPTS
 fi
-if [[ -z "$1" || "$1" == "quantify" ]]; then
+if [[ "$1" == "quantify" ]]; then
     echo "RUNNING cgfp_quantify"
     PARENT=cgfp_identfy perl $DIR/cgfp_quantify.pl $OPTS
 fi
