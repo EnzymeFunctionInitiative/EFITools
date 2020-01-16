@@ -235,7 +235,7 @@ sub getBlastJob {
     print QUERY $conf->{blast_seq};
     close QUERY;
 
-    $self->requestResources($B, 1, 1, 4); #TODO: 70
+    $self->requestResources($B, 1, 1, $self->getMemorySize("diagram_blast"));
     map { $B->addAction($_); } $self->getEnvironment("gnt");
 
     $B->addAction("blastall -p blastp -i $seqFile -d $blastDb -m 8 -e $conf->{evalue} -b $conf->{max_seq} -o $blastOutFile");
@@ -260,7 +260,7 @@ sub getIdLookupJob {
 
     my $B = $self->getBuilder();
 
-    $self->requestResources($B, 1, 1, 4); #TODO: 10
+    $self->requestResources($B, 1, 1, $self->getMemorySize("diagram"));
     $B->addAction("$toolPath/create_diagram_db.pl --id-file $conf->{id_file} --db-file $conf->{output} --job-type $conf->{job_type} --title $conf->{title} --nb-size $conf->{nb_size} --do-id-mapping --config $configFile");
     $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
 
@@ -283,7 +283,7 @@ sub getFastaFileJob {
 
     my $tempIdFile = "$conf->{output}.temp-ids";
 
-    $self->requestResources($B, 1, 1, 4); #TODO: 10
+    $self->requestResources($B, 1, 1, $self->getMemorySize("diagram"));
     $B->addAction("$toolPath/extract_ids_from_fasta.pl --fasta-file $conf->{fasta_file} --output-file $tempIdFile --config $configFile");
     $B->addAction("$toolPath/create_diagram_db.pl --id-file $tempIdFile --db-file $conf->{output} --job-type $conf->{job_type} --title $conf->{title} --nb-size $conf->{nb_size} --do-id-mapping --config $configFile");
     $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
@@ -304,7 +304,7 @@ sub getUploadFileJob {
 
     my $B = $self->getBuilder();
     
-    $self->requestResources($B, 1, 1, 4);
+    $self->requestResources($B, 1, 1, $self->getMemorySize("diagram"));
     if ($conf->{upload_file} =~ m/\.zip$/i) {
         $B->addAction("$toolPath/unzip_file.pl --in $conf->{upload_file} --out $conf->{output} --out-ext sqlite 2> $conf->{error_file}");
     }
