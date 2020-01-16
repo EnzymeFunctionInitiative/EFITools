@@ -1,9 +1,12 @@
 #!/bin/bash
 
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-OPTS=""
-
 J=$1
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+source "$DIR/../environment.sh"
+
+OPTS=""
 
 if [[ -z "$J" ]]; then
     echo "use one of all, colorssn, accession, analyze, blast, family, fasta, gnt, identify, quantify as test types"
@@ -69,9 +72,11 @@ if [[ "$J" == "all" || "$J" == "fasta" ]]; then
     perl $DIR/ssn_fasta_no_headers.pl $OPTS
 fi
 
-if [[ "$J" == "all" || "$J" == "gnt" ]]; then
+if [[ "$J" == "all" || "$J" == "gnt" || "$J" == "gnd" ]]; then
     echo "RUNNING gnt_gnd"
     perl $DIR/gnt_gnd.pl $OPTS
+fi
+if [[ "$J" == "all" || "$J" == "gnt" || "$J" == "gnn" ]]; then
     echo "RUNNING gnt_gnn"
     perl $DIR/gnt_gnn.pl $OPTS
 fi
