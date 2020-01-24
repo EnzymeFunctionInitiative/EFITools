@@ -336,9 +336,7 @@ sub getColorSsnJob {
 
     my $B = $self->getBuilder();
     
-    my $ramReservation = computeRamReservation($self->{conf}->{color});
-    $ramReservation = 4; #TODO: compute deterministically
-    $self->requestResources($B, 1, 1, $ramReservation);
+    $self->requestResourcesByName($B, 1, 1, "color");
 
     map { $B->addAction($_); } $self->getEnvironment("est-color");
     

@@ -148,7 +148,6 @@ sub addClusterConfig {
     $conf->{scratch_dir} = $config->{cluster}->{scratch_dir} // $defaultScratch;
     $conf->{max_queue_ram} = $config->{cluster}->{max_queue_ram} // 0;
     $conf->{max_mem_queue_ram} = $config->{cluster}->{max_mem_queue_ram} // 0;
-    $conf->{default_wall_time} = $config->{cluster}->{default_wall_time} if $config->{cluster}->{default_wall_time};
 
     # set-cores == divide the requested amount of RAM by the max_queue_ram and set the number of CPU to that number.
     # set-queue == if > max_queue_ram, use mem_queue
@@ -309,7 +308,7 @@ sub createJobs {
     }
 
     my $job = $self->getBuilder();
-    $self->requestResources($job, 1, 1, $self->getMemorySize("fix_perms"));
+    $self->requestResourcesByName($job, 1, 1, "fix_perms");
     my $dir = $self->getJobDir();
     $job->addAction("find $dir -type d -exec chmod a+rx \\{\\} \\;");
     $job->addAction("find $dir -type f -exec chmod a+r \\{\\} \\;");
@@ -478,6 +477,7 @@ sub getHomePath {
 }
 
 
+#PRIVATE METHOD
 #TODO: build a bit of logic in here, so that if a single core is requested but max memory, that we
 #bounce this to the mem_queue.
 sub requestResources {
@@ -486,10 +486,10 @@ sub requestResources {
     my $numNode = shift;
     my $numCpu = shift;
     my $ram = shift;
-    my $useHighMem = shift || 0;
+    my $walltime = shift || 0;
 
     my $memQueue = $self->{cluster}->{mem_queue} . ($self->getScheduler->supportsMultiQueue() ? ",$self->{cluster}->{queue}" : "");
-    if ($useHighMem or $self->{cluster}->{mem_res_method} eq SET_QUEUE) {
+    if ($self->{cluster}->{mem_res_method} eq SET_QUEUE) {
         if ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram}) {
             $B->queue($memQueue);
         }
@@ -497,14 +497,32 @@ sub requestResources {
             $ram = $self->{cluster}->{max_mem_queue_ram};
         }
     }
-    if ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_CORES) {
+    if ($numCpu == 1 and $self->{cluster}->{mem_res_method} eq SET_CORES and
+        $self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram})
+    {
         $numCpu = int($ram / $self->{cluster}->{max_queue_ram} + 0.5);
     }
     if ($numCpu > $self->{cluster}->{node_np}) {
         $numNode = int($numCpu / $self->{cluster}->{node_np} + 0.5);
         $numCpu = int($numCpu / $numNode + 0.5); # Divide equally among systems
     }
-    $B->resource($numNode, $numCpu, "${ram}gb");
+    my @args = ($numNode, $numCpu, "${ram}gb");
+    push @args, $walltime if $walltime;
+    $B->resource(@args);
+}
+
+
+sub requestResourcesByName {
+    my $self = shift;
+    my $B = shift;
+    my $numNode = shift;
+    my $numCpu = shift;
+    my $name = shift;
+
+    my $ram = $self->getMemorySize($name);
+    my $walltime = $self->getWalltime($name);
+
+    return $self->requestResources($B, $numNode, $numCpu, $ram, $walltime);
 }
 
 
@@ -513,6 +531,14 @@ sub getMemorySize {
     my $type = shift;
     my $seqCount = shift || 0;
     return $self->{cluster}->{resources}->getMemorySize($type, $seqCount);
+}
+
+
+sub getWalltime {
+    my $self = shift;
+    my $type = shift;
+    my $seqCount = shift || 0;
+    return $self->{cluster}->{resources}->getWalltime($type, $seqCount);
 }
 
 
@@ -548,7 +574,6 @@ sub createScheduler {
         dry_run => $self->{cluster}->{dry_run},
         output_base_dirpath => $logDir,
     );
-    $schedArgs{default_wall_time} = $self->{cluster}->{default_wall_time} if $self->{cluster}->{default_wall_time};
     $schedArgs{extra_headers} = $self->{modules}->{group}->{headers} if $self->{modules}->{group}->{headers};
     my $S = new EFI::SchedulerApi(%schedArgs);
 

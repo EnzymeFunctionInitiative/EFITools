@@ -68,11 +68,28 @@ sub getMemorySize {
     my $self = shift;
     my $jobType = shift;
     my $seqCount = shift || 0;
+    return $self->getFuncVal("mem", $jobType, $seqCount);
+}
 
-    if ($self->{mem}->{$jobType}) {
-        return $self->{mem}->{$jobType}($seqCount);
+
+sub getWalltime {
+    my $self = shift;
+    my $jobType = shift;
+    my $seqCount = shift || 0;
+    return $self->getFuncVal("walltime", $jobType, $seqCount);
+}
+
+
+sub getFuncVal {
+    my $self = shift;
+    my $funcKey = shift;
+    my $jobType = shift;
+    my $seqCount = shift || 0;
+
+    if ($self->{$funcKey}->{$jobType}) {
+        return $self->{$funcKey}->{$jobType}($seqCount);
     } else {
-        return $self->{mem}->{DEFAULT}($seqCount);
+        return $self->{$funcKey}->{DEFAULT}($seqCount);
     }
 }
 

@@ -361,8 +361,7 @@ sub getGnnJob {
     my $B = $self->getBuilder();
     
     my $ramReservation = computeRamReservation($conf);
-    $ramReservation = $self->getMemorySize("gnn"); #TODO: compute deterministically
-    $self->requestResources($B, 1, 1, $ramReservation);
+    $self->requestResourcesByName($B, 1, 1, "gnn");
 
     map { $B->addAction($_); } $self->getEnvironment("gnt");
     

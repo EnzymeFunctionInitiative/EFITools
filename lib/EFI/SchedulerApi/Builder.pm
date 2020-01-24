@@ -57,7 +57,7 @@ sub queue {
 }
 
 sub resource {
-    my ($self, $numNodes, $procPerNode, $ram) = @_;
+    my ($self, $numNodes, $procPerNode, $ram, $walltime) = @_;
 }
 
 sub dependency {

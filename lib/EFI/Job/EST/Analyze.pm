@@ -198,7 +198,7 @@ sub createGetAnnotationsJob {
     my $generateDir = $self->getOutputDir();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("get_annotations"));
+    $self->requestResourcesByName($B, 1, 1, "get_annotations");
 
     #TODO: right now if you useAnnoSpec, we actually just include the bare minimum.  In the future allow the user to determine which annotations to include.
     if ($conf->{use_anno_spec}) {
@@ -237,7 +237,7 @@ sub createFilterBlastJob {
     my $generateDir = $self->getOutputDir();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("filterblast"));
+    $self->requestResourcesByName($B, 1, 1, "filterblast");
 
     $self->addStandardEnv($B);
 
@@ -268,7 +268,7 @@ sub createFullXgmmlJob {
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("fullxgmml"));
+    $self->requestResourcesByName($B, 1, 1, "fullxgmml");
 
     $self->addStandardEnv($B);
 
@@ -291,7 +291,7 @@ sub createRepNodeXgmmlJob {
     my $serialMode = $self->getSerialMode();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("cdhit"));
+    $self->requestResourcesByName($B, 1, 1, "cdhit");
     $self->addStandardEnv($B);
 
     if ($serialMode) {
@@ -323,7 +323,7 @@ sub createFixJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("fix"));
+    $self->requestResourcesByName($B, 1, 1, "fix");
 
     $B->addAction("sleep 5");
 
@@ -339,7 +339,7 @@ sub createStatsJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("stats"));
+    $self->requestResourcesByName($B, 1, 1, "stats");
     
     $self->addStandardEnv($B);
 
@@ -357,7 +357,7 @@ sub createCleanupJob {
     my $conf = $self->{conf}->{analyze};
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("cleanup"));
+    $self->requestResourcesByName($B, 1, 1, "cleanup");
     
     $B->addAction("rm $conf->{output_dir}/cdhit*");
     $B->addAction("rm $conf->{output_dir}/*.sh");
