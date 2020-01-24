@@ -19,7 +19,7 @@ use Getopt::Long qw(:config pass_through);
 use FindBin;
 
 use EFI::SchedulerApi;
-use EFI::Util qw(getSchedulerType getLmod);
+use EFI::Util qw(getLmod);
 use EFI::Util::System;
 use EFI::Config;
 use EFI::Constants;
@@ -62,6 +62,7 @@ sub new {
     if (not -f $configFile) {
         die "--config file parameter is required.\n";
     }
+    $configFile = abs_path($configFile);
 
     $self->{config_file} = $configFile;
     $self->{db} = {};
@@ -136,28 +137,28 @@ sub addClusterConfig {
     my $config = shift;
     my $conf = shift;
 
-    my $numSysCpu = getSystemSpec()->{num_cpu} - 1;
-    my $autoSched = getSchedulerType();
+    my $numSysCpu = getSystemSpec()->{num_cpu};
     my $defaultScratch = "/scratch";
 
     $conf->{np} = $config->{cluster}->{np} // $numSysCpu;
     $conf->{node_np} = $config->{cluster}->{node_np} // $numSysCpu;
     $conf->{queue} = $config->{cluster}->{queue} // "";
     $conf->{mem_queue} = $config->{cluster}->{mem_queue} // $conf->{queue};
-    $conf->{scheduler} = $config->{cluster}->{scheduler} // $autoSched;
-    $conf->{run_serial} = ($config->{cluster}->{serial} and $config->{cluster}->{serial} eq "yes") ? 1 : 0;
+    $conf->{scheduler} = $config->{cluster}->{scheduler} // "";
     $conf->{scratch_dir} = $config->{cluster}->{scratch_dir} // $defaultScratch;
     $conf->{max_queue_ram} = $config->{cluster}->{max_queue_ram} // 0;
     $conf->{max_mem_queue_ram} = $config->{cluster}->{max_mem_queue_ram} // 0;
-    $conf->{default_wall_time} = $config->{cluster}->{default_wall_time} if $config->{cluster}->{default_wall_time};
 
     # set-cores == divide the requested amount of RAM by the max_queue_ram and set the number of CPU to that number.
     # set-queue == if > max_queue_ram, use mem_queue
     my $resMethod = $config->{cluster}->{mem_res_method} // "set-queue";
     $resMethod = $resMethod eq "set-cores" ? SET_CORES : SET_QUEUE;
     $conf->{mem_res_method} = $resMethod;
+    
+    $conf->{scheduler} = EFI::SchedulerApi::validateSchedulerType($conf->{scheduler});
+    $conf->{run_serial} = EFI::SchedulerApi::isSerialScheduler($conf->{scheduler}) ? 1 : 0;
 
-    return "No queue is provided in configuration file." if not $conf->{queue};
+    return "No queue is provided in configuration file." if not $conf->{queue} and not $conf->{run_serial};
 }
 
 
@@ -195,7 +196,13 @@ sub validateOptions {
             $conf->{job_dir_arg_set} = 0;
         }
     }
-    $conf->{job_dir} = abs_path($conf->{job_dir});
+    $conf->{job_dir} = abs_path($conf->{job_dir}) // "";
+
+    if ($conf->{serial_script}) {
+        $self->{cluster}->{run_serial} = 1;
+        $self->{cluster}->{scheduler} = EFI::SchedulerApi::getSerialScheduler();
+        unlink $conf->{serial_script} if -f $conf->{serial_script};
+    }
 
     return "";
 }
@@ -215,7 +222,7 @@ sub getUsage {
     return getGlobalUsageArgs() . "\n\n" . getGlobalUsage(admin => 1);
 }
 sub getGlobalUsageArgs {
-    return "[--job-id # --job-dir <JOB_DIR> --memory <CONFIG> --walltime <CONFIG>]";
+    return "[--job-id # --job-dir <JOB_DIR> --memory <CONFIG> --walltime <CONFIG> --config <FILE>]";
 }
 sub getGlobalUsage {
     my $admin = shift || 0;
@@ -229,6 +236,9 @@ sub getGlobalUsage {
                         will be stored).
     --memory            the memory profile to use, if specified in the config file.
     --walltime          the walltime profile to use, if specified in the config file.
+    --config            path to config file; by default this looks for a 'efi.conf' file in the
+                        conf/ directory of EFITools. This can be overridden by adding this
+                        parameter.
 HELP
     if ($admin) {
         $help .= <<HELP;
@@ -243,15 +253,18 @@ ADVANCED OPTIONS: (only for administrators for testing purposes)
     --keep-temp         adding this flag will not remove intermediate files; useful for debugging;
                         defaults to true (remove all intermediate files)
     --serial-script     output all of the cluster jobs into a single file that can be run on a
-                        single cluster node, or on a stand-alone system.
+                        single cluster node, or on a stand-alone system. If serial mode is
+                        enabled and this is not provided, then output is written to a script
+                        file in scripts/.  If serial mode is not enabled in the conf file and
+                        this is provided, it behaves like serial mode for the run of this script.
 HELP
     }
     return $help;
 }
-# This should be overridden in each job type.
+# Each sub class saves it's job type into a global TYPE key.
 sub getJobType {
     my $self = shift;
-    return "";
+    return $self->{TYPE} // "";
 }
 # This can be overridden to indicate that results in the current directory should be used.
 sub getUseResults {
@@ -259,14 +272,14 @@ sub getUseResults {
     return 0;
 }
 # This must be overridden in each job type.
-sub createJobs {
+sub makeJobs {
     my $self = shift;
     return ();
 }
 # This can be overridden so specific job types can create extra directories as needed, but this function MUST be called by invoking $self->SUPER::getJobInfo().
 sub createJobStructure {
     my $self = shift;
-    my $dir = $self->{conf}->{job_dir};
+    my $dir = $self->getJobDir();
     my $outputDir = "$dir/output";
     mkdir $outputDir;
     my $scriptDir = "$dir/scripts";
@@ -276,6 +289,33 @@ sub createJobStructure {
     my $resultsDir = "$dir/results";
     mkdir $resultsDir;
     return ($scriptDir, $logDir, $outputDir);
+}
+
+
+# This is the public interface.  It does post-processing after the job objects are created
+# before returning them to be executed.
+sub createJobs {
+    my $self = shift;
+    my @jobs = $self->makeJobs();
+    if ($self->{cluster}->{run_serial}) {
+        my $name = $self->getJobType() // "efi";
+        map {
+            my $str = "#" x 10 . uc(" $_->{name} ") . "#" x (88-length($_->{name}));
+            $_->{job}->prependAction("echo \"$str\"");
+            $_->{job}->prependAction("\n#\n" . $str . "\n#");
+            $_->{name} = $name;
+        } @jobs;
+    }
+
+    my $job = $self->getBuilder();
+    $self->requestResourcesByName($job, 1, 1, "fix_perms");
+    my $dir = $self->getJobDir();
+    $job->addAction("find $dir -type d -exec chmod a+rx \\{\\} \\;");
+    $job->addAction("find $dir -type f -exec chmod a+r \\{\\} \\;");
+
+    push @jobs, {job => $job, deps => [map { $_->{job} } @jobs], name => "fix_perms"};
+
+    return @jobs;
 }
 
 
@@ -333,7 +373,7 @@ sub setOutputDirName {
 
 sub getOutputDir {
     my $self = shift;
-    my $dir = $self->{conf}->{job_dir};
+    my $dir = $self->getJobDir();
     $dir .= "/" . $self->{conf}->{dir_name} if $self->{conf}->{dir_name};
     return $dir;
 }
@@ -341,7 +381,7 @@ sub getOutputDir {
 
 sub getResultsDir {
     my $self = shift;
-    my $dir = $self->{conf}->{job_dir};
+    my $dir = $self->getJobDir();
     $dir .= "/" . $self->{conf}->{results_dir_name} if $self->{conf}->{results_dir_name};
     return $dir;
 }
@@ -349,7 +389,7 @@ sub getResultsDir {
 
 sub getHasResults {
     my $self = shift;
-    my $dir = $self->{conf}->{job_dir};
+    my $dir = $self->getJobDir();
     $dir .= "/" . $self->{conf}->{dir_name};
     return -d $dir;
 }
@@ -363,14 +403,26 @@ sub getWantsHelp {
 
 sub getLogDir {
     my $self = shift;
-    my $dir = $self->{conf}->{job_dir} . "/log";
+    my $dir = $self->getJobDir() . "/log";
     return $dir;
 }
 
 
 sub getSerialScript {
     my $self = shift;
-    return $self->{conf}->{serial_script};
+    if ($self->{conf}->{serial_script}) {
+        return $self->{conf}->{serial_script};
+    } else {
+        my $scriptDir = $self->getJobDir() . "/scripts";
+        mkdir $scriptDir if not -d $scriptDir;
+        return "$scriptDir/$self->{TYPE}.sh";
+    }
+}
+
+
+sub getSerialMode {
+    my $self = shift;
+    return $self->{cluster}->{run_serial} ? 1 : 0;
 }
 
 
@@ -425,6 +477,7 @@ sub getHomePath {
 }
 
 
+#PRIVATE METHOD
 #TODO: build a bit of logic in here, so that if a single core is requested but max memory, that we
 #bounce this to the mem_queue.
 sub requestResources {
@@ -433,24 +486,43 @@ sub requestResources {
     my $numNode = shift;
     my $numCpu = shift;
     my $ram = shift;
-    my $useHighMem = shift || 0;
+    my $walltime = shift || 0;
 
-    #TODO: needs testing!!!!
     my $memQueue = $self->{cluster}->{mem_queue} . ($self->getScheduler->supportsMultiQueue() ? ",$self->{cluster}->{queue}" : "");
-    if ($useHighMem or
-        ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_QUEUE))
-    {
-        $B->queue($memQueue);
+    if ($self->{cluster}->{mem_res_method} eq SET_QUEUE) {
+        if ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram}) {
+            $B->queue($memQueue);
+        }
+        if ($self->{cluster}->{max_mem_queue_ram} and $ram > $self->{cluster}->{max_mem_queue_ram}) {
+            $ram = $self->{cluster}->{max_mem_queue_ram};
+        }
     }
-    if ($self->{cluster}->{max_mem_queue_ram} and $ram > $self->{cluster}->{max_mem_queue_ram}) {
-        $ram = $self->{cluster}->{max_mem_queue_ram};
-    } elsif ($self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram} and $self->{cluster}->{mem_res_method} eq SET_CORES) {
+    if ($numCpu == 1 and $self->{cluster}->{mem_res_method} eq SET_CORES and
+        $self->{cluster}->{max_queue_ram} and $ram > $self->{cluster}->{max_queue_ram})
+    {
         $numCpu = int($ram / $self->{cluster}->{max_queue_ram} + 0.5);
     }
     if ($numCpu > $self->{cluster}->{node_np}) {
         $numNode = int($numCpu / $self->{cluster}->{node_np} + 0.5);
+        $numCpu = int($numCpu / $numNode + 0.5); # Divide equally among systems
     }
-    $B->resource($numNode, $numCpu, "${ram}gb");
+    my @args = ($numNode, $numCpu, "${ram}gb");
+    push @args, $walltime if $walltime;
+    $B->resource(@args);
+}
+
+
+sub requestResourcesByName {
+    my $self = shift;
+    my $B = shift;
+    my $numNode = shift;
+    my $numCpu = shift;
+    my $name = shift;
+
+    my $ram = $self->getMemorySize($name);
+    my $walltime = $self->getWalltime($name);
+
+    return $self->requestResources($B, $numNode, $numCpu, $ram, $walltime);
 }
 
 
@@ -459,6 +531,14 @@ sub getMemorySize {
     my $type = shift;
     my $seqCount = shift || 0;
     return $self->{cluster}->{resources}->getMemorySize($type, $seqCount);
+}
+
+
+sub getWalltime {
+    my $self = shift;
+    my $type = shift;
+    my $seqCount = shift || 0;
+    return $self->{cluster}->{resources}->getWalltime($type, $seqCount);
 }
 
 
@@ -492,10 +572,8 @@ sub createScheduler {
         queue => $self->{cluster}->{queue},
         resource => [1, 1, "35gb"],
         dry_run => $self->{cluster}->{dry_run},
-        run_serial => $self->{cluster}->{run_serial},
         output_base_dirpath => $logDir,
     );
-    $schedArgs{default_wall_time} = $self->{cluster}->{default_wall_time} if $self->{cluster}->{default_wall_time};
     $schedArgs{extra_headers} = $self->{modules}->{group}->{headers} if $self->{modules}->{group}->{headers};
     my $S = new EFI::SchedulerApi(%schedArgs);
 

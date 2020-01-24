@@ -10,7 +10,6 @@ use Getopt::Long;
 use lib "$FindBin::Bin/../../lib";
 
 use EFI::SchedulerApi;
-use EFI::Util qw(getSchedulerType usesSlurm);
 use EFI::Util::FileHandle;
 use EFI::Database;
 use EFI::Config qw(database_configure parseConfigFile);
@@ -181,9 +180,8 @@ my $InterproLocation = $config->{build}->{interpro_url};
 my $TaxonomyLocation = $config->{build}->{taxonomy_url};
 
 # Set up the scheduler API.
-$scheduler = "slurm" if not $scheduler and usesSlurm();
-my $schedType = getSchedulerType($scheduler);
-my $S = new EFI::SchedulerApi('type' => $schedType, 'queue' => $queue, 'resource' => [1, 1, '100gb'],
+$scheduler = "" if not $scheduler;
+my $S = new EFI::SchedulerApi('type' => $scheduler, 'queue' => $queue, 'resource' => [1, 1, '100gb'],
     'default_working_dir' => $BuildDir, 'dryrun' => $dryRun, 'abort_script_on_action_fail' => 0);
 
 

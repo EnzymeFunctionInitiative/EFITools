@@ -33,6 +33,7 @@ sub new {
     my ($conf, $errors) = validateOptions($parms, $self);
 
     $self->{conf}->{fasta} = $conf;
+    $self->{TYPE} = JOB_TYPE;
 
     push @{$self->{startup_errors}}, @$errors;
 

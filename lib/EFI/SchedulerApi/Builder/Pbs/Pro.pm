@@ -86,10 +86,6 @@ sub resource {
         $wallTime = sprintf("%02d:%02d:%02d", $h, $m, $s);
     }
     
-    #TODO:
-    # REMOVE THIS HARDCODED 4 GB parameter
-    $ram = 4;
-
     my $mem = defined $ram ? "mem=$ram" : "mem=4";
     $mem .= "gb" if $mem !~ m/gb$/i;
 

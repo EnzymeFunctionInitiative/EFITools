@@ -42,6 +42,8 @@ sub new {
     if (not $err) {
         setupDefaults($self, $conf);
     }
+    
+    $self->{TYPE} = JOB_TYPE;
 
     return $self;
 }
@@ -148,7 +150,7 @@ sub getJobInfo {
 }
 
 
-sub createJobs {
+sub makeJobs {
     my $self = shift;
     my $conf = $self->{conf}->{sb};
     
@@ -183,20 +185,19 @@ sub getGetClustersJob {
 
     my $B = $self->getBuilder();
     $B->setScriptAbortOnError(0); # grep causes the script to abort if we have set -e in the script.
-    $self->requestResources($B, 1, 1, $self->getMemorySize("sb_get_clusters"));
+    $self->requestResourcesByName($B, 1, 1, "sb_get_clusters");
     $self->addStandardEnv($B);
 
     $B->addAction("$toolPath/unzip_file.pl --in $conf->{zipped_ssn_in} --out $conf->{ssn_in}") if $conf->{zipped_ssn_in};
-    $B->addAction("HASCLUSTERNUM=`head -2000 $conf->{ssn_in} | grep -m1 -e \"Cluster Number\" -e \"Singleton Number\"`");
-    $B->addAction("if [[ \$HASCLUSTERNUM == \"\" ]]; then");
-    $B->addAction("    echo \"ERROR: Cluster Number is not present in SSN\"");
+    $B->addAction("$conf->{tool_path}/get_clusters.pl --ssn $conf->{ssn_in} --accession-file $conf->{ssn_accession_file} --cluster-file $conf->{ssn_cluster_file} --sequence-file $conf->{ssn_sequence_file} $minSeqLenArg $maxSeqLenArg");
+    # Add this check because we disable set -e above for grep.
+    $B->addAction("if [ \$? == 10 ]; then");
+    $B->addAction("    echo \"ERROR: Cluster Number is not present in SSN\" 1>&2");
     $B->addAction("    touch $conf->{ssn_error_dir}/ssn_cl_num.failed");
     $B->addAction("    exit 1");
     $B->addAction("fi");
-    $B->addAction("$conf->{tool_path}/get_clusters.pl --ssn $conf->{ssn_in} --accession-file $conf->{ssn_accession_file} --cluster-file $conf->{ssn_cluster_file} --sequence-file $conf->{ssn_sequence_file} $minSeqLenArg $maxSeqLenArg");
-    # Add this check because we disable set -e above for grep.
-    $B->addAction("if [ $? != 0 ]; then");
-    $B->addAction("    echo \"ERROR: in get_clusters.pl\"");
+    $B->addAction("if [ \$? != 0 ]; then");
+    $B->addAction("    echo \"ERROR: in get_clusters.pl\" 1>&2");
     $B->addAction("    exit 1");
     $B->addAction("fi");
 
@@ -226,7 +227,7 @@ sub getFastaJob {
     # Get the FASTA files from the database
     
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("sb_get_fasta"));
+    $self->requestResourcesByName($B, 1, 1, "sb_get_fasta");
     $self->addStandardEnv($B);
 
     $B->addAction("sort $conf->{ssn_accession_file} > $sortedAcc");
@@ -275,7 +276,7 @@ sub getIdentifyJob {
     my $diamondSensArg = ($conf->{use_diamond} and $conf->{diamond_sens}) ? "--diamond-sensitivity $conf->{diamond_sens} " : "";
     
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, $np, $self->getMemorySize("sb_identify"));
+    $self->requestResourcesByName($B, 1, $np, "sb_identify");
     $self->addStandardEnv($B);
 
     $B->addAction("python $sbIdentifyApp --threads $np --goi $conf->{fasta_file} --refdb $seqDbPath --markers $conf->{sb_marker_file} --tmp $conf->{sb_output_dir} $searchTypeArg $cdhitSidArg $consThreshArg $diamondSensArg");
@@ -302,7 +303,7 @@ sub getXgmmlJob {
     
     my $colorFileArg = $conf->{color_file} ? "--color-file $conf->{color_file}" : "";
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("sb_xgmml"));
+    $self->requestResourcesByName($B, 1, 1, "sb_xgmml");
     $self->addStandardEnv($B);
 
     $B->addAction("$conf->{tool_path}/create_metadata.pl " . join(" ", @metaParams));

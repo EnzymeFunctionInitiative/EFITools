@@ -32,6 +32,7 @@ sub new {
     my $conf = validateOptions($parms);
 
     $self->{conf}->{option_e} = $conf;
+    $self->{TYPE} = JOB_TYPE;
 
     return $self;
 }

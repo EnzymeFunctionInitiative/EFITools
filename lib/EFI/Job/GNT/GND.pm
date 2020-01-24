@@ -55,6 +55,7 @@ sub new {
     }
 
     $self->{conf}->{gnd} = $conf;
+    $self->{TYPE} = JOB_TYPE;
 
     return $self;
 }
@@ -89,6 +90,21 @@ sub validateOptions {
     # Fourth mode
     $conf->{upload_file} = $parms->{"upload-file"} // "";
 
+    $conf->{output} = "$outputDir/$conf->{output}" if $conf->{output} !~ m%^/%;
+
+    if ($conf->{blast_seq} and -f $conf->{blast_seq}) {
+        my $seq = "";
+        my $result = open my $fh, "<", $conf->{blast_seq};
+        if ($result) {
+            while (<$fh>) {
+                s/^\s*(.*?)[\s\r\n]*$/$1/s;
+                $seq .= $_;
+            }
+            close $fh;
+        }
+        $conf->{blast_seq} = $seq;
+    }
+
     return "Requires one of --blast-seq, --id-file, --fasta-file, or --upload-file" if not -f $conf->{upload_file} and not $conf->{blast_seq} and not -f $conf->{id_file} and not -f $conf->{fasta_file};
     return "";
 }
@@ -119,7 +135,7 @@ sub getUsage {
     [--blast-seq <SEQ> [--evalue # --max-seq #]] [--id-file <FILE>] [--fasta-file <FILE>]
     [--upload-file <FILE>]
 
-    --diagram-file      the file to output arrow/diagram data to
+    --output            the file to output arrow/diagram data to
 
     # OPTION 1: provide a FASTA sequence and retrievel related sequences for GND viewer
     --blast-seq         the sequence for Option A, which uses BLAST to get similar sequences
@@ -174,7 +190,7 @@ sub getJobInfo {
 }
 
 
-sub createJobs {
+sub makeJobs {
     my $self = shift;
     my $conf = $self->{conf}->{gnd};
     
@@ -219,7 +235,7 @@ sub getBlastJob {
     print QUERY $conf->{blast_seq};
     close QUERY;
 
-    $self->requestResources($B, 1, 1, 4); #TODO: 70
+    $self->requestResourcesByName($B, 1, 1, "diagram_blast");
     map { $B->addAction($_); } $self->getEnvironment("gnt");
 
     $B->addAction("blastall -p blastp -i $seqFile -d $blastDb -m 8 -e $conf->{evalue} -b $conf->{max_seq} -o $blastOutFile");
@@ -244,7 +260,7 @@ sub getIdLookupJob {
 
     my $B = $self->getBuilder();
 
-    $self->requestResources($B, 1, 1, 4); #TODO: 10
+    $self->requestResourcesByName($B, 1, 1, "diagram");
     $B->addAction("$toolPath/create_diagram_db.pl --id-file $conf->{id_file} --db-file $conf->{output} --job-type $conf->{job_type} --title $conf->{title} --nb-size $conf->{nb_size} --do-id-mapping --config $configFile");
     $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
 
@@ -267,7 +283,7 @@ sub getFastaFileJob {
 
     my $tempIdFile = "$conf->{output}.temp-ids";
 
-    $self->requestResources($B, 1, 1, 4); #TODO: 10
+    $self->requestResourcesByName($B, 1, 1, "diagram");
     $B->addAction("$toolPath/extract_ids_from_fasta.pl --fasta-file $conf->{fasta_file} --output-file $tempIdFile --config $configFile");
     $B->addAction("$toolPath/create_diagram_db.pl --id-file $tempIdFile --db-file $conf->{output} --job-type $conf->{job_type} --title $conf->{title} --nb-size $conf->{nb_size} --do-id-mapping --config $configFile");
     $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
@@ -288,7 +304,7 @@ sub getUploadFileJob {
 
     my $B = $self->getBuilder();
     
-    $self->requestResources($B, 1, 1, 4);
+    $self->requestResourcesByName($B, 1, 1, "diagram");
     if ($conf->{upload_file} =~ m/\.zip$/i) {
         $B->addAction("$toolPath/unzip_file.pl --in $conf->{upload_file} --out $conf->{output} --out-ext sqlite 2> $conf->{error_file}");
     }

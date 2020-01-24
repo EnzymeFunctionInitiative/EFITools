@@ -53,15 +53,12 @@ sub new {
     push @{$self->{startup_errors}}, "Output directory and results must exist to run analyze." if not -f $flagFile;
 
     $self->{conf}->{analyze} = $conf;
+    $self->{TYPE} = JOB_TYPE;
 
     return $self;
 }
 
 
-sub getJobType {
-    my $self = shift;
-    return JOB_TYPE;
-}
 sub getUseResults {
     my $self = shift;
     return 1;
@@ -159,7 +156,7 @@ sub setupDefaults {
 }
 
 
-sub createJobs {
+sub makeJobs {
     my $self = shift;
 
     my @jobs;
@@ -201,7 +198,7 @@ sub createGetAnnotationsJob {
     my $generateDir = $self->getOutputDir();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("get_annotations"));
+    $self->requestResourcesByName($B, 1, 1, "get_annotations");
 
     #TODO: right now if you useAnnoSpec, we actually just include the bare minimum.  In the future allow the user to determine which annotations to include.
     if ($conf->{use_anno_spec}) {
@@ -240,7 +237,7 @@ sub createFilterBlastJob {
     my $generateDir = $self->getOutputDir();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("filterblast"));
+    $self->requestResourcesByName($B, 1, 1, "filterblast");
 
     $self->addStandardEnv($B);
 
@@ -271,7 +268,7 @@ sub createFullXgmmlJob {
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("fullxgmml"));
+    $self->requestResourcesByName($B, 1, 1, "fullxgmml");
 
     $self->addStandardEnv($B);
 
@@ -289,20 +286,30 @@ sub createRepNodeXgmmlJob {
     my $configFile = $self->getConfigFile();
     my $toolPath = $self->getToolPath();
 
-    my $outFile = "$conf->{output_dir}/$conf->{file_name}repnode-\${CDHIT}_ssn.xgmml";
     my $seqsArg = $conf->{include_sequences} ? "--include-sequences" : "";
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
+    my $serialMode = $self->getSerialMode();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("cdhit"));
-    $B->jobArray("40-100:5");
+    $self->requestResourcesByName($B, 1, 1, "cdhit");
     $self->addStandardEnv($B);
 
-    $B->addAction("CDHIT=\$(echo \"scale=2; {JOB_ARRAYID}/100\" |bc -l)");
-    
-    $B->addAction("cd-hit -n 2 -s 1 -i $conf->{output_dir}/sequences.fa -o $conf->{output_dir}/cdhit\$CDHIT -c \$CDHIT -d 0");
-    $B->addAction("$toolPath/make_repnode_ssn.pl --blast $conf->{blast_file} --cdhit $conf->{output_dir}/cdhit\$CDHIT.clstr --fasta $conf->{output_dir}/sequences.fa --struct $conf->{anno_file} --out $outFile --title=\"$conf->{title}\" --dbver $conf->{dbver} --maxfull $conf->{maxfull} $seqsArg $useMinArg");
-    $B->addAction("zip -j $outFile.zip $outFile");
+    if ($serialMode) {
+        for (my $pct = 40; $pct <= 100; $pct += 5) {
+            (my $fmt = sprintf("%.2f", $pct / 100)) =~ s/^0//;
+            my $outFile = "$conf->{output_dir}/$conf->{file_name}repnode-${fmt}_ssn.xgmml";
+            $B->addAction("cd-hit -n 2 -s 1 -i $conf->{output_dir}/sequences.fa -o $conf->{output_dir}/cdhit$fmt -c $fmt -d 0");
+            $B->addAction("$toolPath/make_repnode_ssn.pl --blast $conf->{blast_file} --cdhit $conf->{output_dir}/cdhit$fmt.clstr --fasta $conf->{output_dir}/sequences.fa --struct $conf->{anno_file} --out $outFile --title=\"$conf->{title}\" --dbver $conf->{dbver} --maxfull $conf->{maxfull} $seqsArg $useMinArg");
+            $B->addAction("zip -j $outFile.zip $outFile");
+        }
+    } else {
+        my $outFile = "$conf->{output_dir}/$conf->{file_name}repnode-\${CDHIT}_ssn.xgmml";
+        $B->jobArray("40-100:5");
+        $B->addAction("CDHIT=\$(echo \"scale=2; {JOB_ARRAYID}/100\" |bc -l)");
+        $B->addAction("cd-hit -n 2 -s 1 -i $conf->{output_dir}/sequences.fa -o $conf->{output_dir}/cdhit\$CDHIT -c \$CDHIT -d 0");
+        $B->addAction("$toolPath/make_repnode_ssn.pl --blast $conf->{blast_file} --cdhit $conf->{output_dir}/cdhit\$CDHIT.clstr --fasta $conf->{output_dir}/sequences.fa --struct $conf->{anno_file} --out $outFile --title=\"$conf->{title}\" --dbver $conf->{dbver} --maxfull $conf->{maxfull} $seqsArg $useMinArg");
+        $B->addAction("zip -j $outFile.zip $outFile");
+    }
 
     return $B;
 }
@@ -316,7 +323,7 @@ sub createFixJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("fix"));
+    $self->requestResourcesByName($B, 1, 1, "fix");
 
     $B->addAction("sleep 5");
 
@@ -332,7 +339,7 @@ sub createStatsJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("stats"));
+    $self->requestResourcesByName($B, 1, 1, "stats");
     
     $self->addStandardEnv($B);
 
@@ -350,7 +357,7 @@ sub createCleanupJob {
     my $conf = $self->{conf}->{analyze};
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("cleanup"));
+    $self->requestResourcesByName($B, 1, 1, "cleanup");
     
     $B->addAction("rm $conf->{output_dir}/cdhit*");
     $B->addAction("rm $conf->{output_dir}/*.sh");

@@ -36,6 +36,14 @@ $seqFile = "" if not defined $seqFile;
 $minSeqLen = 0 if not defined $minSeqLen;
 $maxSeqLen = 1000000 if not defined $maxSeqLen;
 
+my $hasClusterNum = getHasClusterNum($ssn);
+
+if (not $hasClusterNum) {
+    print STDERR "Input SSN must have the 'Cluster Number' node attribute; please run the SSN through the Color SSN utility first.\n";
+    # Exit with a code to indicate to script that we failed for a specific reason.
+    exit(10);
+}
+
 
 my $efiAnnoUtil = new EFI::Annotations;
 
@@ -258,5 +266,30 @@ sub getClusters {
 }
 
 
+
+sub getHasClusterNum {
+    my $file = shift;
+
+    open my $fh, "<", $file or return 0;
+
+    my $start = 0;
+    my $hasNum = 0;
+
+    while (<$fh>) {
+        if (m/<node/) {
+            $start = 1;
+        } elsif (m/<\/node>/) {
+            last;
+        }
+        if ($start) {
+            $hasNum = m/"Cluster Number"/ or m/"Singleton Number"/;
+            last if $hasNum;
+        }
+    }
+
+    close $fh;
+
+    return $hasNum;
+}
 
 

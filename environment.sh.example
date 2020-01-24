@@ -1,6 +1,10 @@
 #!/bin/bash
 
+EFI_HOME="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+# Set up the environment, so that the variuos modules that the scripts depend on are
+# available to Perl.
 module load perl
 export PERL5LIB=
-export PATH=
+export PATH=$EFI_HOME/bin:$PATH
 

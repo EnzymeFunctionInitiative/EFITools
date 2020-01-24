@@ -45,6 +45,7 @@ sub new {
     }
 
     $self->{conf}->{sb} = $conf;
+    $self->{TYPE} = JOB_TYPE;
 
     return $self;
 }
@@ -221,7 +222,7 @@ sub getJobInfo {
 }
 
 
-sub createJobs {
+sub makeJobs {
     my $self = shift;
     my $conf = $self->{conf}->{sb};
     
@@ -284,7 +285,7 @@ sub getQuantifyParallel {
     
     my $searchTypeArgs = $conf->{search_type} ? "--search_program $conf->{search_type}" : "";
 
-    $self->requestResources($B, 1, $np, $self->getMemorySize("sb_quantify_par"));
+    $self->requestResourcesByName($B, 1, $np, "sb_quantify_par");
 
     foreach my $mgId (@{$conf->{metagenome_ids}}) {
         my $mgFile = $conf->{mgFiles}->{$mgId};
@@ -319,7 +320,7 @@ sub getQuantifyTasks {
     my $removeTemp = $self->getRemoveTemp();
 
     $B->jobArray("1-$maxTask");
-    $self->requestResources($B, 1, 1, $self->getMemorySize("sb_quantify_tasks"));
+    $self->requestResourcesByName($B, 1, 1, "sb_quantify_tasks");
 
     my $c = 0;
     foreach my $mgId (@{$conf->{metagenome_ids}}) {
@@ -365,7 +366,7 @@ sub getMergeQuantifyJob {
     my $resFileMeanList = join(" ", map { $conf->{resFilesMean}->{$_} } @sortedMgIds);
     
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("sb_merge"));
+    $self->requestResourcesByName($B, 1, 1, "sb_merge");
     $self->addStandardEnv($B);
 
     $B->addAction("python $localMergeApp $resFileMedianList -C $conf->{cluster_file_median} -p $conf->{protein_file_median} -c $conf->{ssn_cluster_file}");
@@ -399,7 +400,7 @@ sub getXgmmlJob {
     
     my $B = $self->getBuilder();
     $B->setScriptAbortOnError(0); # Disable abort on error, so that we can disable the merged output lock.
-    $self->requestResources($B, 1, 1, $self->getMemorySize("sb_xgmml"));
+    $self->requestResourcesByName($B, 1, 1, "sb_xgmml");
     $self->addStandardEnv($B);
 
     $B->addAction("MGIDS=\"$metagenomeIdList\"");

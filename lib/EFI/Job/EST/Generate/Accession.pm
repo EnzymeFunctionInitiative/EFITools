@@ -38,6 +38,7 @@ sub new {
 
     $self->{conf}->{accession} = $conf->{accession};
     $self->{conf}->{domain} = $conf->{domain} if $conf->{domain};
+    $self->{TYPE} = JOB_TYPE;
 
     push @{$self->{startup_errors}}, @$errors;
 

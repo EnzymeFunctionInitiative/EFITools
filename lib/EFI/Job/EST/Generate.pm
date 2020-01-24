@@ -179,7 +179,7 @@ sub fancyJoin {
 }
 
 
-sub createJobs {
+sub makeJobs {
     my $self = shift;
     return ();
 }

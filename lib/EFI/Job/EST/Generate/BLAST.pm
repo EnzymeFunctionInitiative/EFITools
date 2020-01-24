@@ -43,6 +43,8 @@ sub new {
 
     push @{$self->{startup_errors}}, @$errors;
 
+    $self->{TYPE} = JOB_TYPE;
+
     return $self;
 }
 
@@ -154,7 +156,7 @@ sub getInitialBlastJob {
     EFI::Util::BLAST::save_input_sequence($queryFile, $conf->{sequence}, $conf->{input_id});
     
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("initial_blast"));
+    $self->requestResourcesByName($B, 1, 1, "initial_blast");
 
     $self->addStandardEnv($B);
     $self->addBlastEnvVars($B);
@@ -207,7 +209,7 @@ sub getFracFileJob {
     my $toolPath = $self->getToolPath();
 
     my $B = $self->getBuilder();
-    $self->requestResources($B, 1, 1, $self->getMemorySize("fracfile")); 
+    $self->requestResourcesByName($B, 1, 1, "fracfile");
     
     $B->addAction("NP=$np");
     $B->addAction("sleep 10"); # Here to avoid a possible FS syncing issue with the grep on the next line.
@@ -249,7 +251,7 @@ sub getBlastJob {
     my $B = $self->getBuilder();
     $B->setScriptAbortOnError(0); # Disable SLURM aborting on errors, since we want to catch the BLAST error and report it to the user nicely
     $B->jobArray("1-$np") if $conf->{blast_type} eq "blast";
-    $self->requestResources($B, 1, 1, $self->getMemorySize("blastqsub")); 
+    $self->requestResourcesByName($B, 1, 1, "blastqsub"); 
     
     $B->addAction("export BLASTDB=$outputDir");
     $self->addStandardEnv($B);

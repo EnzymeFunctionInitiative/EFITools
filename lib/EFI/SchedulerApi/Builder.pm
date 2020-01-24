@@ -57,7 +57,7 @@ sub queue {
 }
 
 sub resource {
-    my ($self, $numNodes, $procPerNode, $ram) = @_;
+    my ($self, $numNodes, $procPerNode, $ram, $walltime) = @_;
 }
 
 sub dependency {
@@ -108,16 +108,34 @@ sub outputBaseDirpath {
 }
 
 sub addAction {
+    my ($self, $actionLineRaw) = @_;
+
+    my ($actionLine, $echoLine) = $self->formatAction($actionLineRaw);
+    push(@{$self->{actions}}, $echoLine) if $echoLine;
+    push(@{$self->{actions}}, $actionLine);
+}
+
+sub prependAction {
+    my ($self, $actionLineRaw) = @_;
+
+    my ($actionLine, $echoLine) = $self->formatAction($actionLineRaw);
+
+    unshift(@{$self->{actions}}, $actionLine);
+    unshift(@{$self->{actions}}, $echoLine) if $echoLine;
+}
+
+sub formatAction {
     my ($self, $actionLine) = @_;
 
+    my $echoLine = "";
     $actionLine =~ s/{JOB_ARRAYID}/\${$self->{arrayid_var_name}}/g;
     if ($self->{echo_actions}) {
         (my $cmdType = $actionLine) =~ s/^(\S+).*$/$1/g;
         $cmdType =~ s/[^A-Za-z0-9_\-\/]//g;
-        push(@{$self->{actions}}, "echo 'RUNNING $cmdType'");
+        $echoLine = "echo 'RUNNING $cmdType'";
     }
 
-    push(@{$self->{actions}}, $actionLine);
+    return ($actionLine, $echoLine);
 }
 
 sub render {
@@ -184,7 +202,7 @@ sub renderToFile {
     }
 
     my $openMode = $self->{run_serial} ? ">>" : ">";
-    if ($self->{run_serial} and not $self->{output_file_stdout} and not -f $filePath) {
+    if ($self->{run_serial} and not -f $filePath) {
         initSerialScript($filePath);
     }
 

@@ -61,6 +61,7 @@ sub new {
     }
 
     $self->{conf}->{gnn} = $conf;
+    $self->{TYPE} = JOB_TYPE;
 
     return $self;
 }
@@ -289,7 +290,7 @@ sub makeDirs {
 }
 
 
-sub createJobs {
+sub makeJobs {
     my $self = shift;
     my $conf = $self->{conf}->{gnn};
     
@@ -360,8 +361,7 @@ sub getGnnJob {
     my $B = $self->getBuilder();
     
     my $ramReservation = computeRamReservation($conf);
-    $ramReservation = 4; #TODO: compute deterministically
-    $self->requestResources($B, 1, 1, $ramReservation);
+    $self->requestResourcesByName($B, 1, 1, "gnn");
 
     map { $B->addAction($_); } $self->getEnvironment("gnt");
     

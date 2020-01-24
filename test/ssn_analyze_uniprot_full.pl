@@ -13,7 +13,8 @@ use lib "$FindBin::Bin/lib";
 use Setup;
 
 
-my $testDir = $ARGV[0] // "";
+my $testDir = $ENV{PARENT} // "";
+$testDir = "$TMP/$testDir" if $testDir;
 die "Require an existing job results directory" if not $testDir or not -d $testDir;
 
 my $test = new Setup(getArgs(), {job_dir => $testDir});
