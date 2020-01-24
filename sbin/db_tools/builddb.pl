@@ -413,6 +413,7 @@ sub submitBuildCountsJob {
         $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/INTERPRO.tab -output $OutputDir/family_counts.tab -type INTERPRO -uniref $OutputDir/uniref.tab -merge-domain -append");
         $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/GENE3D.tab -output $OutputDir/family_counts.tab -type GENE3D -uniref $OutputDir/uniref.tab -merge-domain -append");
         $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/SSF.tab -output $OutputDir/family_counts.tab -type SSF -uniref $OutputDir/uniref.tab -merge-domain -append");
+        $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/TIGRFAMs.tab -output $OutputDir/family_counts.tab -type TIGRFAMs -uniref $OutputDir/uniref.tab -merge-domain -append");
         $B->addAction("date > $CompletedFlagFile.family_counts\n");
     }
     if (not $skipIfExists or not -f "$OutputDir/family_info.tab") {
@@ -947,6 +948,16 @@ CREATE INDEX PAM_ID_Index ON PFAM (id);
 CREATE INDEX PAM_Accession_Index ON PFAM (accession);
 SELECT 'LOADING PFAM' AS '';
 $loadStart '$OutputDir/PFAM.tab' $loadMid PFAM$loadEnd
+$endTrans
+
+$startTrans
+SELECT 'CREATING TIGRFAMs' AS '';
+DROP TABLE IF EXISTS TIGRFAMs;
+CREATE TABLE TIGRFAMs(id VARCHAR(24), accession VARCHAR(10), start INTEGER, end INTEGER);
+CREATE INDEX PAM_ID_Index ON TIGRFAMs (id);
+CREATE INDEX PAM_Accession_Index ON TIGRFAMs (accession);
+SELECT 'LOADING TIGRFAMs' AS '';
+$loadStart '$OutputDir/TIGRFAMs.tab' $loadMid TIGRFAMs$loadEnd
 $endTrans
 
 $startTrans

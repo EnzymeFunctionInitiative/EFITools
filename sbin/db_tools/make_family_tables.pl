@@ -5,17 +5,18 @@ use Getopt::Long;
 use strict;
 
 my ($outputDir, $inputDir, $uniref50File, $uniref90File, $gene3dFile, $pfamFile, $ssfFile, $interproFile, $debugCount);
-my ($familyTypesFile, $treeFile, $interproInfoFile);
+my ($familyTypesFile, $treeFile, $interproInfoFile, $tigrFamFile);
 
 my $result = GetOptions(
     "outdir=s"          => \$outputDir,
     "indir=s"           => \$inputDir,
     "uniref50=s"        => \$uniref50File,      # tab file that maps clustered UniProt IDs to representative UniRef ID
     "uniref90=s"        => \$uniref90File,      # tab file that maps clustered UniProt IDs to representative UniRef ID
-    "gene3d=s"          => \$gene3dFile,        # GENE3D output file
+    "gene3d=s"          => \$gene3dFile,        # CATH/GENE3D output file (shows up as CATHGENE3D in match_complete.xml)
     "pfam=s"            => \$pfamFile,          # PFAM output file
     "ssf=s"             => \$ssfFile,           # SSF output file
     "interpro=s"        => \$interproFile,      # INTERPRO output file
+    "tigrfam=s"         => \$tigrFamFile,       # TIGRFAMs output file
     "debug=i"           => \$debugCount,        # number of iterations to perform for debugging purposes
     "interpro-info=s"   => \$interproInfoFile,  # INTERPRO info output file
     "types=s"           => \$familyTypesFile,
@@ -25,33 +26,40 @@ my $result = GetOptions(
 die "No output directory provided" if not defined $outputDir or not -d $outputDir;
 die "No input directory provided" if not defined $inputDir or not -d $inputDir;
 
+# Key to this hash must match the dbname attribute in the match tag.
 my %files;
-$files{GENE3D} = $gene3dFile if $gene3dFile;
+$files{CATHGENE3D} = $gene3dFile if $gene3dFile;
 $files{PFAM} = $pfamFile if $pfamFile;
 $files{SSF} = $ssfFile if $ssfFile;
 $files{INTERPRO} = $interproFile if $interproFile;
+$files{TIGRFAMs} = $tigrFamFile if $tigrFamFile;
 
 
 my $verbose=0;
 
+# Key to this hash must match the dbname attribute in the match tag.
 my %databases = ();
-if (not $gene3dFile and not $pfamFile and not $ssfFile and not $interproFile and not $interproInfoFile) {
+if (not $gene3dFile and not $pfamFile and not $ssfFile and not $interproFile and not $interproInfoFile and not $tigrFamFile) {
+    # Default to all
     %databases = (
-        GENE3D      => 1,
+        CATHGENE3D      => 1,
         PFAM        => 1,
         SSF         => 1,
-        INTERPRO    => 1);
+        INTERPRO    => 1,
+        TIGRFAMs     => 1,
+    );
 } else {
-    $databases{GENE3D} = 1 if $gene3dFile;
+    $databases{CATHGENE3D} = 1 if $gene3dFile;
     $databases{PFAM} = 1 if $pfamFile;
     $databases{SSF} = 1 if $ssfFile;
     $databases{INTERPRO} = 1 if $interproFile;
+    $databases{TIGRFAMs} = 1 if $tigrFamFile;
 }
 
 
 my %filehandles = ();
 
-foreach my $database (keys %databases){
+foreach my $database (keys %databases) {
     local *FILE;
     my $file = "$outputDir/$database.tab";
     $file = $files{$database} if exists $files{$database};
