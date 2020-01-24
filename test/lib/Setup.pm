@@ -70,6 +70,8 @@ sub new {
     $bin =~ s/domain/dom/g;
     $bin =~ s/header/hdr/g;
     $bin =~ s/analyze/alz/g;
+    $bin =~ s/identify/id/g;
+    $bin =~ s/quantify/qfy/g;
     $bin = "t_$bin";
 
     push @ARGV, @args;

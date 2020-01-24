@@ -19,8 +19,8 @@ die "Require an existing job results directory $testDir" if not $testDir or not 
 
 my $test = new Setup(getArgs(), {job_dir => $testDir});
 
-use EFI::Job::CGFP::Identify;
-my $jobBuilder = new EFI::Job::CGFP::Identify();
+use EFI::Job::CGFP::Quantify;
+my $jobBuilder = new EFI::Job::CGFP::Quantify();
 
 $test->runTest($jobBuilder);
 
