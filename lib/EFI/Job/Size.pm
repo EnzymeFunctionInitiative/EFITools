@@ -119,7 +119,7 @@ sub family_count {
     my $data = {};
     
     foreach my $fam (@fams) {
-        my $sql = "SELECT num_members, num_uniref50_members, num_uniref90_members FROM family_info WHERE family = '$fam'";
+        my $sql = "SELECT num_members, num_uniref50_members, num_uniref90_members, short_name FROM family_info WHERE family = '$fam'";
         my $sth = $dbh->prepare($sql);
         die "No sth" if not $sth;
         $sth->execute;
@@ -135,6 +135,7 @@ sub family_count {
             uniprot => $row->{num_members},
             uniref50 => $row->{num_uniref50_members},
             uniref90 => $row->{num_uniref90_members},
+            short_name => $row->{short_name},
         };
     }
 
