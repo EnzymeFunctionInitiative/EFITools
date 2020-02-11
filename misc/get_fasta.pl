@@ -26,7 +26,7 @@ my @ids = map { $_ =~ s/[\r\n]//g; $_ } read_file($inputFile);
 open OUT, ">$outputFile" or die "Unable to open output file '$outputFile': $!";
 
 while (scalar @ids) {
-    print join(",", @ids), "\n";
+#    print join(",", @ids), "\n";
     my $batchLine = join(",", splice(@ids, 0, 1000));
     my $cmd = join(" ", "fastacmd", "-d", "$blastDbPath/combined.fasta", "-s", $batchLine);
     print OUT `$cmd`, "\n";

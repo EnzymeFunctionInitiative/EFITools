@@ -2,7 +2,7 @@
 use strict;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
-use Biocluster::Database;
+use EFI::Database;
 use Getopt::Long;
 use List::MoreUtils qw{uniq};
 
@@ -30,7 +30,7 @@ die "Invalid arguments given: no config file.\n" . help() unless (defined $confi
 die "Invalid arguments given: no family.\n" . help() if (not $family and not $allClans);
 
 
-my $db = new Biocluster::Database(config_file_path => $configFile);
+my $db = new EFI::Database(config_file_path => $configFile);
 my $dbh = $db->getHandle();
 
 my @args = split(/,/, $family);
