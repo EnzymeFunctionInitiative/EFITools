@@ -55,7 +55,8 @@ sub validateOptions {
     my $conf = {accession => {}};
     if (defined $parms->{domain} and $parms->{domain} ne "off") {
         $conf->{domain}->{family} = $parms->{"domain-family"} // "";
-        $conf->{domain}->{region} = $parms->{"domain-region"} // "";
+        my $region = $parms->{"domain-region"} // "";
+        $conf->{domain}->{region} = ($region eq "nterminal" or $region eq "cterminal") ? $region : "";
     }
     my $file = $parms->{"accession-file"} // "";
     $conf->{accession}->{no_match_file} = $parms->{"no-match-file"} // EFI::Config::NO_ACCESSION_MATCHES_FILENAME;
@@ -79,8 +80,8 @@ sub getJobInfo {
     push @$info, [accession_file => $conf->{accession_file}];
     if ($dconf) {
         push @$info, [domain => "yes"];
-        push @$info, [domain_family => $conf->{domain_family}] if $conf->{domain_family};
-        push @$info, [domain_region => $conf->{domain_region}] if $conf->{domain_region};
+        push @$info, [domain_family => $conf->{domain}->{family}] if $conf->{domain}->{family};
+        push @$info, [domain_region => $conf->{domain}->{region}] if $conf->{domain}->{region};
     }
 
     return $info;
@@ -94,13 +95,13 @@ sub getUsage {
     my @mandatory = ("--accession-file <ID_FILE_PATH>");
     my @optional = (
         "--no-match-file <NO_MATCHING_ID_FILE_PATH>",
-        #"--domain", "--domain-family FAMILY", "--domain-region nterminal|cterminal",
+        "--domain", "--domain-family FAMILY", "--domain-region nterminal|cterminal",
     );
     my @descs = (
         ["--accession-file", "file containing list of sequence IDs, UniProt or NCBI RefSeq IDs are supported"],
-        #["--domain", "use the domain given by the family specified by --domain-family instead of the full-length sequence"],
-        #["--domain-family", "family to obtain domain from"],
-        #["--domain-region", "if specified, the N-terminal or N-terminal to the family domain is used instead of the domain itself"],
+        ["--domain", "use the domain given by the family specified by --domain-family instead of the full-length sequence"],
+        ["--domain-family", "family to obtain domain from"],
+        ["--domain-region", "if specified, the N-terminal or N-terminal to the family domain is used instead of the domain itself"],
     );
 
     return $self->outputSharedUsage(\@mandatory, [@optional, @$famMandatory, @$famOptional], [@descs, @$famDescs]);
