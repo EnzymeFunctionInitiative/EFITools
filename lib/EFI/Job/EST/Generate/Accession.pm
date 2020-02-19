@@ -62,7 +62,7 @@ sub validateOptions {
 
     $conf->{accession}->{file_is_zipped} = $file =~ m/\.zip$/i;
     $file =~ s/\.zip$//i;
-    $conf->{accession}->{accession_file} = $file;
+    $conf->{accession}->{accession_file} = abs_path($file);
 
     push @errors, "No --accession-file parameter provided." if not -f $conf->{accession}->{accession_file};
 

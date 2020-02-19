@@ -54,7 +54,7 @@ sub validateOptions {
 
     $conf->{zipped_file} = $file if $file =~ m/\.zip$/i;
     $file =~ s/\.zip$//i;
-    $conf->{fasta_file} = $file;
+    $conf->{fasta_file} = abs_path($file);
     $conf->{no_match_file} = $parms->{"no-match-file"} // EFI::Config::NO_ACCESSION_MATCHES_FILENAME;
 
     push @errors, "No --fasta-file parameter provided." if not -f $conf->{fasta_file};
