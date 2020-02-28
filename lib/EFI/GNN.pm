@@ -946,7 +946,7 @@ sub writeSsnStats {
 
             my @desc = grep !m/^NA$/, map { split(m/,/) } @{$spDesc->{$id}};
             if (scalar @desc) {
-                $fh->print(join("\t", $clusterNum, $id, join(",", @desc)), "\n");
+                $fh->print(join("\t", $clusterNum, $id, join(";", @desc)), "\n");
             }
         }
     }
