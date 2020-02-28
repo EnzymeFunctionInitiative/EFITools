@@ -195,6 +195,9 @@ sub getInitialImportJob {
         push @args, "--domain on";
         push @args, "--uniprot-dom-len-output $gconf->{len_uniprot_dom_file}";
         push @args, "--uniref-dom-len-output $gconf->{len_uniref_dom_file}" if $unirefVersion;
+        if ($self->{conf}->{domain}->{region}) {
+            push @args, "--domain-region $self->{conf}->{domain}->{region}";
+        }
     }
 
     my $option = $self->getRetrievalScriptSuffix();

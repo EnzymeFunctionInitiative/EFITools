@@ -117,9 +117,6 @@ sub getInitialImportArgs {
     my @args;
     if ($conf->{domain} and $conf->{domain}->{family}) {
         push @args, "--domain-family $conf->{domain}->{family}";
-        if ($conf->{domain}->{region} eq "cterminal" or $conf->{domain}->{region} eq "nterminal") {
-            push @args, "--domain-region $conf->{domain}->{region}";
-        }
     }
 
     push @args, "--accession-file $conf->{accession}->{accession_file}";
