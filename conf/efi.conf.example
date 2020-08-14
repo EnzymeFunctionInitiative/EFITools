@@ -145,43 +145,22 @@ hmp=
 ; These are used to add environment variables to job scripts, and are directly inserted into the
 ; job script files (use source ... or module load)
 [environment.est-std]
-module load efidb/ip76
-module load BLAST
-module load Perl
-module load CD-HIT
 
 ; Anytime the "est-graphs" environment is requested by the scripts, the following directives are inserted
 ; into the job script.
 ; These are used to add environment variables to job scripts, and are directly inserted into the job
 ; script files (use source ... or module load)
 [environment.est-graphs]
-module load GD
-module load R
 
 [environment.est-graphs-v2]
-module load HDF5
-module load Python
 
 [environment.est-diamond]
-module load DIAMOND
 
 [environment.est-blast+]
-module load BLAST+
 
 [environment.est-color]
-module load Perl
-module load BLAST
 
 [environment.gnt]
-module load Perl
-module load BLAST
 
 [environment.cgfp]
-module load Python/2
-module load Biopython
-module load USEARCH/9
-module load MUSCLE/3
-module load BLAST+
-module load CD-HIT
-module load DIAMOND
 
