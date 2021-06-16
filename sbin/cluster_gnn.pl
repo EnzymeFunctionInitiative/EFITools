@@ -29,7 +29,7 @@ use EFI::GNN::AnnotationUtil;
 my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $cooccurrence, $statsFile, $pfamHubFile, $configFile,
     $pfamDir, $noneDir, $idOutputFile, $idOutputDomainFile, $arrowDataFile, $dontUseNewNeighborMethod,
     $uniprotIdDir, $uniprotDomainIdDir, $uniref50IdDir, $uniref90IdDir, $uniref50DomainIdDir, $uniref90DomainIdDir,
-    $pfamCoocTable, $hubCountFile, $allPfamDir, $splitPfamDir, $allSplitPfamDir, $clusterSizeFile, $swissprotClustersDescFile,
+    $pfamCoocTable, $hubCountFile, $allPfamDir, $splitPfamDir, $allSplitPfamDir, $clusterSizeFile, $clusterNumMapFile, $swissprotClustersDescFile,
     $swissprotSinglesDescFile, $parentDir, $renumberClusters, $disableCache, $skipIdMapping, $skipOrganism, $debug,
     $outputDir, $excludeFragments,
 );
@@ -44,6 +44,7 @@ my $result = GetOptions(
     "incfrac|cooc=i"        => \$cooccurrence,
     "stats=s"               => \$statsFile,
     "cluster-sizes=s"       => \$clusterSizeFile,
+    "cluster-num-map=s"     => \$clusterNumMapFile,
     "sp-clusters-desc=s"    => \$swissprotClustersDescFile,
     "sp-singletons-desc=s"  => \$swissprotSinglesDescFile,
     "pfam=s"                => \$pfamHubFile,
@@ -243,6 +244,7 @@ if (not $skipIdMapping) {
     my ($ssnType, $hasDom) = checkNetworkType($ssnin);
     my $result = doClusterMapping($dbh, $util, $ssnType);
     $hasDomain = $result->{has_domain};
+    saveClusterNumMap($clusterNumMapFile, $result->{sizes}) if $result->{sizes} and $clusterNumMapFile;
     saveClusterSizes($clusterSizeFile, $result->{sizes}) if $result->{sizes};
 }
 $idOutputDomainFile = "" if not $hasDomain;
@@ -505,6 +507,30 @@ sub saveClusterSizes {
     }
     
     close SIZE;
+}
+
+
+sub saveClusterNumMap {
+    my $mapFile = shift;
+    my $sizeData = shift;
+
+    open MAP, ">", $mapFile ;#or die "Unable to open map file $mapFile for writing: $!";
+
+    my @clusterNumData = $util->getClusterNumbers(CLUSTER_MAPPING);
+
+    my $wroteHeader = 0;
+    foreach my $numData (@clusterNumData) {
+        if (not $wroteHeader) {
+            $wroteHeader = 1;
+            print MAP "Sequence Cluster Number\tNode Cluster Number";
+            print MAP "\n";
+        }
+        my @row = (@{$numData}, $sizeData->{uniprot}->{$numData->[0]});
+        push @row, $sizeData->{uniref50}->{$numData->[0]}  if $sizeData->{uniref50}->{$numData->[0]};
+        print MAP join("\t", @row), "\n";
+    }
+
+    close MAP;
 }
 
 
@@ -780,6 +806,7 @@ sub defaultParameters {
     $ssnout = "" if not $ssnout;
     $statsFile = "" if not $statsFile;
     $clusterSizeFile = "" if not $clusterSizeFile;
+    $clusterNumMapFile = "" if not $clusterNumMapFile;
     $swissprotClustersDescFile = "" if not $swissprotClustersDescFile;
     $swissprotSinglesDescFile = "" if not $swissprotSinglesDescFile;
     $pfamHubFile = "" if not $pfamHubFile;
@@ -811,6 +838,7 @@ sub adjustRelativePaths {
     $ssnout = "$outputDir/$ssnout"                              if $ssnout and $ssnout !~ m/^\//;
     $statsFile = "$outputDir/$statsFile"                        if $statsFile and $statsFile !~ m/^\//;
     $clusterSizeFile = "$outputDir/$clusterSizeFile"            if $clusterSizeFile and $clusterSizeFile !~ m/^\//;
+    $clusterNumMapFile = "$outputDir/$clusterNumMapFile"        if $clusterNumMapFile and $clusterNumMapFile !~ m/^\//;
     $swissprotClustersDescFile = "$outputDir/$swissprotClustersDescFile"    if $swissprotClustersDescFile and $swissprotClustersDescFile !~ m/^\//;
     $swissprotSinglesDescFile = "$outputDir/$swissprotSinglesDescFile"      if $swissprotSinglesDescFile and $swissprotSinglesDescFile !~ m/^\//;
     $pfamHubFile = "$outputDir/$pfamHubFile"                    if $pfamHubFile and $pfamHubFile !~ m/^\//;

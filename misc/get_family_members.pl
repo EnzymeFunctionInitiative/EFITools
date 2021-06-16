@@ -1,5 +1,9 @@
-#!perl -w
+#!/bin/env perl
+
 use strict;
+use warnings;
+
+use Data::Dumper;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 use EFI::Database;
@@ -8,7 +12,7 @@ use List::MoreUtils qw{uniq};
 
 $| = 1;
 
-my ($configFile, $family, $unique, $statsOnly, $allClans);
+my ($configFile, $family, $unique, $statsOnly, $allClans, $noFrag, $doOverlap, $includeFam);
 
 GetOptions(
     "config=s"          => \$configFile,
@@ -16,14 +20,17 @@ GetOptions(
     "unique"            => \$unique,
     "stats-only"        => \$statsOnly,
     "all-clans"         => \$allClans,
+    "overlap-stats"     => \$doOverlap,
+    "no-frag"           => \$noFrag,
+    "include-fam"       => \$includeFam,
 );
 
 $unique = 0 if not defined $unique;
 $allClans = 0 if not defined $allClans;
 $family = "" if not defined $family;
 
-if (not $configFile or not -f $configFile and exists $ENV{EFICONFIG}) {
-    $configFile = $ENV{EFICONFIG};
+if (not $configFile or not -f $configFile and exists $ENV{EFI_CONFIG}) {
+    $configFile = $ENV{EFI_CONFIG};
 }
 
 die "Invalid arguments given: no config file.\n" . help() unless (defined $configFile and -f $configFile);
@@ -70,7 +77,8 @@ foreach my $item (@args) {
 $dbh->disconnect() and exit if $allClans;
 
 
-
+my %idfMap;
+my %fidMap;
 my @accIds;
 foreach my $fam (@families) {
     my $table = "";
@@ -79,13 +87,16 @@ foreach my $fam (@families) {
     warn "Invalid family given" if not $table;
 
     my @ids = retrieveForFamily($fam, $table);
-    print join("\t", "Family", $fam, scalar @ids), "\n";
+    @ids = uniq @ids;
+    #print join("\t", $fam, scalar @ids), "\n";
+    map { push @{$idfMap{$_}}, $fam } @ids;
+    $fidMap{$fam} = [@ids];
     push(@accIds, @ids);
 }
 
 $dbh->disconnect();
 
-print "Total IDs\t", scalar @accIds, "\n";
+print "Total IDs\t", scalar @accIds, "\n" if not $doOverlap;
 
 my $numUnique = -1;
 if ($unique) {
@@ -96,7 +107,23 @@ if ($unique) {
 }
 
 
-if (not $statsOnly) {
+if ($doOverlap) {
+    my %overlap;
+    foreach my $fam (keys %fidMap) {
+        my $numOver = 0;
+        my $numId = scalar @{ $fidMap{$fam} };
+        foreach my $id (@{ $fidMap{$fam} }) {
+            $numOver++ if scalar @{$idfMap{$id}} > 1;
+#            print join("\t", $fam, $id, join(",", @{$idfMap{$id}})), "\n";
+        }
+        #$overlap{$fam} = $numOver / $numId;
+        $overlap{$fam} = int(100000 * $numOver / $numId + 0.5) / 1000;
+    }
+    print join("\t", "Family", "Percent Overlap"), "\n";
+    foreach my $fam (sort keys %overlap) {
+        print join("\t", $fam, $overlap{$fam}), "\n";
+    }
+} elsif (not $statsOnly) {
     foreach my $id (@accIds) {
         print $id, "\n";
     }
@@ -141,7 +168,10 @@ sub retrieveFamiliesForClan {
 sub retrieveForFamily {
     my ($family, $table) = @_;
 
-    my $sql = "select accession from $table where id = '$family'";
+    my $fragJoin = $noFrag ? "JOIN annotations ON $table.accession = annotations.accession" : "";
+    my $fragWhere = $noFrag ? "AND annotations.Fragment = 0" : "";
+
+    my $sql = "select $table.accession from $table $fragJoin where $table.id = '$family' $fragWhere";
     my $sth = $dbh->prepare($sql);
     $sth->execute;
 

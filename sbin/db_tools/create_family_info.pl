@@ -85,6 +85,7 @@ foreach my $key (sort keys %pfams){
     my @data = (0, 0, 0);
     if (exists $counts{$key}) {
         @data = @{ $counts{$key} };
+        delete $counts{$key};
     }
     push @data, (exists $ipTypes{$key} ? $ipTypes{$key} : "");
     push @data, (exists $tree{$key} ? $tree{$key}->{parent} : "");
@@ -97,9 +98,15 @@ if ($useClans) {
         my @data = (0, 0, 0);
         if (exists $counts{$key}) {
             @data = @{ $counts{$key} };
+            delete $counts{$key};
         }
         print OUT join("\t", $key, $clans{$key}, "", @data), "\n";
     }
+}
+
+
+foreach my $key (sort keys %counts) {
+    print OUT join("\t", $key, $key, $key, @{$counts{$key}}), "\n";
 }
 
 

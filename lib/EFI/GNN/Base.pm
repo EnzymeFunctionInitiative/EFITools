@@ -19,10 +19,10 @@ use constant ALL_IDS => 1;          # Flag to indicate to return all IDs, not ju
 use constant METANODE_IDS => 2;     # Flag to indicate to return the list of IDs that match the visible nodes in the network
 use constant NO_DOMAIN => 4;        # Flag to indicate to return IDs stripped of domain info
 use constant INTERNAL => 8;         # Internal cluster ID, not cluster number
-
+use constant CLUSTER_MAPPING => 16; # Flag to request an arrayref of arrayrefs in getClusterNumbers
 
 use Exporter 'import';
-our @EXPORT = qw(median writeGnnField writeGnnListField ALL_IDS METANODE_IDS NO_DOMAIN INTERNAL);
+our @EXPORT = qw(median writeGnnField writeGnnListField ALL_IDS METANODE_IDS NO_DOMAIN INTERNAL CLUSTER_MAPPING);
 
 
 
@@ -309,7 +309,8 @@ sub numberClusters {
     my $useExistingNumber = shift;
 
     my $simpleNumber = 1; # starting numbering
-    my %numbermatch;
+    my %clusterIdSeqNum;
+    my %clusterIdNodeNum;
     my %idmap;
     my @numberOrder;
     my $clusterNumbers = $self->{network}->{metanode_cluster_map}; # this is prepopulated with any cluster numbers in the input xgmml file
@@ -317,16 +318,25 @@ sub numberClusters {
     my $metanodeMap = $self->{network}->{metanode_map}; # shortcut
 
     my @supernodeKeys = keys %$supernodes;
-    my @clusterIds = sort {
+    my @clusterIdsBySeqCount = sort {
             my $as = scalar @{$self->getIdsInCluster($a, ALL_IDS|INTERNAL)};
             my $bs = scalar @{$self->getIdsInCluster($b, ALL_IDS|INTERNAL)};
             my $c = $bs <=> $as;
             $c = $a <=> $b if not $c; # handle equals case
             $c }
         @supernodeKeys;
+    my @clusterIdsByNodeCount = sort {
+            my $aref = $self->getIdsInCluster($a, METANODE_IDS|INTERNAL);
+            my $bref = $self->getIdsInCluster($b, METANODE_IDS|INTERNAL);
+            my $as = $aref ? scalar @$aref : 0;
+            my $bs = $bref ? scalar @$bref : 0;
+            my $c = $bs <=> $as;
+            $c = $a <=> $b if not $c; # handle equals case
+            $c }
+        @supernodeKeys;
 
     # The sort is to sort by size, descending order
-    foreach my $clusterId (@clusterIds) {
+    foreach my $clusterId (@clusterIdsBySeqCount) {
         my $clusterSize = scalar @{$self->getIdsInCluster($clusterId, ALL_IDS|INTERNAL)};
         my $existingPhrase = "";
         my $clusterNum = $simpleNumber;
@@ -340,13 +350,20 @@ sub numberClusters {
 
         print "Supernode $clusterId, $clusterSize original accessions, simplenumber $simpleNumber $existingPhrase\n"; # if $self->{debug};
 
-        $numbermatch{$clusterId} = $simpleNumber;
+        $clusterIdSeqNum{$clusterId} = $simpleNumber;
         $idmap{$simpleNumber} = $clusterId;
         push @numberOrder, $clusterId;
         $simpleNumber++;
     }
+    
+    $simpleNumber = 1;
+    foreach my $clusterId (@clusterIdsByNodeCount) {
+        $clusterIdNodeNum{$clusterId} = $simpleNumber;
+        $simpleNumber++;
+    }
 
-    $self->{network}->{cluster_id_map} = \%numbermatch; # map internal cluster ID to external numbering
+    $self->{network}->{cluster_id_map} = \%clusterIdSeqNum; # map internal cluster ID to external numbering
+    $self->{network}->{cluster_node_num_map} = \%clusterIdNodeNum; # map internal cluster ID to external numbering
     $self->{network}->{cluster_num_map} = \%idmap;
     $self->{network}->{cluster_order} = \@numberOrder;
 }
@@ -360,8 +377,14 @@ sub hasExistingNumber {
 
 sub getClusterNumbers {
     my $self = shift;
+    my $flag = shift || 0;
 
-    return sort { $a <=> $b } keys %{$self->{network}->{cluster_num_map}};
+    my @idNums = sort { $a <=> $b } keys %{$self->{network}->{cluster_num_map}};
+    if ($flag & CLUSTER_MAPPING) {
+        return map { [$_, $self->{network}->{cluster_node_num_map}->{$self->{network}->{cluster_num_map}->{$_}}] } @idNums;
+    } else {
+        return @idNums;
+    }
 }
 
 # Dangerous. Used only in a sort function in cluster_gnn.pl
@@ -374,9 +397,12 @@ sub getClusterIdMap {
 sub getClusterNumber {
     my $self = shift;
     my $clusterId = shift;
+    my $flag = shift || ALL_IDS;
 
-    return "" if not exists $self->{network}->{cluster_id_map}->{$clusterId};
-    return $self->{network}->{cluster_id_map}->{$clusterId};
+    my $key = $flag == METANODE_IDS ? "cluster_node_num_map" : "cluster_id_map";
+    return "" if not exists $self->{network}->{$key}->{$clusterId};
+    my $num = $self->{network}->{$key}->{$clusterId};
+    return $num;
 }
 
 sub isSingleton {
@@ -486,21 +512,24 @@ sub writeColorSsnNodes {
     my $writer = shift;
     my $gnnData = shift;
 
-    my %idCount;
-    my %nodeCount;
+    my %seqIdCount;
+    my %nodeNumIdCount;
+    my %nodeNumCount;
     my $nodenames = $self->{network}->{id_label_map};
     my $constellations = $self->{network}->{constellations};
 
-    my $numField = "Cluster Number";
+    my $seqNumField = "Sequence Count Cluster Number";
+    my $nodeNumField = "Node Count Cluster Number";
     my $singletonField = "Singleton Number";
-    my $colorField = "node.fillColor";
+    my $seqNumColorField = "node.fillColor";
+    my $nodeNumColorField = "Node Count Fill Color";
     my $countField = "Cluster Sequence Count";
     my $nodeCountField = "Cluster Node Count";
     my $nbFamField = "Neighbor Families";
     my $badNum = 999999;
     my $singleNum = 0;
 
-    my %skipFields = ($numField => 1, $colorField => 1, $countField => 1, $nodeCountField => 1, $singletonField => 1, $nbFamField => 1);
+    my %skipFields = ($seqNumField => 1, $nodeNumField => 1, $seqNumColorField => 1, $nodeNumColorField => 1, $countField => 1, $nodeCountField => 1, $singletonField => 1, $nbFamField => 1);
     $skipFields{"Present in ENA Database?"} = 1;
     $skipFields{"Genome Neighbors in ENA Database?"} = 1;
     $skipFields{"ENA Database Genome ID"} = 1;
@@ -511,35 +540,41 @@ sub writeColorSsnNodes {
 
         my $proteinId = $nodenames->{$nodeId}; # may contain domain info
         my $clusterId = $constellations->{$proteinId};
-        my $clusterNum = $self->getClusterNumber($clusterId);
-        if (not $clusterNum) {
+        my $seqClusterNum = $self->getClusterNumber($clusterId);
+        my $nodeClusterNum = $self->getClusterNumber($clusterId, METANODE_IDS);
+        if (not $seqClusterNum) {
             die "$clusterId $proteinId $nodeId $nodeLabel";
         }
 
         # In a previous step, we included singletons (historically they were excluded).
-        if ($clusterNum) {
-            if (not exists $idCount{$clusterNum}) {
+        if ($seqClusterNum) {
+            if (not exists $seqIdCount{$seqClusterNum}) {
                 my $ids = $self->getIdsInCluster($clusterId, ALL_IDS|INTERNAL);
-                $idCount{$clusterNum} = scalar @$ids;
+                $seqIdCount{$seqClusterNum} = scalar @$ids;
             }
-            if (not exists $nodeCount{$clusterNum}) {
+            if (not exists $nodeNumCount{$nodeClusterNum}) {
                 my $nodes = $self->getIdsInCluster($clusterId, METANODE_IDS|INTERNAL);
-                $nodeCount{$clusterNum} = scalar @$nodes;
+                $nodeNumCount{$nodeClusterNum} = scalar @$nodes;
             }
 
             $writer->startTag('node', 'id' => $nodeId, 'label' => $nodeLabel);
 
             # find color and add attribute
-            my $color = "";
-            $color = $self->getColor($clusterNum) if $idCount{$clusterNum} > 1;
-            #$color = $self->{colors}->{$clusterNum} if $idCount{$clusterNum} > 1;
-            my $isSingleton = $idCount{$clusterNum} < 2;
-            my $clusterNumAttr = $clusterNum;
-            my $fieldName = $numField;
+            my $seqNumColor = "";
+            my $nodeNumColor = "";
+            $seqNumColor = $self->getColor($seqClusterNum) if $seqIdCount{$seqClusterNum} > 1;
+            $nodeNumColor = $self->getColor($nodeClusterNum) if $nodeNumCount{$nodeClusterNum} > 1;
+            my $isSingleton = $seqIdCount{$seqClusterNum} < 2;
+            my $seqClusterNumAttr = $seqClusterNum;
+            my $nodeClusterNumAttr = $nodeClusterNum;
+            my $seqNumFieldName = $seqNumField;
+            my $nodeNumFieldName = $nodeNumField;
             if ($isSingleton) {
                 $singleNum++;
-                $clusterNumAttr = $singleNum;
-                $fieldName = $singletonField;
+                $seqClusterNumAttr = $singleNum;
+                $nodeClusterNumAttr = $nodeClusterNum;
+                $seqNumFieldName = $singletonField;
+                $nodeNumFieldName = "";
             }
 
             my $savedAttrs = 0;
@@ -554,10 +589,12 @@ sub writeColorSsnNodes {
                     my $attrName = $attribute->getAttribute('name');
 
                     if ($attrName and $attrName eq "Organism") { #TODO: need to make this a shared constant
-                        writeGnnField($writer, $fieldName, 'integer', $clusterNumAttr);
-                        writeGnnField($writer, $countField, 'integer', $idCount{$clusterNum});
-                        writeGnnField($writer, $nodeCountField, 'integer', $nodeCount{$clusterNum});
-                        writeGnnField($writer, $colorField, 'string', $color);
+                        writeGnnField($writer, $seqNumFieldName, 'integer', $seqClusterNumAttr);
+                        writeGnnField($writer, $nodeNumFieldName, 'integer', $nodeClusterNumAttr) if $nodeNumFieldName;
+                        writeGnnField($writer, $countField, 'integer', $seqIdCount{$seqClusterNum});
+                        writeGnnField($writer, $nodeCountField, 'integer', $nodeNumCount{$nodeClusterNum}) if $nodeNumCount{$nodeClusterNum};
+                        writeGnnField($writer, $seqNumColorField, 'string', $seqNumColor);
+                        writeGnnField($writer, $nodeNumColorField, 'string', $nodeNumColor);
                         if (not $self->{color_only}) {
                             $self->saveGnnAttributes($writer, $gnnData, $node);
                         }
@@ -591,10 +628,12 @@ sub writeColorSsnNodes {
             }
 
             if (not $savedAttrs) {
-                writeGnnField($writer, $fieldName, 'integer', $clusterNumAttr);
-                writeGnnField($writer, $countField, 'integer', $idCount{$clusterNum});
-                writeGnnField($writer, $nodeCountField, 'integer', $nodeCount{$clusterNum});
-                writeGnnField($writer, $colorField, 'string', $color);
+                writeGnnField($writer, $seqNumFieldName, 'integer', $seqClusterNumAttr);
+                writeGnnField($writer, $nodeNumFieldName, 'integer', $nodeClusterNumAttr) if $nodeNumFieldName; #TODO
+                writeGnnField($writer, $countField, 'integer', $seqIdCount{$seqClusterNum});
+                writeGnnField($writer, $nodeCountField, 'integer', $nodeNumCount{$nodeClusterNum}) if $nodeNumCount{$nodeClusterNum};
+                writeGnnField($writer, $seqNumColorField, 'string', $seqNumColor);
+                writeGnnField($writer, $nodeNumColorField, 'string', $nodeNumColor) if $nodeNumColor;
                 if (not $self->{color_only}) {
                     $self->saveGnnAttributes($writer, $gnnData, $node);
                 }
@@ -761,7 +800,6 @@ sub writeGnnListField {
 sub addFileActions {
     my $B = shift; # This is an EFI::SchedulerApi::Builder object
     my $info = shift;
-    my $removeTemp = shift;
 
     my $fastaTool = "$info->{fasta_tool_path} -config $info->{config_file}";
     $fastaTool .= " -input-sequences $info->{input_seqs_file}" if $info->{input_seqs_file};
@@ -794,18 +832,20 @@ sub addFileActions {
     };
 
     $B->addAction("zip -jq $info->{ssn_out_zip} $info->{ssn_out}") if $info->{ssn_out} and $info->{ssn_out_zip};
+    $B->addAction("HMM_FASTA_DIR=\"\"");
+    $B->addAction("HMM_FASTA_DOMAIN_DIR=\"\"");
     &$writeGetFastaIf($info->{uniprot_node_data_dir}, $info->{uniprot_node_zip}, "cluster_All_UniProt_IDs.txt", $info->{uniprot_domain_node_data_dir}, $info->{fasta_data_dir}, $info->{fasta_domain_data_dir});
     &$writeGetFastaIf($info->{uniref90_node_data_dir}, $info->{uniref90_node_zip}, "cluster_All_UniRef90_IDs.txt", $info->{uniref90_domain_node_data_dir}, $info->{fasta_uniref90_data_dir}, $info->{fasta_uniref90_domain_data_dir});
     &$writeGetFastaIf($info->{uniref50_node_data_dir}, $info->{uniref50_node_zip}, "cluster_All_UniRef50_IDs.txt", $info->{uniref50_domain_node_data_dir}, $info->{fasta_uniref50_data_dir}, $info->{fasta_uniref50_domain_data_dir});
     &$writeBashZipIf($info->{uniprot_domain_node_data_dir}, $info->{uniprot_domain_node_zip}, "cluster_All_UniProt_Domain_IDs.txt");
     &$writeBashZipIf($info->{uniref50_domain_node_data_dir}, $info->{uniref50_domain_node_zip}, "cluster_All_UniRef50_Domain_IDs.txt");
     &$writeBashZipIf($info->{uniref90_domain_node_data_dir}, $info->{uniref90_domain_node_zip}, "cluster_All_UniRef90_Domain_IDs.txt");
-    &$writeBashZipIf($info->{fasta_data_dir}, $info->{fasta_zip}, "all.fasta");
-    &$writeBashZipIf($info->{fasta_domain_data_dir}, $info->{fasta_domain_zip}, "all.fasta");
-    &$writeBashZipIf($info->{fasta_uniref90_data_dir}, $info->{fasta_uniref90_zip}, "all.fasta");
-    &$writeBashZipIf($info->{fasta_uniref90_domain_data_dir}, $info->{fasta_uniref90_domain_zip}, "all.fasta");
-    &$writeBashZipIf($info->{fasta_uniref50_data_dir}, $info->{fasta_uniref50_zip}, "all.fasta");
-    &$writeBashZipIf($info->{fasta_uniref50_domain_data_dir}, $info->{fasta_uniref50_domain_zip}, "all.fasta");
+    &$writeBashZipIf($info->{fasta_data_dir}, $info->{fasta_zip}, "all.fasta", sub { $B->addAction("    HMM_FASTA_DIR=$info->{fasta_data_dir}"); });
+    &$writeBashZipIf($info->{fasta_domain_data_dir}, $info->{fasta_domain_zip}, "all.fasta", sub { $B->addAction("    HMM_FASTA_DOMAIN_DIR=$info->{fasta_domain_data_dir}"); });
+    &$writeBashZipIf($info->{fasta_uniref90_data_dir}, $info->{fasta_uniref90_zip}, "all.fasta", sub { $B->addAction("    HMM_FASTA_DIR=$info->{fasta_uniref90_data_dir}"); });
+    &$writeBashZipIf($info->{fasta_uniref90_domain_data_dir}, $info->{fasta_uniref90_domain_zip}, "all.fasta", sub { $B->addAction("    HMM_FASTA_DOMAIN_DIR=$info->{fasta_uniref90_domain_data_dir}"); });
+    &$writeBashZipIf($info->{fasta_uniref50_data_dir}, $info->{fasta_uniref50_zip}, "all.fasta", sub { $B->addAction("    HMM_FASTA_DIR=$info->{fasta_uniref50_data_dir}"); });
+    &$writeBashZipIf($info->{fasta_uniref50_domain_data_dir}, $info->{fasta_uniref50_domain_zip}, "all.fasta", sub { $B->addAction("    HMM_FASTA_DOMAIN_DIR=$info->{fasta_uniref50_domain_data_dir}"); });
     $B->addAction("zip -jq $info->{gnn_zip} $info->{gnn}") if $info->{gnn} and $info->{gnn_zip};
     $B->addAction("zip -jq $info->{pfamhubfile_zip} $info->{pfamhubfile}") if $info->{pfamhubfile_zip} and $info->{pfamhubfile};
     $B->addAction("zip -jq -r $info->{pfam_zip} $info->{pfam_dir} -i '*'") if $info->{pfam_zip} and $info->{pfam_dir};
@@ -814,13 +854,6 @@ sub addFileActions {
     $B->addAction("zip -jq -r $info->{all_split_pfam_zip} $info->{all_split_pfam_dir} -i '*'") if $info->{all_split_pfam_zip} and $info->{all_split_pfam_dir};
     $B->addAction("zip -jq -r $info->{none_zip} $info->{none_dir}") if $info->{none_zip} and $info->{none_dir};
     $B->addAction("zip -jq $info->{arrow_zip} $info->{arrow_file}") if $info->{arrow_zip} and $info->{arrow_file};
-    if ($removeTemp) {
-        my $outDir = $info->{output_dir};
-        $B->addAction(<<CLEANUP);
-rm -f $outDir/storable.hubdata
-rm -rf $outDir/cluster-data
-CLEANUP
-     }
 }
 
 sub getColor {

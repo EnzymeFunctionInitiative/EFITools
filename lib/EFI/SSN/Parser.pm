@@ -20,10 +20,13 @@ use constant EDGE_WRITER => "EDGEWRITER";
 
 use constant OPT_EXPAND_METANODE_IDS => 1;
 use constant OPT_GET_CLUSTER_NUMBER => 2;
+use constant OPT_GET_NODE_ID => 4;
+use constant OPT_CLUSTER_NUMBER_BY_NODES => 8;
 
 use Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(openSsn METADATA_READER NODE_READER EDGE_READER METADATA_WRITER NODE_WRITER EDGE_WRITER OPT_EXPAND_METANODE_IDS OPT_GET_CLUSTER_NUMBER);
+our @EXPORT = qw(openSsn METADATA_READER NODE_READER EDGE_READER METADATA_WRITER NODE_WRITER EDGE_WRITER
+                 OPT_EXPAND_METANODE_IDS OPT_GET_CLUSTER_NUMBER OPT_GET_NODE_ID OPT_CLUSTER_NUMBER_BY_NODES);
 our @EXPORT_OK = qw();
 
 
@@ -93,18 +96,23 @@ sub parse {
     my $nodeHandler = exists $self->{handlers}->{&NODE_READER} ? $self->{handlers}->{&NODE_READER} : sub {};
     my $edgeHandler = exists $self->{handlers}->{&EDGE_READER} ? $self->{handlers}->{&EDGE_READER} : sub {};
 
+    my $useNodeCountNum = $flags & OPT_CLUSTER_NUMBER_BY_NODES;
     # This is what we use to process a node - handle the flags.  Need a sub because we do this twice:
     # once before the while loop and then within the loop.
     my $getNodeParams = sub {
         my $xmlNode = shift;
         my $params = {};
-        if ($flags & OPT_EXPAND_METANODE_IDS) {
+        if ($flags & OPT_GET_NODE_ID) {
             $params->{node_id} = getNodeId($xmlNode);
+            $params->{node_real_id} = getNodeId($xmlNode, 1);
+        }
+        if ($flags & OPT_EXPAND_METANODE_IDS) {
+            $params->{node_id} = getNodeId($xmlNode) if not $flags & OPT_GET_NODE_ID;
             my @nodeIds = $self->expandMetanodeIds($xmlNode, $params->{node_id});
             $params->{node_ids} = \@nodeIds;
         }
         if ($flags & OPT_GET_CLUSTER_NUMBER) {
-            $params->{cluster_num} = $self->getClusterNumber($xmlNode);
+            $params->{cluster_num} = $self->getClusterNumber($xmlNode, $useNodeCountNum);
         }
         return $params;
     };
@@ -131,6 +139,7 @@ sub parse {
         my $params = &$getNodeParams($xmlNode);
         &$nodeHandler($xmlNode, $params);
         push @nodes, $xmlNode;
+        $self->postNodeParse($params, $#nodes, $xmlNode);
     } elsif ($reader->name eq METADATA_READER) {
         my $name = $xmlNode->getAttribute("name");
         my $value = $xmlNode->getAttribute("value");
@@ -147,6 +156,7 @@ sub parse {
             my $params = &$getNodeParams($xmlNode);
             &$nodeHandler($xmlNode, $params);
             push @nodes, $xmlNode;
+            $self->postNodeParse($params, $#nodes, $xmlNode);
         } elsif ($reader->name() eq "edge") {
             &$edgeHandler($xmlNode);
             push @edges, $xmlNode;
@@ -158,15 +168,28 @@ sub parse {
         }
     }
 
+    $self->postAllEdgesParse(\@edges);
+
     $self->{meta} = \%metadata;
     $self->{nodes} = \@nodes;
     $self->{edges} = \@edges;
+}
+sub postNodeParse {
+    my $self = shift;
+    my $params = shift;
+    my $nodeIdx = shift;
+    my $node = shift;
+}
+sub postAllEdgesParse {
+    my $self = shift;
+    my $edges = shift;
 }
 
 
 sub getNodeId {
     my $xmlNode = shift;
-    my $nodeId = $xmlNode->getAttribute("label");
+    my $useReal = shift;
+    my $nodeId = $useReal ? $xmlNode->getAttribute("id") : $xmlNode->getAttribute("label");
     $nodeId =~ s/:\d+:\d+$//; # strip domain info from the ID.
     return $nodeId;
 }
@@ -203,16 +226,19 @@ sub expandMetanodeIds {
 sub getClusterNumber {
     my $self = shift;
     my $xmlNode = shift;
+    my $useNodeCount = shift || 0;
 
     # Due to a bug in GNT, multiple instances of the attributes may exist for the same node.  We
     # don't exit the loop below until iterated through all attributes because we want to pick
     # the last entry.
     my $val = "";
+    my $numPrefix = $useNodeCount ? "Node Count" : "Sequence Count";
+    my $numAttr = "Cluster Number";
 
     my @annotations = $xmlNode->findnodes('./*');
     foreach my $annotation (@annotations) {
         my $attrName = $annotation->getAttribute('name');
-        if ($attrName eq "Cluster Number") {
+        if ($attrName eq $numAttr or $attrName eq "$numPrefix $numAttr") {
             $val = $annotation->getAttribute('value');
             last;
         } elsif ($attrName eq "Singleton Number") {
@@ -232,15 +258,12 @@ sub getClusterNumber {
 sub write {
     my $self = shift;
     my $outputFile = shift;
-    my $flags = shift || 0;
 
     my $output = new IO::File(">$outputFile");
     my $writer = new XML::Writer(DATA_MODE => "true", DATA_INDENT => 2, OUTPUT => $output);
     
-    my $edgeHandler = exists $self->{handlers}->{&EDGE_WRITER} ? $self->{handlers}->{&EDGE_WRITER} : sub {};
-
     my $title = $self->{meta}->{graph} ? $self->{meta}->{graph} : "";
-    $writer->startTag("graph", "label" => "$title ShortBRED markers", "xmlns" => "http://www.cs.rpi.edu/XGMML");
+    $writer->startTag("graph", "label" => "$title", "xmlns" => "http://www.cs.rpi.edu/XGMML");
     
     $self->writeMetadata($writer);
 
@@ -271,7 +294,6 @@ sub writeNodes {
 
     # The user-supplied node handler calls the two below anonymous subs.
     my $nodeHandler = exists $self->{handlers}->{&NODE_WRITER} ? $self->{handlers}->{&NODE_WRITER} : sub {};
-
     my $fieldWriter = sub {
         my $name = shift;
         my $type = shift;
@@ -283,7 +305,6 @@ sub writeNodes {
     
         $writer->emptyTag('att', 'name' => $name, 'type' => $type, 'value' => $value);
     };
-    
     my $listWriter = sub {
         my $name = shift;
         my $type = shift;
@@ -302,16 +323,16 @@ sub writeNodes {
         }
     
         if (scalar @values) {
-            $writer->startTag('att', 'type' => 'list', 'name' => $name);
+            $writer->startTag('att', 'name' => $name, 'type' => 'list');
             foreach my $element (@values) {
-                $writer->emptyTag('att', 'type' => $type, 'name' => $name, 'value' => $element);
+                $writer->emptyTag('att', 'name' => $name, 'type' => $type, 'value' => $element);
             }
             $writer->endTag;
         }
     };
 
-
-    foreach my $node (@{ $self->{nodes} }) {
+    my $nodes = $self->getNodeList();
+    foreach my $node (@$nodes) {
         my $actualLabel = $node->getAttribute('label');
         my $actualId = $node->getAttribute('id');
 
@@ -337,10 +358,10 @@ sub writeNodes {
                     #this tag causes problems and it is not needed, so we do not include it
                 } else {
                     if (defined $attribute->getAttribute('value')) {
-                        $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName,
+                        $writer->emptyTag('att', 'name' => $attrName, 'type' => $attrType,
                                           'value' => $attribute->getAttribute('value'));
                     } else {
-                        $writer->emptyTag('att', 'type' => $attrType, 'name' => $attrName);
+                        $writer->emptyTag('att', 'name' => $attrName, 'type' => $attrType);
                     }
                 }
             }
@@ -351,13 +372,18 @@ sub writeNodes {
         $writer->endTag(  );
     }
 }
+sub getNodeList {
+    my $self = shift;
+    return $self->{nodes};
+}
 
 
 sub writeEdges {
     my $self = shift;
     my $writer = shift;
 
-    foreach my $edge (@{$self->{edges}}) {
+    my $edges = $self->getEdgeList();
+    foreach my $edge (@$edges) {
         $writer->startTag('edge', 'id' => $edge->getAttribute('id'), 'label' => $edge->getAttribute('label'), 'source' => $edge->getAttribute('source'), 'target' => $edge->getAttribute('target'));
         foreach my $attribute ($edge->getElementsByTagName('att')) {
             if ($attribute->getAttribute('name') eq 'interaction' or $attribute->getAttribute('name')=~/rep-net/) {
@@ -369,7 +395,10 @@ sub writeEdges {
         $writer->endTag;
     }
 }
-
+sub getEdgeList { 
+    my $self = shift;
+    return $self->{edges};
+}
 
 
 1;

@@ -99,6 +99,7 @@ $debug = 2**50 if not defined $debug; #TODO: debug
 
 my ($element, $id, $status, $size, $OX_tax_id, $GDNA, $HMP, $DE_desc, $RDE_reviewed_desc, $OS_organism, $OC_domain, $GN_gene, $PDB, $GO, $kegg, $string, $brenda, $patric, $giline, $hmpsite, $hmpoxygen, $efiTid, $EC, $phylum, $class, $order, $family, $genus, $species, $cazy, $is_fragment);
 my (@BRENDA, @CAZY, @GO, @INTERPRO, @KEGG, $lastline, @OC_domain_array, @PATRIC, @PDB, @PFAM, $refseqline, @STRING);
+my ($KW_RP);
 
 print "Parsing DAT Annotation Information\n";
 open DAT, $inputFile or die "could not open dat file $inputFile\n";
@@ -114,6 +115,7 @@ while (<DAT>){
         $status=$2;
         $size=$3;
         $element = $DE_desc = $OS_organism = $OC_domain = "";
+        $KW_RP = "";
         $GDNA="None";
         $cazy = $EC = $OX_tax_id = $GN_gene = $HMP = "None";
         @CAZY = @PFAM = @PDB = @INTERPRO = @GO = @KEGG = @STRING = @BRENDA = @PATRIC = ();
@@ -160,6 +162,8 @@ while (<DAT>){
         push @BRENDA, "$1 $2";
     }elsif($line=~/^DR   PATRIC; (\S+); (\S+)/){
         push @PATRIC, $1;
+    }elsif($line=~/^KW\s+Reference proteome(\s+\{([^\}]+)\})?/){
+        $KW_RP=($2?"$2":"1");
     }elsif($line=~/^OC   (.*)/){
         $OC_domain.=$1;
     }elsif($line=~/^GN   \w+=(\w+)/){
@@ -278,17 +282,19 @@ sub write_line {
         $DE_desc=~s/^\s+//g;
         $is_fragment = ($DE_desc =~ /Flags:.*Fragment/) ? 1 : 0;
         #$DE_desc=~s/{.*?}$//;
-        if($DE_desc=~/^RecName: Full=(.*)/){
+        if($DE_desc=~/^\s*RecName:\s*Full=(.*)$/){
             $DE_desc=$1;
             $DE_desc=~s/\{.*\}//;
+            $DE_desc=~s/Short:.*//;
             $DE_desc=~s/Flags:.*$//;
             $DE_desc=~s/AltName:.*//;
             $DE_desc=~s/RecName:.*//;
             $DE_desc=~s/\=//g;
             #print "first $DE_desc\n";
-        }elsif($DE_desc=~/^SubName: Full=(.*)/){
+        }elsif($DE_desc=~/^\s*SubName:\s*Full=(.*)$/){
             $DE_desc=$1;
             $DE_desc=~s/\{.*\}//;
+            $DE_desc=~s/Short:.*//;
             $DE_desc=~s/Flags:.*$//;
             $DE_desc=~s/AltName:.*//;
             $DE_desc=~s/RecName:.*//;
@@ -298,6 +304,7 @@ sub write_line {
             print "unmatched $DE_desc\n";
         }
         $DE_desc=~s/{.*?}//g;
+        $DE_desc=~s/^\s*(.*?)\s*$/$1/;
         if($status eq "Reviewed"){
             $RDE_reviewed_desc=$DE_desc;
         }else{
@@ -318,6 +325,7 @@ sub write_line {
         push @line, $hmpsite, $hmpoxygen, $efiTid, $EC;
         push @line, $cazy;
         push @line, $is_fragment;
+        push @line, $KW_RP;
 
         print STRUCT join("\t", @line), "\n";
     }

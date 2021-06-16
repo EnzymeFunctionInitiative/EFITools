@@ -17,6 +17,7 @@
 use FindBin;
 use Getopt::Long;
 use List::MoreUtils qw{apply uniq any} ;
+use Data::Dumper;
 
 use lib "$FindBin::Bin/../../lib";
 use lib "$FindBin::Bin/lib";
@@ -27,6 +28,7 @@ use IdMappingFile;
 #$LIST_FILES_ONLY = 1;
 
 my $appendOutput = 0;
+my $idList = undef;
 
 
 sub logprint { print LOG @_, "\n"; print @_, "\n"; }
@@ -129,7 +131,9 @@ sub process{
                 }
 
                 foreach $AC (@uniprotIds, @revUniprotIdsToAdd) {
-                    print OUT "$ID\t$AC\t$count\t$CHR\t$DIR\t$START\t$END\n";
+                    if (not $idList or $idList->{$AC}) {
+                        print OUT "$ID\t$AC\t$count\t$CHR\t$DIR\t$START\t$END\n";
+                    }
                 }
                 @uniprotIds=();
                 %processedAlready=();
@@ -215,6 +219,7 @@ $result = GetOptions(
     "legacy-wgs"    => \$legacyWgs,
     "debug=s"       => \$debugParseFile,
     "append"        => \$appendOutput,
+    "id-list=s"     => \$idList,
 );
 
 $appendOutput = defined($appendOutput);
@@ -248,6 +253,20 @@ if (-f $debugParseFile) {
         push @files, $file if $file and -f $file;
     }
     exit;
+}
+
+
+if ($idList and -f $idList) {
+    open my $fh, "<", $idList;
+    my $list = {};
+    while (<$fh>) {
+        chomp;
+        $list->{$_} = 1;
+    }
+    close $fh;
+    $idList = $list;
+} else {
+    $idList = undef;
 }
 
 

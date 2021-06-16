@@ -46,7 +46,7 @@ sub addScalarData {
 
 sub saveToFile {
     my $self = shift;
-    my $file = shift || die "Require file argument.";
+    my $file = shift;
 
     my $numSequences = $self->{num_seq};
     my $endTrim = $numSequences * (1 - $self->{incfrac}) / 2;
@@ -63,17 +63,22 @@ sub saveToFile {
         }
     }
 
-    open OUT, ">", $file or die "Unable to open length file $file for writing: $!";
+    my $out = *STDOUT;
+    my $hasOut = 0;
+    if ($file) {
+        open $out, ">", $file or die "Unable to open length file $file for writing: $!";
+        $hasOut = 1;
+    }
     
     for (my $i = $minCount; $i <= $count; $i++) {
         if (defined $self->{len}->[$i]) {
-            print OUT "$i\t$self->{len}->[$i]\n";
+            $out->print("$i\t$self->{len}->[$i]\n");
         } else {
-            print OUT "$i\t0\n";
+            $out->print("$i\t0\n");
         }
     }
     
-    close OUT;
+    $out->close if $hasOut;;
 }
 
 

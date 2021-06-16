@@ -104,10 +104,12 @@ foreach my $taxon ($doc->findnodes("/taxonSet/taxon")) {
     my $phylum = "";
 
     foreach my $lineageTaxon (@lineage) {
+        my $lineageTaxId = $lineageTaxon->getAttribute('taxId');
         my $lineageType = $lineageTaxon->getAttribute("rank");
+        $lineageType = $nodes{$lineageTaxId}->{rank} if not $lineageType;
         if ($lineageType) {
             $nodes{$taxId}->{lineage}->{$lineageType} = $lineageTaxon->getAttribute('scientificName');
-            $nodes{$taxId}->{lineage_id}->{$lineageType} = $lineageTaxon->getAttribute('taxId');
+            $nodes{$taxId}->{lineage_id}->{$lineageType} = $lineageTaxId;
         }
     }
 }

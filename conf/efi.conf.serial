@@ -1,0 +1,78 @@
+[database]
+user=efidevel
+password=ZQjSnokm
+host=172.16.28.119
+port=3307
+uniref90_db=uniref90.fasta
+uniref50_db=uniref50.fasta
+uniprot_db=combined.fasta
+
+; The database name and DBI and BLAST database path can be overridden by the environment.
+
+; FOR MYSQL
+dbi=mysql
+name=efi_201909
+
+; FOR SQLITE
+;dbi=sqlite3
+;name=/private_stores/gerlt/databases/20190708/efi_201907.sqlite
+;name=/private_stores/gerlt/databases/20191119/efi_201911.sqlite
+
+blast_db_dir=/home/groups/efi/databases/20190708/blastdb
+diamond_db_dir=/home/groups/efi/databases/20190708/diamonddb
+
+[cluster]
+scheduler=serial
+scratch_dir=/scratch
+
+[cgfp]
+type=diamond
+shortbred_repo=sbin/efi_cgfp/shortbred_20180817
+
+[cgfp.database]
+hmp=/home/groups/efi/databases/HMP/hmp.db
+
+[environment.headers]
+
+
+[cgfp.database]
+hmp=/home/groups/efi/databases/HMP/hmp.db
+
+[environment.headers]
+
+[environment.est-std]
+module load BLAST
+module load Perl
+module load CD-HIT
+
+[environment.est-graphs]
+module load GD
+module load R
+
+[environment.est-graphs-v2]
+module load HDF5
+module load Python
+
+[environment.est-diamond]
+module load DIAMOND
+
+[environment.est-blast+]
+module load BLAST+
+
+[environment.est-color]
+module load Perl
+module load BLAST
+
+[environment.gnt]
+module load Perl
+module load BLAST
+
+[environment.cgfp]
+module load Python/2.7.13-IGB-gcc-4.9.4
+module load Biopython/1.68-IGB-gcc-4.9.4-Python-2.7.13
+module load USEARCH/9.2.64
+module load MUSCLE/3.8.31-IGB-gcc-4.9.4
+module load BLAST+
+module load CD-HIT
+module load DIAMOND/0.9.24-IGB-gcc-4.9.4
+

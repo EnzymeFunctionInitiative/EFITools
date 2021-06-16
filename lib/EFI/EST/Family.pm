@@ -1,12 +1,9 @@
 
 package EFI::EST::Family;
 
+
 use strict;
 use warnings;
-
-use Cwd qw(abs_path);
-use File::Basename qw(dirname);
-use lib dirname(abs_path(__FILE__)) . "/../";
 
 use Getopt::Long qw(:config pass_through);
 
@@ -38,15 +35,17 @@ sub hasUniRef {
 # Look on the command line @ARGV for family configuration parameters.
 sub loadFamilyParameters {
     my ($ipro, $pfam, $gene3d, $ssf);
-    my ($useDomain, $fraction);
+    my ($useDomain, $fraction, $maxSequence, $maxFullFam);
     my ($unirefVersion);
     my ($domainFamily, $domainRegion, $excludeFragments);
 
     my $result = GetOptions(
-        "ipro|interpro=s"       => \$ipro,
+        "ipro=s"                => \$ipro,
         "pfam=s"                => \$pfam,
         "gene3d=s"              => \$gene3d,
         "ssf=s"                 => \$ssf,
+        "max-sequence=s"        => \$maxSequence,
+        "max-full-fam-ur90=i"   => \$maxFullFam,
         "domain=s"              => \$useDomain,
         "domain-family=s"       => \$domainFamily, # Option D
         "domain-region=s"       => \$domainRegion, # Option D
@@ -79,6 +78,8 @@ sub loadFamilyParameters {
     $config->{fraction} =       (defined $fraction and $fraction !~ m/\D/ and $fraction > 0) ? $fraction : 1;
     $config->{use_domain} =     (defined $useDomain and $useDomain eq "on");
     $config->{uniref_version} = defined $unirefVersion ? $unirefVersion : "";
+    $config->{max_seq} =        defined $maxSequence ? $maxSequence : 0;
+    $config->{max_full_fam} =   defined $maxFullFam ? $maxFullFam : 0;
     $config->{domain_family} =  ($config->{use_domain} and $domainFamily) ? $domainFamily : "";
     $config->{domain_region} =  ($config->{use_domain} and $domainRegion) ? $domainRegion : "";
     $config->{exclude_fragments}    = $excludeFragments;
@@ -107,7 +108,7 @@ sub retrieveFamilyAccessions {
     my @clans = grep {m/^cl/i} @pfam;
     @pfam = grep {m/^pf/i} @pfam;
     push @pfam, $self->retrieveFamiliesForClans(@clans);
-    
+
     my $fractionFunc;
     if ($self->{config}->{fraction} < 2) {
         $fractionFunc = sub {
@@ -133,10 +134,10 @@ sub retrieveFamilyAccessions {
     $self->{data}->{full_dom_uniprot_ids} = $self->{config}->{use_domain} ? {} : undef;
 
     my ($actualI, $fullFamSizeI) = $self->getDomainFromDb("INTERPRO", $fractionFunc, $self->{family}->{interpro});
-    my ($actualP, $fullFamSizeP) = $self->getDomainFromDb("PFAM", $fractionFunc, \@pfam});
+    my ($actualP, $fullFamSizeP) = $self->getDomainFromDb("PFAM", $fractionFunc, \@pfam);
     my ($actualG, $fullFamSizeG) = $self->getDomainFromDb("GENE3D", $fractionFunc, $self->{family}->{gene3d});
     my ($actualS, $fullFamSizeS) = $self->getDomainFromDb("SSF", $fractionFunc, $self->{family}->{ssf});
-
+    
     my $domReg = $self->{config}->{domain_region};
     if ($domReg eq "cterminal" or $domReg eq "nterminal") {
         $self->getDomainRegion($domReg);
@@ -195,18 +196,19 @@ sub getDomainFromDb {
     my $annoTable = "annotations";
     my $annoJoinStr = "LEFT JOIN $annoTable ON $table.accession = $annoTable.accession"; # Used conditionally
 
-    my $annoJoin = ($self->{config}->{fraction} > 1 or $self->{config}->{exclude_fragments}) ? $annoJoinStr : "";
+    my $annoJoin = ($self->{config}->{fraction} > 1 or $self->{config}->{exclude_fragments} or $domReg eq "cterminal") ? $annoJoinStr : "";
     my $spCol = $self->{config}->{fraction} > 1 ? ", $annoTable.STATUS AS STATUS" : "";
     my $fragWhere = "";
     if ($self->dbSupportsFragment() and $self->{config}->{exclude_fragments}) {
         $fragWhere = " AND $annoTable.Fragment = 0";
     }
-
+    
     my $seqLenCol = $domReg eq "cterminal" ? ", Sequence_Length AS full_len" : "";
-    $annoJoin = ($domReg eq "cterminal" and not $annoJoin) ? $annoJoinStr : "";
+    #$annoJoin = ($domReg eq "cterminal" and not $annoJoin) ? $annoJoinStr : "";
 
     foreach my $family (@families) {
         my $sql = "SELECT $table.accession AS accession, start, end $unirefCol $spCol $seqLenCol FROM $table $unirefJoin $annoJoin WHERE $table.id = '$family' $fragWhere";
+        print "SQL $sql\n";
         my $sth = $self->{dbh}->prepare($sql);
         $sth->execute;
         my $ac = 1;
@@ -214,6 +216,9 @@ sub getDomainFromDb {
             (my $uniprotId = $row->{accession}) =~ s/\-\d+$//; #remove homologues
             next if (not $useDomain and exists $idsProcessed{$uniprotId});
             $idsProcessed{$uniprotId} = 1;
+
+            my $isSwissProt = $self->{config}->{fraction} > 1 ? $row->{STATUS} eq "Reviewed" : 0;
+            my $isFraction = &$fractionFunc($count);
 
             if ($unirefVersion) {
                 my $unirefId = $row->{$unirefField};
@@ -223,11 +228,15 @@ sub getDomainFromDb {
                 # in the UniRef cluster that corresponds to the UniRef cluster ID.
                 my $piece = {'start' => $row->{start}, 'end' => $row->{end}};
                 $piece->{full_len} = $row->{full_len} if $seqLenCol;
-                if ($unirefId eq $uniprotId) {
+                print "LEN $piece->{full_len}\n";
+                if ($unirefId eq $uniprotId and ($isSwissProt or $isFraction)) {
                     push @{$ids->{$uniprotId}}, \%$piece;
                     push @{$fullFamIds->{$uniprotId}}, \%$piece if $useDomain;
-                } elsif ($useDomain) {
+                } elsif ($useDomain and ($isSwissProt or $isFraction)) {
                     push @{$fullFamIds->{$uniprotId}}, \%$piece;
+                }
+                if ($unirefId ne $uniprotId and ($isSwissProt or $isFraction)) {
+                    $unirefMapping->{$uniprotId} = $unirefId;
                 }
                 # Only increment the family size if the uniref cluster ID hasn't yet been encountered.  This
                 # is because the select query above retrieves all accessions in the family based on UniProt
@@ -236,15 +245,12 @@ sub getDomainFromDb {
                     $unirefFamSizeHelper{$unirefId} = 1;
                     $count++;
                 }
-                $unirefMapping->{$uniprotId} = $unirefId if $unirefId ne $uniprotId;
             } else {
-                my $isSwissProt = $self->{config}->{fraction} > 1 ? $row->{STATUS} eq "Reviewed" : 0;
-                my $isFraction = &$fractionFunc($count);
                 if ($isFraction or $isSwissProt) {
                     $ac++;
                     my $piece = {'start' => $row->{start}, 'end' => $row->{end}};
                     $piece->{full_len} = $row->{full_len} if $seqLenCol;
-                    push @{$ids->{$uniprotId}}, \%$piece;
+                    push @{$ids->{$uniprotId}}, $piece;
                 }
                 $count++;
             }
@@ -279,7 +285,7 @@ sub getDomainRegion {
         foreach my $id (@ids) {
             my $region = {};
             my $idObject = $ids->{$id};
-            my $numPieces = scalar @$idObject;
+            my $numPieces = scalar @$idObject; 
             for (my $i = 0; $i < $numPieces; $i++) {
                 my $piece = $idObject->[$i];
                 my $newStruct = {};
@@ -295,7 +301,7 @@ sub getDomainRegion {
                 }
                 if ($len > 0) {
                     push @{$outputIds->{$id}}, $newStruct;
-                }
+                } 
             }
         }
         foreach my $id (@ids) {
@@ -311,12 +317,23 @@ sub getDomainRegion {
 
     &$computeFn($ids);
     &$computeFn($fullFamIds);
+
+#    # If we are using UniRef and domain, then we need to look up the domain region for the family
+#    # for each UniRef cluster member.
+#    if ($self->{config}->{uniref_version}) {
+#        my $metaKey = "UniRef$self->{config}->{uniref_version}_IDs";
+#        my @upIds;
+#        foreach my $id (keys %{$self->{data}->{uniprot_ids}}) {
+#            my @clIds = @{$self->{data}->{meta}->{$id}->{$metaKey}};
+#            push @upIds, grep { exists $self->{data}->{uniref_cluster_members}->{$_} } @clIds;
+#        }
+#        &$computeFn($self->{data}->{uniref_cluster_members});
+#    }
 }
 
 
 sub getSequenceIds {
     my $self = shift;
-
     return $self->{data}->{uniprot_ids};
 }
 

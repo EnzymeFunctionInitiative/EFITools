@@ -1,0 +1,86 @@
+[database]
+user=efidevel
+password=ZQjSnokm
+host=172.16.28.119
+port=3307
+uniref90_db=uniref90.fasta
+uniref50_db=uniref50.fasta
+uniprot_db=combined.fasta
+
+; The database name and DBI and BLAST database path can be overridden by the environment.
+
+; FOR MYSQL
+dbi=mysql
+name=efi_201911
+
+; FOR SQLITE
+;dbi=sqlite3
+;name=/private_stores/gerlt/databases/20190708/efi_201907.sqlite
+;name=/private_stores/gerlt/databases/20191119/efi_201911.sqlite
+
+blast_db_dir=/home/groups/efi/databases/20191119/blastdb
+diamond_db_dir=/home/groups/efi/databases/20191119/diamonddb
+
+[cluster]
+np=48
+node_np=24 ; number of processors on a single node
+max_queue_ram=300 ; maximum amount of RAM allowed to be requested on a queue node
+max_mem_queue_ram=1500 ; maximum amount of RAM allowed to be requested on a mem_queue node
+queue=efi
+mem_queue=efi-mem
+;scheduler=slurm|torque|pbspro
+scheduler=slurm
+serial=no
+scratch_dir=/scratch
+
+[cgfp]
+type=diamond
+; Relative paths means it's local to the EFITools repo
+shortbred_repo=sbin/efi_cgfp/shortbred_20180817 ; ShortBRED from Huttenhower
+cgfp_repo=sbin/efi_cgfp/cgfp_20171220 ; CGFP from Balskus
+
+[cgfp.database]
+hmp=/home/groups/efi/databases/HMP/hmp.db
+
+; Anytime the "est-std" environment is requested by the scripts, the following directives are inserted
+; into the job script.
+; These are used to add environment variables to job scripts, and are directly inserted into the job script files (use source ... or module load)
+[environment.est-std]
+module load BLAST
+module load Perl
+module load CD-HIT
+
+; Anytime the "est-graphs" environment is requested by the scripts, the following directives are inserted
+; into the job script.
+; These are used to add environment variables to job scripts, and are directly inserted into the job script files (use source ... or module load)
+[environment.est-graphs]
+module load GD
+module load R
+
+[environment.est-graphs-v2]
+module load HDF5
+module load Python
+
+[environment.est-diamond]
+module load DIAMOND
+
+[environment.est-blast+]
+module load BLAST+
+
+[environment.est-color]
+module load Perl
+module load BLAST
+
+[environment.gnt]
+module load Perl
+module load BLAST
+
+[environment.cgfp]
+module load Python/2
+module load Biopython
+module load USEARCH/9
+module load MUSCLE/3
+module load BLAST+
+module load CD-HIT
+module load DIAMOND/0.9.24-IGB-gcc-4.9.4
+

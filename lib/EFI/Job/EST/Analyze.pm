@@ -112,6 +112,7 @@ sub validateOptions {
     $conf->{parent_id} = $parms->{"parent-id"} // 0;
     $conf->{parent_dir} = $parms->{"parent-dir"} // "";
     $conf->{include_sequences} = defined $parms->{"include-sequences"} ? 1 : 0;
+    $conf->{include_all_sequences} = defined $parms->{"include-all-sequences"} ? 1 : 0;
     $conf->{uniref_version} = $parms->{"uniref-version"} // 0;
     $conf->{use_anno_spec} = defined $parms->{"use-anno-spec"} ? 1 : 0;
     $conf->{use_min_edge_attr} = defined $parms->{"use-min-edge-attr"} ? 1 : 0;
@@ -265,6 +266,7 @@ sub createFullXgmmlJob {
 
     my $outFile = "$conf->{output_dir}/$conf->{file_name}full_ssn.xgmml";
     my $seqsArg = $conf->{include_sequences} ? "--include-sequences" : "";
+    $seqsArg .= " --include-all-sequences" if $conf->{include_all_sequences};
     my $useMinArg = $conf->{use_min_edge_attr} ? "--use-min-edge-attr" : "";
 
     my $B = $self->getBuilder();

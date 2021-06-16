@@ -34,6 +34,7 @@ sub new {
         "domain-map-file-name=s",
         "stats=s",
         "cluster-sizes=s",
+        "cluster-num-map=s",
         "sp-clusters-desc=s",
         "sp-singletons-desc=s",
         "extra-ram",
@@ -73,6 +74,7 @@ sub validateOptions {
     $conf->{domain_map_file_name} = $parms->{"domain-map-file-name"} // "domain_mapping_table.txt";
     $conf->{stats} = $parms->{"stats"} // "stats.txt";
     $conf->{cluster_sizes} = $parms->{"cluster-sizes"} // "cluster_size.txt";
+    $conf->{cluster_num_map} = $parms->{"cluster-num-map"} // "cluster_num_map.txt";
     $conf->{sp_clusters_desc} = $parms->{"sp-clusters-desc"} // "swissprot_clusters_desc.txt";
     $conf->{sp_singletons_desc} = $parms->{"sp-singletons-desc"} // "swissprot_singletons_desc.txt";
     $conf->{extra_ram} = $parms->{"extra-ram"} // 0;

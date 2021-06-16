@@ -36,6 +36,8 @@ my $enaDir;
 my $buildCountsOnly;
 my $doPdbBlast;
 my $dbType;
+my $excludeTrembl;
+my $excludeIdMapping;
 
 my $result = GetOptions("dir=s"         => \$WorkingDir,
                         "download"      => \$doDownload,
@@ -56,6 +58,9 @@ my $result = GetOptions("dir=s"         => \$WorkingDir,
                         "build-counts"  => \$buildCountsOnly,   # build the family count table only
                         "pdb-blast"     => \$doPdbBlast,
                         "db-type=s"     => \$dbType,
+
+                        "exclude-trembl"    => \$excludeTrembl,
+                        "exclude-idmapping" => \$excludeIdMapping,
                        );
 
 my $usage = <<USAGE;
@@ -111,6 +116,8 @@ my $config = parseConfigFile($configFile);
 
 $doPdbBlast = defined $doPdbBlast;
 $dbType = "mysql" if not $dbType;
+$excludeTrembl = defined $excludeTrembl;
+$excludeIdMapping = defined $excludeIdMapping;
 $queue = $config->{cluster}->{queue} if not $queue and $config->{cluster}->{queue};
 
 die "The BLASTDB environment variable must be present. Did you forget to \"module load BLAST\" before running this program?" if not exists $ENV{BLASTDB} and $doPdbBlast;
@@ -262,14 +269,14 @@ if (defined $buildEna and $buildEna) {
     my $idmappingJobId = submitIdMappingJob($S->getBuilder(), $unzipJobId, $fileNum++);
     
     logprint "#CREATE ANNOTATIONS (STRUCT) TAB FILES\n";
-    my $structJobId = submitAnnotationsJob($S->getBuilder(), [$idmappingJobId, $ffJobId], $fileNum++);
+    my $structJobId = submitAnnotationsJob($S->getBuilder(), $idmappingJobId, $fileNum++);
 
-    logprint "#CREATE NO-FRAGMENT FASTA FILES\n";
-    my $noFragJobId = submitNoFragmentJob($S->getBuilder(), $structJobId, $fileNum++);
-    
     # Create uniref table
     logprint "#CREATING UNIREF TABLE\n";
     my $unirefJobId = submitBuildUnirefJob($S->getBuilder(), $unzipJobId, $fileNum++);
+
+    logprint "#CREATING FRAGMENT EXCLUSION JOB\n";
+    my $fragJobId = submitNoFragmentJob($S->getBuilder(), [$structJobId, $unirefJobId], $fileNum++);
 
     # Create family_counts table
     logprint "#CREATING FAMILY COUNTS TABLE\n";
@@ -277,7 +284,7 @@ if (defined $buildEna and $buildEna) {
     
     # We try to do this after everything else has completed so that we don't hog the queue.
     logprint "#FORMAT BLAST DATABASE\n";
-    my $splitJobId = submitFormatDbAndSplitFastaJob($S->getBuilder(), $noFragJobId, $np, $PdbBuildDir, $doPdbBlast, $fileNum++);
+    my $splitJobId = submitFormatDbAndSplitFastaJob($S->getBuilder(), $structJobId, $np, $PdbBuildDir, $doPdbBlast, $fileNum++);
     
     if ($doPdbBlast) {
        logprint "#DO PDB BLAST\n";
@@ -322,8 +329,12 @@ sub submitIdMappingJob {
 
     my $file = "$BuildDir/$fileNum-idmapping.sh";
     $B->dependency(0, $depId);
-   
-    $B->addAction("perl $ScriptDir/import_id_mapping.pl $configParam -input $InputDir/idmapping.dat -output $OutputDir/idmapping.tab");
+
+    if (not $excludeIdMapping) {
+        $B->addAction("perl $ScriptDir/import_id_mapping.pl $configParam -input $InputDir/idmapping.dat -output $OutputDir/idmapping.tab");
+    } else {
+        $B->addAction("touch $OutputDir/idmapping.tab");
+    }
     $B->addAction("date > $CompletedFlagFile.$fileNum-idmapping\n");
    
     $B->outputBaseFilepath($file);
@@ -409,18 +420,19 @@ sub submitBuildCountsJob {
     addStandardEnv($B);
     
     if (not $skipIfExists or not -f "$OutputDir/family_counts.tab") {
-        $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/PFAM.tab -output $OutputDir/family_counts.tab -type PFAM -uniref $OutputDir/uniref.tab -merge-domain -clans $InputDir/Pfam-A.clans.tsv");
-        $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/INTERPRO.tab -output $OutputDir/family_counts.tab -type INTERPRO -uniref $OutputDir/uniref.tab -merge-domain -append");
-        $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/GENE3D.tab -output $OutputDir/family_counts.tab -type GENE3D -uniref $OutputDir/uniref.tab -merge-domain -append");
-        $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/SSF.tab -output $OutputDir/family_counts.tab -type SSF -uniref $OutputDir/uniref.tab -merge-domain -append");
-        $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/TIGRFAMs.tab -output $OutputDir/family_counts.tab -type TIGRFAMs -uniref $OutputDir/uniref.tab -merge-domain -append");
+        $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/PFAM.tab -output $BuildDir/family_counts.PFAM.tab -type PFAM -uniref $OutputDir/uniref.tab -merge-domain -clans $InputDir/Pfam-A.clans.tsv");
+        $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/INTERPRO.tab -output $BuildDir/family_counts.INTERPRO.tab -type INTERPRO -uniref $OutputDir/uniref.tab -merge-domain");
+        $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/CATHGENE3D.tab -output $BuildDir/family_counts.CATHGENE3D.tab -type GENE3D -uniref $OutputDir/uniref.tab -merge-domain");
+        $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/SSF.tab -output $BuildDir/family_counts.SSF.tab -type SSF -uniref $OutputDir/uniref.tab -merge-domain");
+        $B->addAction("$ScriptDir/count_families.pl -input $OutputDir/TIGRFAMs.tab -output $BuildDir/family_counts.TIGRFAMs.tab -type TIGRFAMs -uniref $OutputDir/uniref.tab -merge-domain");
         $B->addAction("date > $CompletedFlagFile.family_counts\n");
     }
     if (not $skipIfExists or not -f "$OutputDir/family_info.tab") {
-        $B->addAction("$ScriptDir/create_family_info.pl -combined $InputDir/Pfam-A.clans.tsv -merge-counts $OutputDir/family_counts.tab -out $BuildDir/pfam_family_info.tab -use-clans");
-        $B->addAction("$ScriptDir/create_family_info.pl -long $InputDir/interpro_names.dat -short $InputDir/interpro_short_names.dat -merge-counts $OutputDir/family_counts.tab -out $BuildDir/interpro_family_info.tab");
+        $B->addAction("$ScriptDir/create_family_info.pl -combined $InputDir/Pfam-A.clans.tsv -merge-counts $BuildDir/family_counts.PFAM.tab -out $BuildDir/pfam_family_info.tab -use-clans");
+        $B->addAction("$ScriptDir/create_family_info.pl -long $InputDir/interpro_names.dat -short $InputDir/interpro_short_names.dat -merge-counts $BuildDir/family_counts.INTERPRO.tab -out $BuildDir/interpro_family_info.tab");
         $B->addAction("cp $BuildDir/pfam_family_info.tab $OutputDir/family_info.tab");
         $B->addAction("cat $BuildDir/interpro_family_info.tab >> $OutputDir/family_info.tab");
+        #TODO: add TIGR SSF GENE3D???
         # Add clans to the info table
         #$B->addAction("grep CLAN $OutputDir/family_counts.tab | awk '" . '{print $2, "\t", $3, $4, $5}' . "' >> $OutputDir/family_info.tab");
         $B->addAction("date > $CompletedFlagFile.create_family_info\n");
@@ -486,18 +498,34 @@ sub submitFormatDbAndSplitFastaJob {
     $B->workingDirectory($dbDir);
     
     addStandardEnv($B);
-    
+
+    my @fileSets = (["combined/combined.fasta", "uniref/uniref90.fasta", "uniref/uniref50.fasta"]);
+    my $processFragments = 1;
+    if ($processFragments) {
+        my @nfFiles = ("combined/combined_nf.fasta", "uniref/uniref90_nf.fasta", "uniref/uniref50_nf.fasta");
+        push @fileSets, \@nfFiles;
+        #$B->addAction("\n");
+        #foreach my $nfFile (@nfFiles) {
+        #    (my $inFile = $nfFile) =~s /_nf\.fasta$/.fasta/;
+        #    $B->addAction("$ScriptDir/remove_ids_from_file.pl --id-list $BuildDir/fragment_ids.tab --in $BuildDir/$inFile --out $BuildDir/$nfFile");
+        #}
+        #$B->addAction("\n");
+    }
+
     #build fasta database
     if (not $skipIfExists or not -f "$dbDir/formatdb.log") {
-        my @dbs = ("combined/combined.fasta", "uniref/uniref90.fasta", "uniref/uniref50.fasta");
-        foreach my $db (@dbs) {
-            (my $target = $db) =~ s%^.*?([^/]+)$%$1%;
-            $B->addAction("cd $dbDir");
-            $B->addAction("mv $BuildDir/$db $dbDir/$target");
-            $B->addAction("formatdb -i $dbDir/$target -p T -o T");
-            $B->addAction("mv $dbDir/$target $BuildDir/$db");
-            $B->addAction("diamond makedb --in $BuildDir/$db -d $diamondDbDir/$target");
-            $B->addAction("date > $CompletedFlagFile.formatdb.$target\n");
+        foreach my $fileSet (@fileSets) {
+            #my @dbs = ("combined/combined.fasta", "uniref/uniref90.fasta", "uniref/uniref50.fasta");
+            my @dbs = @$fileSet;
+            foreach my $db (@dbs) {
+                (my $target = $db) =~ s%^.*?([^/]+)$%$1%;
+                $B->addAction("cd $dbDir");
+                $B->addAction("mv $BuildDir/$db $dbDir/$target");
+                $B->addAction("formatdb -i $dbDir/$target -p T -o T -v 10000");
+                $B->addAction("mv $dbDir/$target $BuildDir/$db");
+                $B->addAction("diamond makedb --in $BuildDir/$db -d $diamondDbDir/$target");
+                $B->addAction("date > $CompletedFlagFile.formatdb.$target\n");
+            }
         }
     }
     
@@ -718,13 +746,17 @@ sub submitUnzipJob {
     }
 
     #create new copies of trembl databases
-    if (not $skipIfExists or not -f "$CombinedDir/combined.fasta") {
+    if (not $excludeTrembl and (not $skipIfExists or not -f "$CombinedDir/combined.fasta")) {
         $B->addAction("cp $InputDir/uniprot_trembl.fasta $CombinedDir/combined.fasta");
         $B->addAction("date > $CompletedFlagFile.combined.fasta_cp\n");
+    } else {
+        $B->addAction("rm $CombinedDir/combined.fasta");
     }
-    if (not $skipIfExists or not -f "$CombinedDir/combined.dat") {
+    if (not $excludeTrembl and (not $skipIfExists or not -f "$CombinedDir/combined.dat")) {
         $B->addAction("cp $InputDir/uniprot_trembl.dat $CombinedDir/combined.dat");
         $B->addAction("date > $CompletedFlagFile.combined.dat_cp\n");
+    } else {
+        $B->addAction("rm $CombinedDir/combined.dat");
     }
     
     #add swissprot database to trembl copy
@@ -780,7 +812,7 @@ sub submitAnnotationsJob {
     if (not $skipIfExists or not -f "$OutputDir/annotations.tab") {
         # Exclude GI
         #$B->addAction($ScriptDir . "/make_annotations_table.pl -dat $CombinedDir/combined.dat -annotations $OutputDir/annotations.tab -uniprotgi $LocalSupportDir/gionly.dat -efitid $LocalSupportDir/efi-accession.tab -gdna $LocalSupportDir/gdna.tab -hmp $LocalSupportDir/hmp.tab -phylo $LocalSupportDir/phylo.tab");
-        $B->addAction($ScriptDir . "/make_annotations_table.pl -dat $CombinedDir/combined.dat -annotations $OutputDir/annotations.tab -gdna $LocalSupportDir/gdna.tab -hmp $LocalSupportDir/hmp.tab");
+        $B->addAction($ScriptDir . "/make_annotations_table.pl --dat $CombinedDir/combined.dat --annotations $OutputDir/annotations.tab --fragment-ids $BuildDir/fragment_ids.tab --gdna $LocalSupportDir/gdna.tab --hmp $LocalSupportDir/hmp.tab");
         $B->addAction("date > $CompletedFlagFile.make_annotations_table\n");
     }
 
@@ -810,9 +842,9 @@ sub submitNoFragmentJob {
         my $fragIds = "$RemoveFragsDir/fragment_ids.list";
         $B->addAction("cut -f1,22 $OutputDir/annotations.tab > $fragTab");
         $B->addAction("awk '{ if (\$2 == 1) { print \$1 } }' $fragTab > $fragIds");
-        $B->addAction($ScriptDir . "/remove_ids_from_file.pl --id-list $fragIds --in $CombinedDir/combined.fasta --out $CombinedDir/combined_no_frags.fasta");
-        $B->addAction($ScriptDir . "/remove_ids_from_file.pl --id-list $fragIds --in $UniRefDir/uniref90.fasta --out $UniRefDir/uniref90_no_frags.fasta");
-        $B->addAction($ScriptDir . "/remove_ids_from_file.pl --id-list $fragIds --in $UniRefDir/uniref50.fasta --out $UniRefDir/uniref50_no_frags.fasta");
+        $B->addAction($ScriptDir . "/remove_ids_from_file.pl --id-list $fragIds --in $CombinedDir/combined.fasta --out $CombinedDir/combined_nf.fasta");
+        $B->addAction($ScriptDir . "/remove_ids_from_file.pl --id-list $fragIds --in $UniRefDir/uniref90.fasta --out $UniRefDir/uniref90_nf.fasta");
+        $B->addAction($ScriptDir . "/remove_ids_from_file.pl --id-list $fragIds --in $UniRefDir/uniref50.fasta --out $UniRefDir/uniref50_nf.fasta");
         $B->addAction("date > $CompletedFlagFile.remove_ids_from_file\n");
     }
 
@@ -913,7 +945,8 @@ CREATE TABLE annotations(accession VARCHAR(10) PRIMARY KEY,
                          EFI_ID VARCHAR(6),
                          EC VARCHAR(185),
                          Cazy VARCHAR(30),
-                         Fragment TINYINT(1));
+                         Fragment TINYINT(1),
+                         Ref_Proteome VARCHAR(30));
 CREATE INDEX TaxID_Index ON annotations (Taxonomy_ID);
 CREATE INDEX accession_Index ON annotations (accession);
 CREATE INDEX STATUS_Index ON annotations (STATUS);
@@ -931,14 +964,16 @@ SELECT 'LOADING taxonomy' AS '';
 $loadStart '$OutputDir/taxonomy.tab' $loadMid taxonomy$loadEnd
 $endTrans
 
+/*
 $startTrans
 SELECT 'CREATING GENE3D' AS '';
 DROP TABLE IF EXISTS GENE3D;
 CREATE TABLE GENE3D(id VARCHAR(24), accession VARCHAR(10), start INTEGER, end INTEGER);
 CREATE INDEX GENE3D_ID_Index ON GENE3D (id);
 SELECT 'LOADING GENE3D' AS '';
-$loadStart '$OutputDir/GENE3D.tab' $loadMid GENE3D$loadEnd
+$loadStart '$OutputDir/CATHGENE3D.tab' $loadMid GENE3D$loadEnd
 $endTrans
+*/
 
 $startTrans
 SELECT 'CREATING PFAM' AS '';
@@ -950,6 +985,7 @@ SELECT 'LOADING PFAM' AS '';
 $loadStart '$OutputDir/PFAM.tab' $loadMid PFAM$loadEnd
 $endTrans
 
+/*
 $startTrans
 SELECT 'CREATING TIGRFAMs' AS '';
 DROP TABLE IF EXISTS TIGRFAMs;
@@ -959,6 +995,7 @@ CREATE INDEX PAM_Accession_Index ON TIGRFAMs (accession);
 SELECT 'LOADING TIGRFAMs' AS '';
 $loadStart '$OutputDir/TIGRFAMs.tab' $loadMid TIGRFAMs$loadEnd
 $endTrans
+*/
 
 $startTrans
 SELECT 'CREATING UNIREF' AS '';
@@ -971,6 +1008,7 @@ SELECT 'LOADING UNIREF' AS '';
 $loadStart '$OutputDir/uniref.tab' $loadMid uniref$loadEnd
 $endTrans
 
+/*
 $startTrans
 SELECT 'CREATING SSF' AS '';
 DROP TABLE IF EXISTS SSF;
@@ -979,6 +1017,7 @@ CREATE INDEX SSF_ID_Index ON SSF (id);
 SELECT 'LOADING SSF' AS '';
 $loadStart '$OutputDir/SSF.tab' $loadMid SSF$loadEnd
 $endTrans
+*/
 
 $startTrans
 SELECT 'CREATING INTERPRO' AS '';

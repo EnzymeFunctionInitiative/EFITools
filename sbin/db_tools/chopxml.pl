@@ -38,11 +38,14 @@ while (<XML>) {
     } elsif ($line =~ /<\/release>/) {
         $releaseEnd = 1;
         $line =~ s/<\/release>//;
-        $prot = $line;
-        $protCount = 1;
+        if ($line =~ /<prot/) {
+            $prot = $line;
+            $protStart = 1;
+            $protCount = 1;
+        }
     } elsif ($releaseStart > 0 and $releaseEnd < 1) {
         print $line;
-    } elsif ($line =~ /^<prot/) {
+    } elsif ($line =~ /<prot/) {
         $protStart = 1;
         if ($protCount >= $batchsize) {
             #print $prot;
