@@ -6,13 +6,13 @@ use warnings;
 
 use Cwd qw(abs_path);
 use File::Basename qw(dirname);
-use lib dirname(abs_path(__FILE__)) . "/../";
+use lib dirname(abs_path(__FILE__)) . "/../..";
+use lib dirname(abs_path(__FILE__)) . "/../../../lib";
 
-use Data::Dumper;
-use Getopt::Long qw(:config pass_through);
 use List::MoreUtils qw(uniq);
 
 use EFI::IdMapping;
+use EFI::Options;
 
 use parent qw(EFI::EST::Base);
 
@@ -29,7 +29,7 @@ sub new {
     $self->{config_file_path} = $args{config_file_path};
     $self->{dbh} = $args{dbh};
     $self->{data} = {};
-
+    
     return $self;
 }
 
@@ -52,15 +52,18 @@ sub configure {
 # Public
 # Look in @ARGV
 sub getAccessionCmdLineArgs {
+    my $optionConfigType = shift || "getopt";
+    my $optionConfigData = shift || {};
+    my $optionParser = new EFI::Options(type => $optionConfigType, config => $optionConfigData);
 
-    my ($idFile, $noMatchFile);
-    my $result = GetOptions(
-        "accession-file|id-file=s"      => \$idFile,
-        "no-match-file=s"               => \$noMatchFile,
+    my %options = (
+        "accession-file|id-file" => "s",
+        "no-match-file" => "s",
     );
+    my $parms = $optionParser->getOptions(\%options);
 
-    $idFile = "" if not $idFile;
-    $noMatchFile = "" if not $noMatchFile;
+    my $idFile = $parms->{"accession-file"} // "";
+    my $noMatchFile = $parms->{"no-match-file"} // "";
 
     return (id_file => $idFile, no_match_file => $noMatchFile);
 }

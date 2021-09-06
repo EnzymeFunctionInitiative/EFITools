@@ -23,37 +23,43 @@ use EFI::Job::CGFP::Quantify;
 
 use EFI::SchedulerApi;
 
+use EFI::Options;
+
 
 our @EXPORT_OK = qw(create_est_job get_available_types);
 
 
 sub create_est_job {
     my $jobType = shift;
+    my $optionConfigType = shift || "getopt";
+    my $optionConfigData = shift || {};
 
     return undef if not $jobType;
 
     my $job = undef;
 
+    my $optionParser = new EFI::Options(type => $optionConfigType, config => $optionConfigData);
+
     if ($jobType eq EFI::Job::EST::Generate::Accession::JOB_TYPE) {
-        $job = new EFI::Job::EST::Generate::Accession();
+        $job = new EFI::Job::EST::Generate::Accession(option_parser => $optionParser);
     } elsif ($jobType eq EFI::Job::EST::Generate::BLAST::JOB_TYPE) {
-        $job = new EFI::Job::EST::Generate::BLAST();
+        $job = new EFI::Job::EST::Generate::BLAST(option_parser => $optionParser);
     } elsif ($jobType eq EFI::Job::EST::Generate::Family::JOB_TYPE) {
-        $job = new EFI::Job::EST::Generate::Family();
+        $job = new EFI::Job::EST::Generate::Family(option_parser => $optionParser);
     } elsif ($jobType eq EFI::Job::EST::Generate::FASTA::JOB_TYPE) {
-        $job = new EFI::Job::EST::Generate::FASTA();
+        $job = new EFI::Job::EST::Generate::FASTA(option_parser => $optionParser);
     } elsif ($jobType eq EFI::Job::EST::Color::JOB_TYPE) {
-        $job = new EFI::Job::EST::Color();
+        $job = new EFI::Job::EST::Color(option_parser => $optionParser);
     } elsif ($jobType eq EFI::Job::EST::Analyze::JOB_TYPE) {
-        $job = new EFI::Job::EST::Analyze();
+        $job = new EFI::Job::EST::Analyze(option_parser => $optionParser);
     } elsif ($jobType eq EFI::Job::GNT::GNN::JOB_TYPE) {
-        $job = new EFI::Job::GNT::GNN();
+        $job = new EFI::Job::GNT::GNN(option_parser => $optionParser);
     } elsif ($jobType eq EFI::Job::GNT::GND::JOB_TYPE) {
-        $job = new EFI::Job::GNT::GND();
+        $job = new EFI::Job::GNT::GND(option_parser => $optionParser);
     } elsif ($jobType eq EFI::Job::CGFP::Identify::JOB_TYPE) {
-        $job = new EFI::Job::CGFP::Identify();
+        $job = new EFI::Job::CGFP::Identify(option_parser => $optionParser);
     } elsif ($jobType eq EFI::Job::CGFP::Quantify::JOB_TYPE) {
-        $job = new EFI::Job::CGFP::Quantify();
+        $job = new EFI::Job::CGFP::Quantify(option_parser => $optionParser);
     } else {
         return undef;
     }

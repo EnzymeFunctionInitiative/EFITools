@@ -6,11 +6,12 @@ use warnings;
 
 use Cwd qw(abs_path);
 use File::Basename qw(dirname);
-use lib dirname(abs_path(__FILE__)) . "/../";
-
-use Getopt::Long qw(:config pass_through);
+use lib dirname(abs_path(__FILE__)) . "/../..";
+use lib dirname(abs_path(__FILE__)) . "/../../../lib";
 
 use parent qw(EFI::EST::Base);
+
+use EFI::Options;
 
 our $INPUT_SEQ_ID = "zINPUTSEQ";
 our $INPUT_SEQ_TYPE = "INPUT";
@@ -23,7 +24,7 @@ sub new {
     die "No dbh provided" if not exists $args{dbh};
 
     my $self = $class->SUPER::new(%args);
-
+    
     $self->{dbh} = $args{dbh};
 
     return $self;
@@ -49,17 +50,20 @@ sub configure {
 # Public
 # Look in @ARGV
 sub getBLASTCmdLineArgs {
+    my $optionConfigType = shift // "getopt";
+    my $optionConfigData = shift // {};
+    my $optionParser = new EFI::Options(type => $optionConfigType, config => $optionConfigData);
 
-    my ($blastFile, $nResults, $queryFile);
-    my $result = GetOptions(
-        "blast-file=s"          => \$blastFile,
-        "max|max-results=i"     => \$nResults,
-        "query-file=s"          => \$queryFile,
+    my %options = (
+        "blast-file" => "s",
+        "max|max-results" => "i",
+        "query-file" => "s",
     );
+    my $parms = $optionParser->getOptions(\%options);
 
-    $blastFile = "" if not $blastFile;
-    $nResults = 1000 if not $nResults;
-    $queryFile = "" if not $queryFile;
+    my $blastFile = $parms->{"blast-file"} // "";
+    my $nResults = $parms->{"max"} // 1000;
+    my $queryFile = $parms->{"query-file"} // "";
 
     return (blast_file => $blastFile, max_results => $nResults, query_file => $queryFile);
 }

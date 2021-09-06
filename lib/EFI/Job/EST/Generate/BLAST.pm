@@ -10,8 +10,6 @@ use lib dirname(abs_path(__FILE__)) . "/../../../../";
 
 use parent qw(EFI::Job::EST::Generate::FamilyShared);
 
-use Getopt::Long qw(:config pass_through);
-
 use EFI::Util::BLAST;
 
 use constant JOB_TYPE => "blast";
@@ -24,16 +22,15 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "blast-evalue=i",
-        "max-blast-results|nresults=i",
-        "blast-input-id=s",
-        "db-type=s",
-        "sequence|seq=s",
-        "sequence-file=s",
+    my %options = (
+        "blast-evalue" => "i",
+        "max-blast-results|nresults" => "i",
+        "blast-input-id" => "s",
+        "db-type" => "s",
+        "sequence|seq" => "s",
+        "sequence-file" => "s",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my ($conf, $errors) = validateOptions($parms, $self);
 

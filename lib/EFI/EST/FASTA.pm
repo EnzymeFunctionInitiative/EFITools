@@ -6,13 +6,12 @@ use warnings;
 
 use Cwd qw(abs_path);
 use File::Basename qw(dirname);
-use lib dirname(abs_path(__FILE__)) . "/../";
-
-use Data::Dumper;
-use Getopt::Long qw(:config pass_through);
+use lib dirname(abs_path(__FILE__)) . "/../..";
+use lib dirname(abs_path(__FILE__)) . "/../../../lib";
 
 use parent qw(EFI::EST::Base);
 
+use EFI::Options;
 
 use EFI::Fasta::Headers;
 
@@ -46,15 +45,18 @@ sub configure {
 # Public
 # Look in @ARGV
 sub getFastaCmdLineArgs {
+    my $optionConfigType = shift // "getopt";
+    my $optionConfigData = shift // {};
+    my $optionParser = new EFI::Options(type => $optionConfigType, config => $optionConfigData);
 
-    my ($fastaFileIn, $useHeaders);
-    my $result = GetOptions(
-        "fasta-file=s"          => \$fastaFileIn,
-        "use-fasta-headers"     => \$useHeaders,
+    my %options = (
+        "fasta-file" => "s",
+        "use-fasta-headers" => "",
     );
+    my $parms = $optionParser->getOptions(\%options);
 
-    $useHeaders = defined $useHeaders ? 1 : 0;
-    $fastaFileIn = "" if not $fastaFileIn;
+    my $useHeaders = $parms->{"use-fasta-headers"} ? 1 : 0;
+    my $fastaFileIn = $parms->{"fasta-file"} // "";
 
     return (fasta_file => $fastaFileIn, use_headers => $useHeaders);
 }

@@ -10,8 +10,6 @@ use lib dirname(abs_path(__FILE__)) . "/../../../";
 
 use parent qw(EFI::Job::EST);
 
-use Getopt::Long qw(:config pass_through);
-
 use EFI::Util qw(checkNetworkType);
 use EFI::GNN::Base;
 use EFI::Job::GNT::Shared;
@@ -25,24 +23,23 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "ssn-in=s",
-        "ssn-out=s",
-        "map-file-name=s",
-        "domain-map-file-name=s",
-        "stats=s",
-        "cluster-sizes=s",
-        "cluster-num-map=s",
-        "sp-clusters-desc=s",
-        "sp-singletons-desc=s",
-        "extra-ram",
-        "opt-msa-option=s",
-        "opt-aa-threshold=s",
-        "opt-aa-list=s",
-        "opt-min-seq-msa=s",
+    my %options = (
+        "ssn-in" => "s",
+        "ssn-out" => "s",
+        "map-file-name" => "s",
+        "domain-map-file-name" => "s",
+        "stats" => "s",
+        "cluster-sizes" => "s",
+        "cluster-num-map" => "s",
+        "sp-clusters-desc" => "s",
+        "sp-singletons-desc" => "s",
+        "extra-ram" => "",
+        "opt-msa-option" => "s",
+        "opt-aa-threshold" => "s",
+        "opt-aa-list" => "s",
+        "opt-min-seq-msa" => "s",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my ($conf, $errors) = validateOptions($parms, $self);
 

@@ -10,8 +10,6 @@ use lib dirname(abs_path(__FILE__)) . "/../../../";
 
 use parent qw(EFI::Job::EST);
 
-use Getopt::Long qw(:config pass_through);
-
 use constant DEFAULT_BLAST_EVALUE => 5;
 
 
@@ -21,24 +19,23 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "evalue=i",
-        "max-sequence|maxsequence=i",
-        "max-blast-hits|blasthits=i",
-        "inc-frac|incfrac=f",
-        "seq-count-file=s",
-        "length-diff|lengthdif=s",
-        "seq-id-threshold|sim=i",
-        "multiplex=s",
-        "blast-type|blast=s",
-        "oldgraphs",
-        "graph-version=i",
-        "exclude-fragments",
-        "no-demux",
-        "use-hdf5",
+    my %options = (
+        "evalue" => "i",
+        "max-sequence|maxsequence" => "i",
+        "max-blast-hits|blasthits" => "i",
+        "inc-frac|incfrac" => "f",
+        "seq-count-file" => "s",
+        "length-diff|lengthdif" => "s",
+        "seq-id-threshold|sim" => "i",
+        "multiplex" => "s",
+        "blast-type|blast" => "s",
+        "oldgraphs" => "",
+        "graph-version" => "i",
+        "exclude-fragments" => "",
+        "no-demux" => "",
+        "use-hdf5" => "",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my $conf = validateOptions($parms);
 

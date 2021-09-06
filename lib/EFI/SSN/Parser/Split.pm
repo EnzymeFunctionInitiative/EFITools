@@ -51,8 +51,11 @@ sub parseSplit {
     my $self = shift;
     my $flags = shift || 0;
 
+    $flags |= EFI::SSN::Parser::OPT_GET_CLUSTER_NUMBER;
+    $flags |= EFI::SSN::Parser::OPT_GET_NODE_ID;
+    #$flags ||= EFI::SSN::Parser::OPT_CLUSTER_NUMBER_BY_NODES;
     #return $self->parse((($flags | EFI::SSN::Parser::OPT_GET_CLUSTER_NUMBER) | EFI::SSN::Parser::OPT_GET_NODE_ID));
-    return $self->parse((($flags | EFI::SSN::Parser::OPT_GET_CLUSTER_NUMBER) | EFI::SSN::Parser::OPT_GET_NODE_ID) | EFI::SSN::Parser::OPT_CLUSTER_NUMBER_BY_NODES);
+    return $self->parse($flags);
 }
 sub postNodeParse {
     my $self = shift;
@@ -129,8 +132,8 @@ sub writeSplit {
         print "ERROR $self->{out_file} not found\n" if not defined $clusterNum;
         if ($clusterNum) {
             my $output = $self->{out_file};
-            $self->{write_cluster_num} = $clusterNum;
-            $self->{target_cluster_num} = $dmap->{$clusterNum};
+            $self->{source_cluster_num} = $clusterNum;
+            $self->{target_cluster_num} = $dmap->{$clusterNum} // $clusterNum;
             print "WRITE TO $output\n";
             $self->write($output);
         }
@@ -138,10 +141,10 @@ sub writeSplit {
         foreach my $clusterNum (@clusters) {
             print "SKIPPING $clusterNum because it's not in the dissect map\n" and next if $hasDmap and not exists $dmap->{$clusterNum};
 
-            $self->{write_cluster_num} = $clusterNum;
-            $self->{target_cluster_num} = ($dmap->{$clusterNum} and $dmap->{$clusterNum} != $clusterNum) ? $dmap->{$clusterNum} : 0;
+            $self->{source_cluster_num} = $clusterNum;
+            $self->{target_cluster_num} = $dmap->{$clusterNum} // $clusterNum; #and $dmap->{$clusterNum} != $clusterNum) ? $dmap->{$clusterNum} : 0;
 
-            my $dir = $self->{base_out_name} . ($dmap->{$clusterNum} ? $dmap->{$clusterNum} : $clusterNum);
+            my $dir = $self->{base_out_name} . $self->{target_cluster_num}; #($dmap->{$clusterNum} ? $dmap->{$clusterNum} : $clusterNum);
             #print "NOT FOUND $dir\n" and next if not -d $dir;
             mkdir $dir if not -d $dir and $self->{do_mkdir};
             next if not -d $dir;
@@ -157,14 +160,14 @@ sub getNodeList {
     my $self = shift;
     my $useNodeCount = 1;
     my @nodes;
-    my $list = $self->{node_cluster_map}->{$self->{write_cluster_num}} // [];
+    my $list = $self->{node_cluster_map}->{$self->{source_cluster_num}} // [];
     foreach my $idx (@$list) {
         my $node = $self->{nodes}->[$idx];
-        if ($self->{target_cluster_num}) {
-            $self->setClusterNumber($node, $self->{target_cluster_num}, $useNodeCount);
-        #} else {
-        #    $self->setClusterNumber($node, $self->{write_cluster_num}, $useNodeCount);
-        }
+        #if ($self->{target_cluster_num}) {
+        #    $self->setClusterNumber($node, $self->{target_cluster_num}, $useNodeCount);
+        ##} else {
+        ##    $self->setClusterNumber($node, $self->{source_cluster_num}, $useNodeCount);
+        #}
         push @nodes, $node;
     }
     return \@nodes;
@@ -172,7 +175,7 @@ sub getNodeList {
 sub getEdgeList {
     my $self = shift;
     my @edges;
-    my $list = $self->{edge_cluster_map}->{$self->{write_cluster_num}} // [];
+    my $list = $self->{edge_cluster_map}->{$self->{source_cluster_num}} // [];
     foreach my $idx (@$list) {
         push @edges, $self->{edges}->[$idx];
     }

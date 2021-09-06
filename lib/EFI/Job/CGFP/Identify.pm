@@ -10,8 +10,6 @@ use lib dirname(abs_path(__FILE__)) . "/../../../";
 
 use parent qw(EFI::Job::CGFP);
 
-use Getopt::Long qw(:config pass_through);
-
 use constant JOB_TYPE => "cgfp-identify";
 
 
@@ -21,18 +19,17 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "min-seq-len=i",
-        "max-seq-len=i",
-        "search-type=s",
-        "cdhit-sid=i",
-        "cons-thresh=i",
-        "ref-db=s",
-        "diamond-sens=s",
-        "parent-job-id=i",
+    my %options = (
+        "min-seq-len" => "i",
+        "max-seq-len" => "i",
+        "search-type" => "s",
+        "cdhit-sid" => "i",
+        "cons-thresh" => "i",
+        "ref-db" => "s",
+        "diamond-sens" => "s",
+        "parent-job-id" => "i",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my $conf = $self->{conf}->{sb}; # Already exists
     my $err = validateOptions($parms, $conf);

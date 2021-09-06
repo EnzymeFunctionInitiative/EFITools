@@ -15,7 +15,6 @@ use File::Basename qw(dirname);
 use lib dirname(abs_path(__FILE__)) . "/../";
 
 use Data::Dumper;
-use Getopt::Long qw(:config pass_through);
 use FindBin;
 
 use EFI::SchedulerApi;
@@ -33,21 +32,20 @@ sub new {
     my $self = {};
     bless($self, $class);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms, # options are stored in this hash
-        "job-id|j=s",
-        "config=s",
-        "dry-run|dryrun",
-        "keep-temp",
-        "dir-name|tmp=s",
-        "job-dir|out-dir=s",
-        "no-submit", # create the script files but don't submit them
-        "memory=s",
-        "walltime=s",
-        "help",
-        "serial-script=s", # file to place the serial execute commands into (has a default value)
+    my %options = (
+        "job-id|j" => "s",
+        "config" => "s",
+        "dry-run|dryrun" => "",
+        "keep-temp" => "",
+        "dir-name|tmp" => "s",
+        "job-dir|out-dir" => "s",
+        "no-submit" => "", # create the script files but don't submit them
+        "memory" => "s",
+        "walltime" => "s",
+        "help" => "",
+        "serial-script" => "s", # file to place the serial execute commands into (has a default value)
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my $homeDir = abs_path(dirname(__FILE__) . "/../../");
     $self->{tool_path} = "$homeDir/sbin"; #TODO: change sbin to whatever it should be.

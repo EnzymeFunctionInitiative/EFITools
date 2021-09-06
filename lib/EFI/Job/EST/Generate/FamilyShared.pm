@@ -10,8 +10,6 @@ use lib dirname(abs_path(__FILE__)) . "/../../../../";
 
 use parent qw(EFI::Job::EST::Generate);
 
-use Getopt::Long qw(:config pass_through);
-
 
 sub new {
     my $class = shift;
@@ -19,17 +17,16 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "pfam=s@",
-        "interpro|ipro=s@",
-        "gene3d=s@",
-        "ssf=s@",
-        "fraction=i",
-        "uniref-version=s",
-        "no-demux",
+    my %options = (
+        "pfam" => "s@",
+        "interpro|ipro" => "s@",
+        "gene3d" => "s@",
+        "ssf" => "s@",
+        "fraction" => "i",
+        "uniref-version" => "s",
+        "no-demux" => "",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
     
     my ($conf, $errors) = validateOptions($parms, $self, $args{family_mandatory});
 

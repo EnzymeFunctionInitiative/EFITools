@@ -10,8 +10,6 @@ use lib dirname(abs_path(__FILE__)) . "/../../../../";
 
 use parent qw(EFI::Job::EST::Generate::FamilyShared);
 
-use Getopt::Long qw(:config pass_through);
-
 use EFI::Config;
 
 use constant JOB_TYPE => "accession";
@@ -23,16 +21,15 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
+    my %options = (
         #uniref-version is also used from the family structure
-        "domain:s", # Also in Family
-        "domain-family=s",
-        "domain-region=s",
-        "accession-file|useraccession=s",
-        "no-match-file=s",
+        "domain:s" => "", # Also in Family
+        "domain-family" => "s",
+        "domain-region" => "s",
+        "accession-file|useraccession" => "s",
+        "no-match-file" => "s",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my ($conf, $errors) = validateOptions($parms, $self);
 

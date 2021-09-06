@@ -1,11 +1,13 @@
 
 package EFI::EST::Family;
 
-
 use strict;
 use warnings;
 
-use Getopt::Long qw(:config pass_through);
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use lib dirname(abs_path(__FILE__)) . "/../..";
+use lib dirname(abs_path(__FILE__)) . "/../../../lib";
 
 use parent qw(EFI::EST::Base);
 
@@ -20,6 +22,9 @@ sub new {
     die "No dbh provided" if not exists $args{dbh};
 
     $self->{dbh} = $args{dbh};
+    
+    my $optionConfigType = $args{option_config_type} // "getopt";
+    my $optionConfigData = $args{option_config_data} // {};
 
     return $self;
 }
@@ -34,55 +39,53 @@ sub hasUniRef {
 
 # Look on the command line @ARGV for family configuration parameters.
 sub loadFamilyParameters {
-    my ($ipro, $pfam, $gene3d, $ssf);
-    my ($useDomain, $fraction, $maxSequence, $maxFullFam);
-    my ($unirefVersion);
-    my ($domainFamily, $domainRegion, $excludeFragments);
+    my $optionParser = shift;
 
-    my $result = GetOptions(
-        "ipro=s"                => \$ipro,
-        "pfam=s"                => \$pfam,
-        "gene3d=s"              => \$gene3d,
-        "ssf=s"                 => \$ssf,
-        "max-sequence=s"        => \$maxSequence,
-        "max-full-fam-ur90=i"   => \$maxFullFam,
-        "domain=s"              => \$useDomain,
-        "domain-family=s"       => \$domainFamily, # Option D
-        "domain-region=s"       => \$domainRegion, # Option D
-        "fraction=i"            => \$fraction,
-        "uniref-version=s"      => \$unirefVersion,
-        "exclude-fragments"     => \$excludeFragments,
+    my %options = (
+        "ipro" => "s",
+        "pfam" => "s",
+        "gene3d" => "s",
+        "ssf" => "s",
+        "max-sequence" => "s",
+        "max-full-fam-ur90" => "i",
+        "domain" => "s",
+        "domain-family" => "s",
+        "domain-region" => "s",
+        "fraction" => "i",
+        "uniref-version" => "s",
+        "exclude-fragments" => "",
     );
+    my $parms = $optionParser->getOptions(\%options);
 
     my $data = {interpro => [], pfam => [], gene3d => [], ssf => []};
 
-    if (defined $ipro and $ipro) {
-        $data->{interpro} = [split /,/, $ipro];
+    if (defined $parms->{ipro} and $parms->{ipro}) {
+        $data->{interpro} = [split /,/, $parms->{ipro}];
     }
     
-    if (defined $pfam and $pfam) {
-        $data->{pfam} = [split /,/, $pfam];
+    if (defined $parms->{pfam} and $parms->{pfam}) {
+        $data->{pfam} = [split /,/, $parms->{pfam}];
     }
     
-    if (defined $gene3d and $gene3d) {
-        $data->{gene3d} = [split /,/, $gene3d];
+    if (defined $parms->{gene3d} and $parms->{gene3d}) {
+        $data->{gene3d} = [split /,/, $parms->{gene3d}];
     }
     
-    if (defined $ssf and $ssf) {
-        $data->{ssf} = [split /,/, $ssf];
+    if (defined $parms->{ssf} and $parms->{ssf}) {
+        $data->{ssf} = [split /,/, $parms->{ssf}];
     }
 
     my $numFam = scalar @{$data->{interpro}} + scalar @{$data->{pfam}} + scalar @{$data->{gene3d}} + scalar @{$data->{ssf}};
 
     my $config = {};
-    $config->{fraction} =       (defined $fraction and $fraction !~ m/\D/ and $fraction > 0) ? $fraction : 1;
-    $config->{use_domain} =     (defined $useDomain and $useDomain eq "on");
-    $config->{uniref_version} = defined $unirefVersion ? $unirefVersion : "";
-    $config->{max_seq} =        defined $maxSequence ? $maxSequence : 0;
-    $config->{max_full_fam} =   defined $maxFullFam ? $maxFullFam : 0;
-    $config->{domain_family} =  ($config->{use_domain} and $domainFamily) ? $domainFamily : "";
-    $config->{domain_region} =  ($config->{use_domain} and $domainRegion) ? $domainRegion : "";
-    $config->{exclude_fragments}    = $excludeFragments;
+    $config->{fraction} =       (defined $parms->{fraction} and $parms->{fraction} !~ m/\D/ and $parms->{fraction} > 0) ? $parms->{fraction} : 1;
+    $config->{use_domain} =     (defined $parms->{domain} and $parms->{domain} eq "on");
+    $config->{uniref_version} = $parms->{"uniref-version"} // "";
+    $config->{max_seq} =        defined $parms->{"max-sequence"} ? $parms->{"max-sequence"} : 0;
+    $config->{max_full_fam} =   defined $parms->{"max-full-fam-ur90"} ? $parms->{"max-full-fam-ur90"} : 0;
+    $config->{domain_family} =  ($config->{use_domain} and $parms->{"domain-family"}) ? $parms->{"domain-family"} : "";
+    $config->{domain_region} =  ($config->{use_domain} and $parms->{"domain-region"}) ? $parms->{"domain-region"} : "";
+    $config->{exclude_fragments}    = $parms->{"exclude-fragments"};
 
     if ($numFam) {
         return {data => $data, config => $config};
@@ -149,6 +152,7 @@ sub retrieveFamilyAccessions {
 
 
 sub retrieveFamiliesForClans {
+    print STDERR "DONE\n";
     my $self = shift;
     my (@clans) = @_;
 

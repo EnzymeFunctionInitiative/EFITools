@@ -10,8 +10,6 @@ use lib dirname(abs_path(__FILE__)) . "/../../../";
 
 use parent qw(EFI::Job::EST);
 
-use Getopt::Long qw(:config pass_through);
-
 use EFI::Config;
 
 use constant JOB_TYPE => "analyze";
@@ -24,24 +22,23 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "filter=s",
-        "minval=s",
-        "maxlen=i",
-        "minlen=i",
-        "title=s",
-        "maxfull=i",
-        "custom-cluster-file=s",
-        "custom-cluster-dir=s",
-        "parent-id=s",
-        "parent-dir=s",
-        "include-sequences",
-        "uniref-version=s",
-        "use-anno-spec",
-        "use-min-edge-attr",
+    my %options = (
+        "filter" => "s",
+        "minval" => "s",
+        "maxlen" => "i",
+        "minlen" => "i",
+        "title" => "s",
+        "maxfull" => "i",
+        "custom-cluster-file" => "s",
+        "custom-cluster-dir" => "s",
+        "parent-id" => "s",
+        "parent-dir" => "s",
+        "include-sequences" => "",
+        "uniref-version" => "s",
+        "use-anno-spec" => "",
+        "use-min-edge-attr" => "",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my $conf = {};
     my $err = validateOptions($parms, $conf);

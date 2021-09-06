@@ -10,8 +10,6 @@ use lib dirname(abs_path(__FILE__)) . "/../../../../";
 
 use parent qw(EFI::Job::EST::Generate::FamilyShared);
 
-use Getopt::Long qw(:config pass_through);
-
 use constant JOB_TYPE => "family";
 
 
@@ -22,11 +20,10 @@ sub new {
     $args{family_mandatory} = 1;
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "domain:s", # Also in Accession
+    my %options = (
+        "domain" => "s", # Also in Accession
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     validateOptions($parms, $self);
 

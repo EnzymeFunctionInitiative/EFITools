@@ -8,8 +8,6 @@ use Cwd qw(abs_path);
 use File::Basename qw(dirname);
 use lib dirname(abs_path(__FILE__)) . "/../../";
 
-use Getopt::Long qw(:config pass_through);
-
 use parent qw(EFI::Job);
 
 
@@ -19,13 +17,12 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "ssn-in=s",
-        "ssn-out-name=s",
-        "parent-identify-id|parent-job-id=i",
+    my %options = (
+        "ssn-in" => "s",
+        "ssn-out-name" => "s",
+        "parent-identify-id|parent-job-id" => "i",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my $conf = {};
     my $err = validateOptions($parms, $conf);

@@ -10,8 +10,6 @@ use lib dirname(abs_path(__FILE__)) . "/../../../../";
 
 use parent qw(EFI::Job::EST::Generate);
 
-use Getopt::Long qw(:config pass_through);
-
 use constant JOB_TYPE => "taxid";
 
 
@@ -21,11 +19,10 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "taxonomy-id|taxid=s",
+    my %options = (
+        "taxonomy-id|taxid" => "s",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my ($conf, $errors) = validateOptions($parms, $self);
 

@@ -217,15 +217,18 @@ my $fileNum = 0;
 if (defined $buildEna and $buildEna) {
 
     $fileNum = $dbType eq "sqlite" ? 37 : 17;
-
-    $enaDir = "$InputDir/ena/release" if not defined $enaDir;
-    if (not -d $enaDir or not -d "$enaDir/std") {
-        die "Unable to create job for building ENA table: the ENA directory $enaDir is not valid.";
-    }
-
-    # Create ENA table
     logprint "#CREATING ENA TABLE";
-    my $enaJobId = submitEnaJob($S->getBuilder(), $enaDir, $fileNum++);
+    my $enaJobId = submitEnaJob($S->getBuilder(), $fileNum++);
+
+#
+#    $enaDir = "$InputDir/ena/release" if not defined $enaDir;
+#    if (not -d $enaDir or not -d "$enaDir/std") {
+#        die "Unable to create job for building ENA table: the ENA directory $enaDir is not valid.";
+#    }
+#
+#    # Create ENA table
+#    logprint "#CREATING ENA TABLE";
+#    my $enaJobId = submitEnaJob($S->getBuilder(), $enaDir, $fileNum++);
     
 } elsif ($doDownload) {
     
@@ -373,7 +376,8 @@ sub submitEnaJob {
     $B->outputBaseFilepath($file);
     $B->renderToFile($file);
 
-    return $DoSubmit ? $S->submit($file) : undef;
+    return undef;
+    #return $DoSubmit ? $S->submit($file) : undef;
 }
 
 

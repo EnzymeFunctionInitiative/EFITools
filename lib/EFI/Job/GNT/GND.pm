@@ -13,8 +13,6 @@ use EFI::Job::GNT::Shared;
 
 use parent qw(EFI::Job::GNT);
 
-use Getopt::Long qw(:config pass_through);
-
 use constant JOB_TYPE => "gnd";
 
 
@@ -24,26 +22,25 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "output=s",
-        "title=s",
-        "job-type=s",
+    my %options = (
+        "output" => "s",
+        "title" => "s",
+        "job-type" => "s",
 
         # First mode
-        "blast-seq|blast=s",
-        "evalue=n",
-        "max-seq=n",
-        "nb-size=n",
+        "blast-seq|blast" => "s",
+        "evalue" => "n",
+        "max-seq" => "n",
+        "nb-size" => "n",
 
         # Second and third mode
-        "id-file=s",
-        "fasta-file=s",
+        "id-file" => "s",
+        "fasta-file" => "s",
 
         # Fourth mode
-        "upload-file=s",
+        "upload-file" => "s",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my $conf = {};
     my $err = $self->validateOptions($parms, $conf);

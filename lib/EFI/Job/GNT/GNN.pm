@@ -16,8 +16,6 @@ use EFI::Job::GNT::Shared;
 
 use parent qw(EFI::Job::GNT);
 
-use Getopt::Long qw(:config pass_through);
-
 use constant JOB_TYPE => "gnn";
 
 
@@ -27,29 +25,28 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "ssn-in|ssnin=s",
-        "nb-size|n=s",
-        "warning-file=s",
-        "gnn=s",
-        "ssn-out|ssnout=s",
-        "cooc|incfrac=i",
-        "stats=s",
-        "cluster-sizes=s",
-        "sp-clusters-desc=s",
-        "sp-singletons-desc=s",
-        "pfam=s",
-        "id-out=s",
-        "id-out-domain=s",
-        "arrow-file=s",
-        "cooc-table=s",
-        "hub-count-file=s",
-        "parent-dir=s",
-        "disable-nnm",
-        "gnn-only",
+    my %options = (
+        "ssn-in|ssnin" => "s",
+        "nb-size|n" => "s",
+        "warning-file" => "s",
+        "gnn" => "s",
+        "ssn-out|ssnout" => "s",
+        "cooc|incfrac" => "i",
+        "stats" => "s",
+        "cluster-sizes" => "s",
+        "sp-clusters-desc" => "s",
+        "sp-singletons-desc" => "s",
+        "pfam" => "s",
+        "id-out" => "s",
+        "id-out-domain" => "s",
+        "arrow-file" => "s",
+        "cooc-table" => "s",
+        "hub-count-file" => "s",
+        "parent-dir" => "s",
+        "disable-nnm" => "",
+        "gnn-only" => "",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my $conf = {};
     my $err = $self->validateOptions($parms, $conf);

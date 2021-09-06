@@ -10,8 +10,6 @@ use lib dirname(abs_path(__FILE__)) . "/../../../../";
 
 use parent qw(EFI::Job::EST::Generate::Family);
 
-use Getopt::Long qw(:config pass_through);
-
 use constant JOB_TYPE => "family+e";
 
 
@@ -21,13 +19,12 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "min-seq-len=i",
-        "max-seq-len=i",
-        "cd-hit-output-file|cd-hit=s",
+    my %options = (
+        "min-seq-len" => "i",
+        "max-seq-len" => "i",
+        "cd-hit-output-file|cd-hit" => "s",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my $conf = validateOptions($parms);
 

@@ -8,8 +8,6 @@ use Cwd qw(abs_path);
 use File::Basename qw(dirname);
 use lib dirname(abs_path(__FILE__)) . "/../../../";
 
-use Getopt::Long qw(:config pass_through);
-
 use parent qw(EFI::Job::CGFP);
 
 use EFI::CGFP qw(getMetagenomeInfo);
@@ -23,17 +21,16 @@ sub new {
 
     my $self = $class->SUPER::new(%args);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms,
-        "metagenome-db=s",
-        "metagenome-ids=s",
-        "quantify-dir=s",
-        "protein-file=s",
-        "cluster-file=s",
-        "parent-quantify-id=i",
-        "search-type=s",
+    my %options = (
+        "metagenome-db" => "s",
+        "metagenome-ids" => "s",
+        "quantify-dir" => "s",
+        "protein-file" => "s",
+        "cluster-file" => "s",
+        "parent-quantify-id" => "i",
+        "search-type" => "s",
     );
+    my $parms = $args{option_parser}->getOptions(\%options);
 
     my $conf = $self->{conf}->{sb}; # Already exists
     my $err = validateOptions($self, $parms, $conf);
