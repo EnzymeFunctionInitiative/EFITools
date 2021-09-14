@@ -51,8 +51,12 @@ sub parseSplit {
     my $self = shift;
     my $flags = shift || 0;
 
+    $flags |= EFI::SSN::Parser::OPT_GET_CLUSTER_NUMBER;
+    $flags |= EFI::SSN::Parser::OPT_GET_NODE_ID;
+    $flags |= EFI::SSN::Parser::OPT_CLUSTER_NUMBER_BY_NODES;
+
     #return $self->parse((($flags | EFI::SSN::Parser::OPT_GET_CLUSTER_NUMBER) | EFI::SSN::Parser::OPT_GET_NODE_ID));
-    return $self->parse((($flags | EFI::SSN::Parser::OPT_GET_CLUSTER_NUMBER) | EFI::SSN::Parser::OPT_GET_NODE_ID) | EFI::SSN::Parser::OPT_CLUSTER_NUMBER_BY_NODES);
+    return $self->parse($flags);
 }
 sub postNodeParse {
     my $self = shift;
@@ -116,6 +120,7 @@ sub setClusterNumber {
 sub writeSplit {
     my $self = shift;
     my $dmap = shift;
+    my $flags = shift || 0;
     #my $dissect = shift || "";
 
     my $hasDmap = scalar keys %$dmap;
@@ -132,7 +137,7 @@ sub writeSplit {
             $self->{write_cluster_num} = $clusterNum;
             $self->{target_cluster_num} = $dmap->{$clusterNum};
             print "WRITE TO $output\n";
-            $self->write($output);
+            $self->write($output, $flags);
         }
     } else {
         foreach my $clusterNum (@clusters) {
@@ -147,7 +152,7 @@ sub writeSplit {
             next if not -d $dir;
             my $output = "$dir/ssn.xgmml";
             print "WRITE TO $output\n";
-            $self->write($output);
+            $self->write($output, $flags);
         }
     }
 }

@@ -22,11 +22,13 @@ use constant OPT_EXPAND_METANODE_IDS => 1;
 use constant OPT_GET_CLUSTER_NUMBER => 2;
 use constant OPT_GET_NODE_ID => 4;
 use constant OPT_CLUSTER_NUMBER_BY_NODES => 8;
+use constant OPT_EXCLUDE_METADATA => 16;
 
 use Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(openSsn METADATA_READER NODE_READER EDGE_READER METADATA_WRITER NODE_WRITER EDGE_WRITER
-                 OPT_EXPAND_METANODE_IDS OPT_GET_CLUSTER_NUMBER OPT_GET_NODE_ID OPT_CLUSTER_NUMBER_BY_NODES);
+                 OPT_EXPAND_METANODE_IDS OPT_GET_CLUSTER_NUMBER OPT_GET_NODE_ID OPT_CLUSTER_NUMBER_BY_NODES
+                 OPT_EXCLUDE_METADATA);
 our @EXPORT_OK = qw();
 
 
@@ -91,6 +93,8 @@ sub parse {
     my @nodes;
     my @edges;
 
+    my $includeMeta = not ($flags & OPT_EXCLUDE_METADATA);
+
     # Get the registered or default handlers.
     my $metadataHandler = exists $self->{handlers}->{&METADATA_READER} ? $self->{handlers}->{&METADATA_READER} : sub {};
     my $nodeHandler = exists $self->{handlers}->{&NODE_READER} ? $self->{handlers}->{&NODE_READER} : sub {};
@@ -140,7 +144,7 @@ sub parse {
         &$nodeHandler($xmlNode, $params);
         push @nodes, $xmlNode;
         $self->postNodeParse($params, $#nodes, $xmlNode);
-    } elsif ($reader->name eq METADATA_READER) {
+    } elsif ($reader->name eq METADATA_READER and $includeMeta) {
         my $name = $xmlNode->getAttribute("name");
         my $value = $xmlNode->getAttribute("value");
         $metadata{$name} = $value;
@@ -160,7 +164,7 @@ sub parse {
         } elsif ($reader->name() eq "edge") {
             &$edgeHandler($xmlNode);
             push @edges, $xmlNode;
-        } elsif ($reader->name eq METADATA_READER) {
+        } elsif ($reader->name eq METADATA_READER and $includeMeta) {
             my $name = $xmlNode->getAttribute("name");
             my $value = $xmlNode->getAttribute("value");
             &$metadataHandler($name, $value);
@@ -258,6 +262,7 @@ sub getClusterNumber {
 sub write {
     my $self = shift;
     my $outputFile = shift;
+    my $flags = shift || 0;
 
     my $output = new IO::File(">$outputFile");
     my $writer = new XML::Writer(DATA_MODE => "true", DATA_INDENT => 2, OUTPUT => $output);
@@ -265,7 +270,7 @@ sub write {
     my $title = $self->{meta}->{graph} ? $self->{meta}->{graph} : "";
     $writer->startTag("graph", "label" => "$title", "xmlns" => "http://www.cs.rpi.edu/XGMML");
     
-    $self->writeMetadata($writer);
+    $self->writeMetadata($writer, $flags);
 
     $self->writeNodes($writer);
 
@@ -279,10 +284,17 @@ sub write {
 sub writeMetadata {
     my $self = shift;
     my $writer = shift;
+    my $flags = shift || 0;
 
-    foreach my $name (keys %{$self->{meta}}) {
-        next if $name eq "graph";
-        $writer->startTag(METADATA_READER, "name" => $name, "value" => $self->{meta}->{$name});
+    if (not ($flags & OPT_EXCLUDE_METADATA)) {
+        foreach my $name (keys %{$self->{meta}}) {
+            next if $name eq "graph";
+            $writer->startTag(METADATA_READER, "name" => $name, "value" => $self->{meta}->{$name});
+            $writer->endTag();
+        }
+    } else {
+        my $dateString = scalar localtime;
+        $writer->startTag(METADATA_READER, "name" => "EFITools.Parser", "value" => "Written on $dateString");
         $writer->endTag();
     }
 }
@@ -354,7 +366,7 @@ sub writeNodes {
                                           'value' => $listelement->getAttribute('value'));
                     }
                     $writer->endTag;
-                } elsif ($attrName eq 'interaction') {
+                } elsif ($attrName eq 'interaction' or $attrName eq 'selected') {
                     #this tag causes problems and it is not needed, so we do not include it
                 } else {
                     if (defined $attribute->getAttribute('value')) {
