@@ -97,9 +97,10 @@ foreach my $jobInfo (@jobs) {
         $jobId = $S->submit($jobFile);
         $jobId = "undefined-failure" if not $jobId;
         chomp $jobId;
-        ($jobId) = split(m/\./, $jobId);
+        ($jobId) = split(m/[\.\t]/, $jobId);
     }
-    print "$jobId\t$jobName\n" if not $serialMode;
+    print "$jobId\n" if not $serialMode;
+    #print "$jobId\t$jobName\n" if not $serialMode;
     $jobIds{$jobObj} = $jobId;
     $lastJobId = $jobId;
 }
