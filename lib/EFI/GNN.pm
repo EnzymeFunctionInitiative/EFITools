@@ -545,7 +545,7 @@ sub saveGnnAttributes {
         writeGnnListField($writer, 'Neighbor InterPro Families', 'string', \@nbIproFams, "");
     } else {
         (my $nodeId = $node->getAttribute('label')) =~ s/:\d+:\d+$//;
-        my $hasNeighbors = (not $gnnData->{noNeighborMap}->{$nodeId} or $gnnData->{noNeighborMap}->{$nodeId} == 1) ?
+        my $hasNeighbors = (not exists $gnnData->{noNeighborMap}->{$nodeId} or $gnnData->{noNeighborMap}->{$nodeId} == 1) ?
                                 "false" : $gnnData->{noNeighborMap}->{$nodeId} == -1 ? "n/a" : "true";
         my $genomeId = $gnnData->{genomeIds}->{$nodeId};
         my $hasMatch = $gnnData->{noMatchMap}->{$nodeId} ? "false" : "true";
@@ -852,6 +852,41 @@ sub writePfamNoneClusters {
     close ALLNONE;
 }
 
+sub writeConvRatio {
+    my $self = shift;
+    my $file = shift;
+    my $degree = shift;
+    my $getAllIdsFn = shift;
+    my $getMetanodeIdsFn = shift;
+
+    my @clusterNumbers = sort { $a <=> $b } $self->getClusterNumbers();
+
+    open my $outFh, ">", $file or die "Unable to write to convergence ratio file $file: $!";
+
+    $outFh->print(join("\t", "Cluster Number", "Convergence Ratio", "Number of SSN Nodes", "Number of UniProt IDs", "Number of Edges"), "\n");
+    foreach my $clusterNum (@clusterNumbers) {
+        my $numDegree = 0;
+        my $nodeIds = $getMetanodeIdsFn ? &$getMetanodeIdsFn($clusterNum) : $self->getIdsInCluster($clusterNum, METANODE_IDS);
+        my $numNodes = scalar @$nodeIds;
+        my $rawIds = $getAllIdsFn ? &$getAllIdsFn($clusterNum) : $self->getIdsInCluster($clusterNum, ALL_IDS);
+        my $numIds = scalar @$rawIds;
+        foreach my $id (@$rawIds) {
+            next if not $degree->{$id};
+            $numDegree += $degree->{$id};
+            print join("\t", $clusterNum, $id, $degree->{$id}), "\n";
+        }
+        # $numDegree already counts the edges twice
+        my $denom = $numIds * ($numIds - 1);
+        my $convRatio = 0;
+        $convRatio = $numDegree / $denom if $denom > 0;
+        $convRatio = sprintf("%.1e", $convRatio);
+        #$convRatio = int($convRatio * 100000 + 0.5) / 100000;
+        $outFh->print(join("\t", $clusterNum, $convRatio, $numNodes, $numIds, $numDegree/2), "\n"); #, $numDegree, $numIds), "\n");
+    }
+
+    close $outFh;
+}
+
 sub writeSsnStats {
     my $self = shift;
     my $spDesc = shift; # swissprot description
@@ -859,6 +894,7 @@ sub writeSsnStats {
     my $sizeFile = shift;
     my $spClustersDescFile = shift;
     my $spSinglesDescFile = shift;
+    my $getIdsFn = shift;
 
     my @clusterNumbers = sort { $a <=> $b } $self->getClusterNumbers();
 
@@ -872,7 +908,7 @@ sub writeSsnStats {
     my $numSingles = 0;
 
     foreach my $clusterNum (@clusterNumbers) {
-        my $rawIds = $self->getIdsInCluster($clusterNum, ALL_IDS);
+        my $rawIds = $getIdsFn ? &$getIdsFn($clusterNum) : $self->getIdsInCluster($clusterNum, ALL_IDS);
         my @ids = sort @$rawIds;
         my $count = scalar @ids;
         push @metaIds, @ids;
@@ -928,7 +964,7 @@ sub writeSsnStats {
 
             my @desc = grep !m/^NA$/, map { split(m/,/) } @{$spDesc->{$id}};
             if (scalar @desc) {
-                $fh->print(join("\t", $clusterNum, $id, join(";", @desc)), "\n");
+                $fh->print(join("\t", $clusterNum, $id, join(",", @desc)), "\n");
             }
         }
     }

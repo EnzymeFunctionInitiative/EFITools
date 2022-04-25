@@ -192,20 +192,31 @@ sub getNodes {
             } elsif ($checkUniref and $attrName =~ m/UniRef(\d+)/) {
                 $self->{has_uniref} = "UniRef$1";
                 $checkUniref = 0; # save some regex evals
-            } elsif ($attrName eq EFI::Annotations::FIELD_SWISSPROT_DESC) {
-                my @childList = $annotation->findnodes('./*');
-                if (scalar @childList) {
-                    foreach my $child (@childList) {
-                        my $val = $child->getAttribute('value');
-                        push(@{$swissprotDesc{$nodeLabel}}, $val);
-                    }
-                } else {
-                    my $val = $annotation->getAttribute('value');
-                    push(@{$swissprotDesc{$nodeLabel}}, $val);
-                }
             } elsif ($attrName eq "Cluster Number" or $attrName eq "Singleton Number") {
                 my $clusterNum = $annotation->getAttribute("value");
                 $clusterNumMap->{$nodeLabel} = $clusterNum;
+            } else {
+                my $getNodeValFn = sub {
+                    my $struct = shift;
+                    my @childList = $annotation->findnodes('./*');
+                    if (scalar @childList) {
+                        foreach my $child (@childList) {
+                            my $val = $child->getAttribute('value');
+                            push(@{$struct->{$nodeLabel}}, $val);
+                        }
+                    } else {
+                        my $val = $annotation->getAttribute('value');
+                        push(@{$struct->{$nodeLabel}}, $val);
+                    }
+                };
+
+                if ($attrName eq EFI::Annotations::FIELD_SWISSPROT_DESC) {
+                    &$getNodeValFn(\%swissprotDesc);
+                } elsif ($attrName eq EFI::Annotations::FIELD_SEQ_KEY and $nodeLabel =~ m/^z/) {
+                    my %seq;
+                    &$getNodeValFn(\%seq);
+                    &$writeSeqFn($nodeLabel, ${$seq{$nodeLabel}}[0]) if scalar @{$seq{$nodeLabel}};
+                }
             }
         }
     }
@@ -479,13 +490,14 @@ sub writeColorSsn {
     my $self = shift;
     my $writer = shift;
     my $gnnData = shift;
+    my $extraNodeWriterFn = shift || sub {};
 
     my $title = $self->getMetadata("title");
     $title = "network" if not $title;
 
     $writer->startTag('graph', 'label' => "$title colorized", 'xmlns' => 'http://www.cs.rpi.edu/XGMML');
     $self->writeColorSsnMetadata($writer);
-    $self->writeColorSsnNodes($writer, $gnnData);
+    $self->writeColorSsnNodes($writer, $gnnData, $extraNodeWriterFn);
     $self->writeColorSsnEdges($writer);
     $writer->endTag(); 
 }
@@ -502,7 +514,7 @@ sub writeColorSsnMetadata {
     my $writer = shift;
 
     foreach my $mdName (keys %{$self->{metadata}}) {
-        next if $mdName eq "title"; # part of the graph element
+        next if $mdName eq "title" or $mdName eq "__parentNetwork.SUID"; # part of the graph element
         my $mdValue = $self->{metadata}->{$mdName}->{value};
         my $attType = $self->{metadata}->{$mdName}->{type};
         $writer->emptyTag("att", "name" => $mdName, "value" => $mdValue, "type" => $attType);
@@ -513,6 +525,7 @@ sub writeColorSsnNodes {
     my $self = shift;
     my $writer = shift;
     my $gnnData = shift;
+    my $extraWriterFn = shift || sub {};
 
     my %seqIdCount;
     my %nodeNumIdCount;
@@ -535,6 +548,8 @@ sub writeColorSsnNodes {
     $skipFields{"Present in ENA Database?"} = 1;
     $skipFields{"Genome Neighbors in ENA Database?"} = 1;
     $skipFields{"ENA Database Genome ID"} = 1;
+    $skipFields{"EfiRef50 Cluster IDs"} = 1;
+    $skipFields{"EfiRef70 Cluster IDs"} = 1;
 
     foreach my $node (@{$self->{nodes}}){
         my $nodeLabel = $node->getAttribute('label');
@@ -601,6 +616,7 @@ sub writeColorSsnNodes {
                             $self->saveGnnAttributes($writer, $gnnData, $node);
                         }
                         $savedAttrs = 1;
+                        &$extraWriterFn($nodeLabel, sub { writeGnnField($writer, @_); }, sub { writeGnnListField($writer, @_); });
                     }
 
                     if ($attrName and not exists $skipFields{$attrName}) {
@@ -802,9 +818,10 @@ sub writeGnnListField {
 sub addFileActions {
     my $B = shift; # This is an EFI::SchedulerApi::Builder object
     my $info = shift;
+    my $skipFasta = shift || 0;
 
     my $fastaTool = "$info->{fasta_tool_path} -config $info->{config_file}";
-    $fastaTool .= " -input-sequences $info->{input_seqs_file}" if $info->{input_seqs_file};
+    my $extraFasta = $info->{input_seqs_file} ? " -input-sequences $info->{input_seqs_file}" : "";
 
     my $writeBashZipIf = sub {
         my ($inDir, $outZip, $testFile, $extraFn) = @_;
@@ -818,15 +835,20 @@ sub addFileActions {
     };
 
     my $writeGetFastaIf = sub {
-        my ($inDir, $outZip, $testFile, $domIdDir, $outDir, $domOutDir) = @_;
+        my ($inDir, $outZip, $testFile, $domIdDir, $outDir, $domOutDir, $extraFasta) = @_;
+        $extraFasta = "" if not defined $extraFasta;
         if ($outZip and $inDir) {
             my $outDirArg = " -out-dir $outDir";
             my $extraFn = sub {
-                $B->addAction("    $fastaTool -node-dir $inDir $outDirArg");
+                if (not $skipFasta) {
+                    $B->addAction("    $fastaTool -node-dir $inDir $outDirArg $extraFasta");
+                }
             };
             if ($domIdDir and $domOutDir) {
                 $extraFn = sub {
-                    $B->addAction("    $fastaTool -domain-out-dir $domOutDir -node-dir $domIdDir $outDirArg");
+                    if (not $skipFasta) {
+                        $B->addAction("    $fastaTool -domain-out-dir $domOutDir -node-dir $domIdDir $outDirArg $extraFasta");
+                    }
                 };
             }
             &$writeBashZipIf($inDir, $outZip, $testFile, $extraFn);

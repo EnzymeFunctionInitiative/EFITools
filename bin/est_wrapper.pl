@@ -18,7 +18,7 @@ my ($jobOutputDir, $jobOutputScript, $toolBase, $configFile);
 
 
 my ($jobType, $isDebug, $scheduler);
-my ($outputPath, $oldGraphs, $maxFullFam, $jobId);
+my ($$oldGraphs, $maxFullFam, $jobId);
 my ($np, $evalue, $tmp, $maxSequence, $queue, $memQueue);
 
 # Family shared
@@ -102,7 +102,6 @@ my $result = GetOptions(
     "skip-fasta"                => \$skipFasta,
 
     # Cluster Analysis (CLUSTER)
-    "output-path=s"     => \$outputPath,
     "opt-msa-option=s"          => \$msaOption,
     "opt-aa-list=s"             => \$msaAa,
     "opt-aa-threshold=s"        => \$msaThreshold,
@@ -110,7 +109,6 @@ my $result = GetOptions(
     "opt-max-seq-msa=s"         => \$msaMax,
 
     # Conv Ratio (CONVRATIO)
-    "output-path=s"     => \$outputPath,
     "ascore=s"          => \$ascore,
     "ram=s"             => \$convRatioRam,
 
