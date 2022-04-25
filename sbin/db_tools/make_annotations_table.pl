@@ -5,418 +5,584 @@ use strict;
 use Getopt::Long;
 use List::MoreUtils qw{apply uniq any} ;
 use FindBin;
+use Data::Dumper;
 
 use lib "$FindBin::Bin/../../lib";
 use lib "$FindBin::Bin/lib";
 
 use EFI::IdMapping::Util;
+use EFI::Annotations;
 
 
-my ($inputFile, $outputFile, $giFile, $efiTidFile, $gdnaFile, $hmpFile, $oldPhyloFile, $debug, $idMappingFile);
+my ($inputFile, $outputFile, $fragmentIdFile, $giFile, $efiTidFile, $gdnaFile, $hmpFile, $debug, $idMappingFile, $familyTable, $metadataFormat, $packJson);
 my $result = GetOptions(
-    "dat=s"         => \$inputFile,
-    "annotations=s" => \$outputFile,
-    "uniprotgi=s"   => \$giFile,
-    "efitid=s"      => \$efiTidFile,
-    "gdna=s"        => \$gdnaFile,
-    "hmp=s"         => \$hmpFile,
-    "phylo=s"       => \$oldPhyloFile,
-    "idmapping=s"   => \$idMappingFile,
-    "debug=i"       => \$debug,  #TODO: debug
+    "dat=s"             => \$inputFile,
+    "annotations=s"     => \$outputFile,
+    "fragment-ids=s"    => \$fragmentIdFile,
+    "uniprotgi=s"       => \$giFile,
+    "efitid=s"          => \$efiTidFile,
+    "gdna=s"            => \$gdnaFile,
+    "hmp=s"             => \$hmpFile,
+    "idmapping=s"       => \$idMappingFile,
+    "debug=i"           => \$debug,
+    "family-table=s"    => \$familyTable, # Optional
+    "metadata-format=s" => \$metadataFormat,
+    "pack-json"         => \$packJson,
 );
 
 my $usage = <<USAGE;
-Usage: $0 -dat combined_dat_input_file -annotations output_annotations_tab_file
-            [-uniprotgi gi_file_path -efitid efi_tid_file_path -gdna gdna_file_path -hmp hmp_file_path
-             -phylo old_phylogeny_file_path -debug num_iterations_to_run -idmapping idmapping_tab_file_path
-             -uniref50 uniref50_tab_file -uniref90 uniref90_tab_file -pfam pfam_tab_file
-             -interpro interpro_tab_file]
+Usage: $0 --dat combined_dat_input_file --annotations output_annotations_tab_file
+            [-uniprotgi gi_file_path --efitid efi_tid_file_path --gdna gdna_file_path --hmp hmp_file_path
+             --debug num_iterations_to_run --idmapping idmapping_tab_file_path
+             --uniref50 uniref50_tab_file --uniref90 uniref90_tab_file --pfam pfam_tab_file
+             --interpro interpro_tab_file --family-table tab_file --metadata-format json|tab]
 
     Anything in [] is optional.
 
-        -phylo      will use the old GOLD data and build that into the table, otherwise taxonomy is left out
-        -uniprotgi  will include GI numbers, otherwise they are left out
-        -idmapping  use the idmapping.tab file output by the import_id_mapping.pl script to obtain the
+        --uniprotgi  will include GI numbers, otherwise they are left out
+        --idmapping  use the idmapping.tab file output by the import_id_mapping.pl script to obtain the
                     refseq, embl-cds, and gi numbers 
+        --metadata-format controls the metadata columns; if it's json then they are stored in a single column
+                    in JSON format.  If it's tab they values are stored in separate columns.
 
 USAGE
 
 
-die "Input file -dat argument is required: $usage" if (not defined $inputFile or not -f $inputFile);
-die "Output file -struct argument is required; $usage" if not $outputFile;
+die "Input file --dat argument is required: $usage" if (not defined $inputFile or not -f $inputFile);
+die "Output file --struct argument is required; $usage" if not $outputFile;
 
 
 
-my (%efiTidData, %hmpData, %gdnaData, %refseq, %GI, %phylo);
-
-
-
-
-my $useGiNums = 0;
+my (%EfiTidData, %HmpData, %GdnaData, %GI);
 if ($giFile) {
-    $useGiNums = 1;
-    print "Read in GI Table\n";
     getGiNums();
-    print "Done\n";
 }
-
 if ($gdnaFile) {
-    print "Get GDNA taxids\n";
     getGdnaData();
-    print "Done\n";
 }
-
 if ($hmpFile) {
-    #the key for %hmpData is the taxid
-    print "Get HMP data\n";
+    #the key for %HmpData is the taxid
     getHmpData();
-    print "Done\n";
 }
-
 if ($efiTidFile) {
-    print "Get EFI TIDs\n";
     getEfiTids();
-    print "Done\n";
-}
-
-my $useOldPhylo = 0;
-if ($oldPhyloFile) {
-    $useOldPhylo = 1;
-    print "Get Phylogeny Information\n";
-    getOldPhylo();
-    print "Done\n";
 }
 
 
 
 
+my $metadataFormat = $metadataFormat // "json";
+my $debugNumRows = $debug // 2**50;
 
 
 
-
-
-$debug = 2**50 if not defined $debug; #TODO: debug
-
-my ($element, $id, $status, $size, $OX_tax_id, $GDNA, $HMP, $DE_desc, $RDE_reviewed_desc, $OS_organism, $OC_domain, $GN_gene, $PDB, $GO, $kegg, $string, $brenda, $patric, $giline, $hmpsite, $hmpoxygen, $efiTid, $EC, $phylum, $class, $order, $family, $genus, $species, $cazy, $is_fragment);
-my (@BRENDA, @CAZY, @GO, @INTERPRO, @KEGG, $lastline, @OC_domain_array, @PATRIC, @PDB, @PFAM, $refseqline, @STRING);
-my ($KW_RP);
+my $Data = {};
+my $Fields = getFields(); # In appropriate order
+my $Handlers = getHandlers(); # A handler is a parsing function
 
 print "Parsing DAT Annotation Information\n";
-open DAT, $inputFile or die "could not open dat file $inputFile\n";
-open STRUCT, ">$outputFile" or die "could not write struct data to $outputFile\n";
-my $c = 0; #TODO: debug
-while (<DAT>){  
-    last if $c++ > $debug; #TODO: debug
-    my $line=$_;
-    $line=~s/\&/and/g;
-    if($line=~/^ID\s+(\w+)\s+(\w+);\s+(\d+)/){
-        write_line();
-        $id=$1;
-        $status=$2;
-        $size=$3;
-        $element = $DE_desc = $OS_organism = $OC_domain = "";
-        $KW_RP = "";
-        $GDNA="None";
-        $cazy = $EC = $OX_tax_id = $GN_gene = $HMP = "None";
-        @CAZY = @PFAM = @PDB = @INTERPRO = @GO = @KEGG = @STRING = @BRENDA = @PATRIC = ();
-    }elsif($line=~/^AC\s+(\w+);/){
-        unless($lastline=~/^AC/){
-            $element=$1;
-            if(exists $efiTidData{$element}){
-                $efiTid=$efiTidData{$element};
-            }else{
-                $efiTid="NA";
-            }
+
+open my $datFh, "<", $inputFile or die "could not open dat file $inputFile\n";
+open my $structFh, ">", $outputFile or die "could not write struct data to $outputFile\n";
+open my $fragIdsFh, ">", $fragmentIdFile or die "could not write struct data to $fragmentIdFile\n" if $fragmentIdFile;
+open my $familyTableFh, ">", $familyTable if $familyTable;
+
+my $currentId = ""; # Not the UniProt accession ID
+my $lastLine;
+my $commentBlockState = {};
+
+my $debugNumRows = 0;
+while (my $line = <$datFh>) {
+    chomp $line;
+    $line =~ s/\&/and/g;
+    $line =~ s/\\//g;
+
+    if ($line =~ /^ID\s+(\w+)\s+(\w+);\s+(\d+)/) {
+        # Stop after a certain number of UniProt records
+        last if ($debug and $debugNumRows++ > $debug);
+
+        if ($currentId) {
+            writeUniprotRecord($Data, $Fields, $commentBlockState);
         }
-    }elsif($line=~/^OX   NCBI_TaxID=(\d+)/){
-        $OX_tax_id=$1;
-        if($gdnaData{$OX_tax_id}){
-            $GDNA="True";
-        }else{
-            $GDNA="False";
+
+        $currentId = $1;
+        my $swissprotStatus = $2;
+        my $aaSize = $3;
+        $swissprotStatus = $swissprotStatus eq "Reviewed" ? 1 : 0;
+        my $meta = initMeta($Fields);
+        $meta->{uniprot_id} = $currentId;
+        $Data = {acc_id => "", swissprot_status => $swissprotStatus, length => $aaSize, tax_id => 0, is_fragment => 0, metadata => $meta};
+        $commentBlockState = {};
+    } elsif ($line =~ /^AC\s+(\w+);?/) {
+        if ($lastLine !~ /^AC/) {
+            print "Found UniProt ID $1\n" if $debug;
+            $Data->{acc_id} = $1;
+            &{$Handlers->{efi_tid}}($Data->{metadata}, $1);
         }
-        if($hmpData{$OX_tax_id}){
-            $HMP="Yes";
-        }else{
-            $HMP="NA";
-        }   
-    }elsif($line=~/DE\s+EC\=(.*);/){
-        $EC=$1;
-    }elsif($line=~/^DE   (.*);/){
-        $DE_desc.=$1;
-    }elsif($line=~/^OS   (.*)/){
-        $OS_organism.=$1;
-    }elsif($line=~/^DR   Pfam; (\w+); (\w+)/){
-        push @PFAM, "$1 $2";
-    }elsif($line=~/^DR   PDB; (\w+);/){
-        push @PDB, $1;
-    }elsif($line=~/DR\s+CAZy; (\w+);/){
-        push @CAZY, $1;
-    }elsif($line=~/^DR   InterPro; (\w+); (\w+)/){
-        push @INTERPRO, "$1 $2";
-    }elsif($line=~/^DR   KEGG; (\S+); (\S+)/){
-        push @KEGG, $1;
-    }elsif($line=~/^DR   STRING; (\S+); (\S+)/){
-        push @STRING, $1;
-    }elsif($line=~/^DR   BRENDA; (\S+); (\S+)/){
-        push @BRENDA, "$1 $2";
-    }elsif($line=~/^DR   PATRIC; (\S+); (\S+)/){
-        push @PATRIC, $1;
-    }elsif($line=~/^KW\s+Reference proteome(\s+\{([^\}]+)\})?/){
-        $KW_RP=($2?"$2":"1");
-    }elsif($line=~/^OC   (.*)/){
-        $OC_domain.=$1;
-    }elsif($line=~/^GN   \w+=(\w+)/){
-        $GN_gene=$1;
-    }elsif($line=~/^DR   GO; GO:(\d+); F:(.*);/){
-        my $tmpgo="$1 $2";
-        $tmpgo=~s/,/ /g;
-        push @GO, $tmpgo;
+    } elsif ($line =~ /^OX\s+NCBI_TaxID\s*=\s*(\d+)/) {
+        my $taxId = $1;
+        $Data->{tax_id} = $taxId;
+        &{$Handlers->{gdna}}($Data->{metadata}, $taxId);
+        &{$Handlers->{hmp}}($Data->{metadata}, $taxId);
+    } elsif ($line =~ /^CC\s+(.*)$/) {
+        processCommentBlock($1, $commentBlockState);
+    } elsif ($line =~ /^(\S\S)\s+(.*)$/) {
+        my $recType = $1;
+        my $value = $2;
+        processLine($Data, $recType, $value);
     }
-    $lastline=$line;
+    $lastLine = $line;
 }
 
 
-write_line();
+writeUniprotRecord($Data, $Fields, $commentBlockState);
 
-
-close DAT;
-close STRUCT;
+close $familyTableFh if $familyTableFh;
+close $fragIdsFh if $fragIdsFh;
+close $structFh;
+close $datFh;
 
 
 print "Wrote the following columns to the annotations table:\n    ";
-print join("\n    ", "element", "id", "status", "size", "OX_tax_id", "GDNA", "DE_desc",
-                 "RDE_reviewed_desc", "OS_organism", "GN_gene", "PDB",
-                 "GO", "kegg", "string", "brenda", "patric", "hmpsite", "hmpoxygen",
-                 "efiTid", "EC", "cazy", "is_fragment");
+
+my @metadataFields = map { $_->{name} } grep { $_->{field_type} eq "db" and not $_->{db_hidden} } @$Fields;
+print join("\n    ", "accession", @metadataFields);
 print "\n";
 
 
 
 
 
+sub processLine {
+    my $data = shift;
+    my $recType = shift;
+    my $record = shift;
 
-sub write_line {
-    if(defined $element){
-
-        if(scalar @PDB){
-            $PDB=join ',', @PDB;
-        }else{
-            $PDB="None";
-        }
-        if(scalar @GO){
-            $GO=join ',', @GO;
-        }else{
-            $GO="None";
-        }
-        if(scalar @CAZY){
-            $cazy=join ',', @CAZY;
-        }else{
-            $cazy="None";
-        }
-        if(scalar @KEGG){
-            $kegg = join ',', @KEGG;
-        } else {
-            $kegg = "None";
-        }
-        if (scalar @STRING) {
-            $string = join ',', @STRING;
-        } else {
-            $string = "None";
-        }
-        if (scalar @BRENDA) {
-            $brenda = join ',', @BRENDA;
-        } else {
-            $brenda = "None";
-        }
-        if (scalar @PATRIC) {
-            $patric = join ',', @PATRIC;
-        } else {
-            $patric = "None";
-        }
-        if(exists $refseq{$element} and scalar @{$refseq{$element}}){
-            $refseqline=join ',', @{$refseq{$element}};
-        }else{
-            $refseqline="None";
-        }
-        if(exists $GI{$element}){
-            $giline=$GI{$element}{'number'}.":".$GI{$element}{'count'};
-        }else{
-            $giline="None";
-        }
-        if($hmpData{$OX_tax_id}{'sites'}){
-            $hmpsite=$hmpData{$OX_tax_id}{'sites'};
-        }else{
-            $hmpsite='None';
-        }
-        if($hmpData{$OX_tax_id}{'oxygen'}){
-            $hmpoxygen=$hmpData{$OX_tax_id}{'oxygen'};
-        }else{
-            $hmpoxygen='None';
-        } 
-        if(exists $phylo{$OX_tax_id}){
-            $phylum=$phylo{$OX_tax_id}{'phylum'};
-            $class=$phylo{$OX_tax_id}{'class'};
-            $order=$phylo{$OX_tax_id}{'order'};
-            $family=$phylo{$OX_tax_id}{'family'};
-            $genus=$phylo{$OX_tax_id}{'genus'};
-            $species=$phylo{$OX_tax_id}{'species'};
-        }else{
-            $phylum='NA';
-            $class='NA';
-            $order='NA';
-            $family='NA';
-            $genus='NA';
-            $species='NA'
-        }
-        @OC_domain_array=split /;/, $OC_domain;
-        $OC_domain=shift @OC_domain_array;
-        $DE_desc=~s/\>//;
-        $DE_desc=~s/\<//;
-        #$DE_desc=~s/\=//;
-        #$DE_desc=~s/AltName.*//;
-        #$DE_desc=~s/^RecName: .*//;
-        #$DE_desc=~s/^SubName: //;
-        $DE_desc=~s/\s+/ /g;
-        $DE_desc=~s/\&/and/g;
-        $DE_desc=~s/^\s+//g;
-        $is_fragment = ($DE_desc =~ /Flags:.*Fragment/) ? 1 : 0;
-        #$DE_desc=~s/{.*?}$//;
-        if($DE_desc=~/^\s*RecName:\s*Full=(.*)$/){
-            $DE_desc=$1;
-            $DE_desc=~s/\{.*\}//;
-            $DE_desc=~s/Short:.*//;
-            $DE_desc=~s/Flags:.*$//;
-            $DE_desc=~s/AltName:.*//;
-            $DE_desc=~s/RecName:.*//;
-            $DE_desc=~s/\=//g;
-            #print "first $DE_desc\n";
-        }elsif($DE_desc=~/^\s*SubName:\s*Full=(.*)$/){
-            $DE_desc=$1;
-            $DE_desc=~s/\{.*\}//;
-            $DE_desc=~s/Short:.*//;
-            $DE_desc=~s/Flags:.*$//;
-            $DE_desc=~s/AltName:.*//;
-            $DE_desc=~s/RecName:.*//;
-            $DE_desc=~s/\=//g;
-            #print "second $DE_desc\n";
-        }else{
-            print "unmatched $DE_desc\n";
-        }
-        $DE_desc=~s/{.*?}//g;
-        $DE_desc=~s/^\s*(.*?)\s*$/$1/;
-        if($status eq "Reviewed"){
-            $RDE_reviewed_desc=$DE_desc;
-        }else{
-            $RDE_reviewed_desc="NA";
-        }
-        if($OS_organism=~/\(/){
-            $OS_organism=~/(.*?)\(/;
-            my $OSname=$1;
-            if($OS_organism=~/(\(strain.*?\))/){
-                $OS_organism="$OSname $1";
-            }else{
-                $OS_organism=$OSname;
-            }
-        }
-
-        my @line = ($element, $id, $status, $size, $OX_tax_id, $GDNA, $DE_desc, $RDE_reviewed_desc, $OS_organism); 
-        push @line, $GN_gene, $PDB, $GO, $kegg, $string, $brenda, $patric;
-        push @line, $hmpsite, $hmpoxygen, $efiTid, $EC;
-        push @line, $cazy;
-        push @line, $is_fragment;
-        push @line, $KW_RP;
-
-        print STRUCT join("\t", @line), "\n";
+    $recType = lc $recType;
+    if ($Handlers->{$recType}) {
+        &{$Handlers->{$recType}}($data->{metadata}, $record);
+    #} else {
+    #    print "Couldn't process $recType // $record\n";
     }
 }
+
+
+sub writeUniprotRecord {
+    my $data = shift;
+    my $fields = shift;
+    my $commentBlockState = shift;
+
+    postProcessUniprotRecord($data, $commentBlockState);
+
+    my $meta = $data->{metadata};
+
+    my $jsonRow = {};
+    my @tabRow;
+    foreach my $field (@$fields) {
+        my $val = "";
+        next if ($field->{field_type} ne "db" or $field->{db_hidden});
+        if ($field->{json_type_spec} eq "array") {
+            $val = join(",", @{ $meta->{$field->{name}} });
+            #$val = "None" if not $val;
+        } elsif ($field->{json_type_spec} eq "hash") {
+        } else {
+            $val = $meta->{$field->{name}};
+        }
+        my $jsonName = $packJson ? $field->{json_name} // $field->{name} : $field->{name};
+        $jsonRow->{$jsonName} = $val if ($val or not $packJson);
+        push @tabRow, $val;
+    }
+
+    my @line = ($data->{acc_id}, $data->{swissprot_status}, $data->{is_fragment}, $data->{length}, $data->{tax_id});
+
+    if ($metadataFormat eq "json") {
+        push @line, EFI::Annotations::save_meta_struct($jsonRow);
+    } else {
+        push @line, @tabRow;
+    }
+
+    print $structFh join("\t", @line), "\n";
+    print $fragIdsFh join("\t", $data->{acc_id}), "\n" if $fragIdsFh and $data->{is_fragment};
+    map { print $familyTableFh join("\t", $_, $data->{acc_id}), "\n"; } (@{ $meta->{uniprot_interpro} }, @{ $meta->{uniprot_pfam} }) if $familyTableFh;
+}
+
+
+sub postProcessUniprotRecord {
+    my $data = shift;
+    my $ccState = shift; # comment block state
+
+    my $meta = $data->{metadata};
+
+    my $deDesc = $meta->{description} // "";
+    $deDesc =~ s/[<>]//g;
+    $deDesc =~ s/\s+/ /g;
+    $deDesc =~ s/\&/and/g;
+    $deDesc =~ s/^\s+//g;
+
+    $data->{is_fragment} = ($deDesc =~ /Flags:.*Fragment/) ? 1 : 0;
+
+    if ($deDesc =~ /^\s*RecName:\s+Full\s*=\s*(.*)$/) {
+        $deDesc = $1;
+        $deDesc =~ s/\{.*\}//g;
+        $deDesc =~ s/Short[:=].*$//;
+        $deDesc =~ s/Flags[:=].*$//;
+        $deDesc =~ s/AltName[:=].*$//;
+        $deDesc =~ s/RecName[:=].*$//;
+        $deDesc =~ s/\s*=\*//g;
+    } elsif ($deDesc =~ /^\s*SubName:\s*Full\s*=\s*(.*)$/) {
+        $deDesc = $1;
+        $deDesc =~ s/\{.*\}//g;
+        $deDesc =~ s/Short[:=].*$//;
+        $deDesc =~ s/Flags[:=].*$//;
+        $deDesc =~ s/AltName[:=].*$//;
+        $deDesc =~ s/RecName[:=].*$//;
+        $deDesc =~ s/\s*=\*//g;
+        #print "second $deDesc\n";
+    } else {
+        print "Unmatched DE record: $deDesc\n";
+    }
+
+    $deDesc =~ s/{.*?}//g;
+    $deDesc =~ s/^\s*(.*?)\s*$/$1/;
+    $deDesc =~ s/\s+;$//;
+
+    $meta->{description} = $deDesc;
+    #$meta->{reviewed_description} = lc $data->{swissprot_status} eq "reviewed" ? $deDesc : ""; # Previously NA
+
+    if ($meta->{organism} =~ m/(.*?)\s*\(/) {
+        my $osName = $1;
+        if ($meta->{organism} =~ m/(\(strain.*?\))/) {
+            $meta->{organism} = "$osName $1";
+        } else {
+            $meta->{organism} = $osName;
+        }
+    }
+
+    my $parseFn = sub {
+        my $text = shift;
+        my @primaryParts = split(m/;\s+/, $text);
+        foreach my $ppart (@primaryParts) {
+            if ($ppart =~ m/Xref=(.*?)\s*$/) {
+                my @xrefs = split(m/,\s+/, $1);
+                foreach my $xref (@xrefs) {
+                    my ($type, $ref) = split(m/:/, $xref, 2);
+                    $type = lc $type;
+                    $ref =~ s/\s//g;
+                    push @{ $meta->{$type} }, $ref if exists $meta->{$type};
+                }
+            }
+        }
+    };
+    if ($ccState->{topic}) {
+        if ($ccState->{reaction}) {
+            &$parseFn($ccState->{reaction});
+        }
+        if ($ccState->{phys_dir}) {
+            &$parseFn($ccState->{phys_dir});
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+sub getHandlers {
+
+    my %handlers;
+
+    my $de_ec_handler = sub { $_[0]->{ec_code} = $_[1]; };
+    my $de_desc_handler = sub { $_[0]->{description} .= $_[1]; };
+    $handlers{de} = sub {
+        my $data = shift;
+        my $val = shift;
+        $val =~ /(.*)\s*=\s*(.*);/;
+        if ($1 eq "EC") {
+            &$de_ec_handler($data, $2);
+        } else {
+            &$de_desc_handler($data, $val);
+        }
+    };
+
+    $handlers{os} = sub { $_[0]->{organism} .= $_[1]; };
+
+    $handlers{dr_pfam} = sub { push @{ $_[0]->{uniprot_pfam} }, $_[1]; };
+    $handlers{dr_pdb} = sub { push @{ $_[0]->{pdb} }, $_[1]; };
+    $handlers{dr_cazy} = sub { push @{ $_[0]->{cazy} }, $_[1]; };
+    $handlers{dr_interpro} = sub { push @{ $_[0]->{uniprot_interpro} }, $_[1]; };
+    $handlers{dr_kegg} = sub { push @{ $_[0]->{kegg} }, $_[1]; };
+    $handlers{dr_string} = sub { push @{ $_[0]->{string} }, $_[1]; };
+    $handlers{dr_brenda} = sub { push @{ $_[0]->{brenda} }, ($_[2] ? "$_[1] $_[2]" : $_[1]); };
+    $handlers{dr_patric} = sub { push @{ $_[0]->{patric} }, $_[1]; };
+    $handlers{dr_go} = sub {
+        my $data = shift;
+        my $val = shift;
+        my $extra = shift || "";
+        $val =~ s/\D//g;
+        if ($extra =~ m/F:(.*);/) {
+            $extra = "$val $1";
+            $extra =~ s/,/ /g;
+            push @{ $data->{go} }, $extra;
+        }
+    };
+    $handlers{dr} = sub {
+        my $data = shift;
+        my $val = shift;
+        (my $type = $val) =~ s/^(\w+);\s+(\S+)\s+(.*?)$/$1/;
+        my $extra = $3;
+        (my $keyvalue = $2) =~ s/[\.;]*\s*$//;
+        $extra =~ s/[\.;]*\s*$//;
+        $type = lc $type;
+        &{$handlers{"dr_$type"}}($data, $keyvalue, $extra) if $handlers{"dr_$type"};
+    };
+
+    $handlers{kw_rp} = sub {
+        my $data = shift;
+        my $val = shift;
+        if ($val =~ m/^(\s+\{([^\}]+)\})/) {
+            $data->{kw_rp} = $2;
+        } else {
+            $data->{kw_rp} = 1;
+        }
+    };
+    $handlers{kw} = sub {
+        my $data = shift;
+        my $val = shift;
+        if ($val =~ m/Reference proteome(.*)/) {
+            &{$handlers{kw_rp}}($data, $1);
+        }
+    };
+
+    $handlers{oc} = sub {
+        my $data = shift;
+        my $val = shift;
+        my @parts = split /;/, $val;
+        $data->{oc_domain} .= $parts[0];
+    };
+    $handlers{gn} = sub {
+        my $data = shift;
+        my $val = shift;
+        if ($val =~ m/\w+=(\w+)/) {
+            $data->{gn_gene} = $1;
+        } else {
+            $data->{gn_gene} = "";
+        }
+    };
+
+    ## Todo: make this more robust, handle all Xrefs
+    #$handlers{cc_xref_rhea} = sub {
+    #    my $data = shift;
+    #    my $val = shift;
+    #    $data->{rhea} = $val;
+    #};
+    #$handlers{cc_xref} = sub {
+    #    my $data = shift;
+    #    my $val = shift;
+    #    my @xrefs = split(m/; /, $1);
+    #    foreach my $xref (@xrefs) {
+    #        my ($xrefType, $xrefIdentifier) = split(m/:/, $xref, 2);
+    #        $xrefType = lc $xrefType;
+    #        my $k = "cc_xref_$xrefType";
+    #        if ($handlers{$k}) {
+    #            &{$handlers{$k}}($data, $xrefIdentifier);
+    #        }
+    #    }
+    #};
+    #$handlers{cc} = sub {
+    #    my $data = shift;
+    #    my $val = shift;
+    #    if ($val =~ m/Xref=(.*)$/) {
+    #        if ($handlers{cc_xref}) {
+    #            &{$handlers{cc_xref}}($data, $1);
+    #        }
+    #    }
+    #};
+
+    $handlers{gdna} = sub {
+        my $data = shift;
+        my $taxId = shift;
+        $data->{gdna} = $GdnaData{$taxId} ? "1" : "0"; # Previously True/False
+    };
+    $handlers{hmp} = sub {
+        my $data = shift;
+        my $taxId = shift;
+        $data->{hmp} = $HmpData{$taxId} ? "1" : "0"; # Previously Yes/NA\
+        $data->{hmp_site} = $HmpData{$taxId}{"sites"} // ""; # Previously None
+        $data->{hmp_oxygen} = $HmpData{$taxId}{"oxygen"} // ""; # Previously None
+    };
+    $handlers{efi_tid} = sub {
+        my $data = shift;
+        my $uniprotId = shift;
+        $data->{efi_tid} = $EfiTidData{$uniprotId} ? $EfiTidData{$uniprotId} : ""; # Previously NA
+    };
+    $handlers{gi} = sub {
+        my $data = shift;
+        my $uniprotId = shift;
+        my $giLine = ""; # Previously None
+        if (exists $GI{$uniprotId}) {
+            $giLine = $GI{$uniprotId}{"number"} . ":" . $GI{$uniprotId}{"count"};
+        }
+        $data->{gi} = $giLine;
+    };
+
+    return \%handlers;
+}
+
+
+sub processCommentBlock {
+    my $data = shift;
+    my $state = shift;
+    if ($data =~ m/^\s*-!- (.*?):?\s*$/) {
+        my $topic = $1;
+        if ($state->{cur_topic}) {
+            #TODO; process the topic;
+        }
+        return if $topic ne "CATALYTIC ACTIVITY";
+        $state->{topic} = $topic;
+        $state->{section} = "";
+        $state->{reaction} = "";
+        $state->{phys_dir} = "";
+    } elsif ($data =~ m/^\s*Reaction=(.*)$/) {
+        $state->{section} = "reaction";
+        $state->{reaction} = $1;
+    } elsif ($data =~ m/^\s*PhysiologicalDirection=(.*)$/) {
+        $state->{section} = "phys_dir";
+        $state->{phys_dir} = $1;
+    } elsif ($state->{topic} and $state->{section}) {
+        $state->{$state->{section}} .= " " . $data;
+    }
+}
+
+
+sub initMeta {
+    my $fields = shift;
+    my $data = {};
+    foreach my $field (@$fields) {
+        if ($field->{json_type_spec} eq "array") {
+            $data->{$field->{name}} = [];
+        } elsif ($field->{json_type_spec} eq "hash") {
+            $data->{$field->{name}} = {};
+        } else {
+            $data->{$field->{name}} = "";
+        }
+    }
+    return $data;
+}
+
+
+sub getFields {
+    my @fields = EFI::Annotations::get_annotation_fields();
+    return \@fields;
+    #my @fields;
+    #push @fields, {name => "ec_code", json_type_spec => "str"};
+    #push @fields, {name => "description", json_type_spec => "str"};
+    #push @fields, {name => "organism", json_type_spec => "str"};
+    #push @fields, {name => "uniprot_pfam", json_type_spec => "array", hidden => 1};
+    #push @fields, {name => "pdb", json_type_spec => "array"};
+    #push @fields, {name => "cazy", json_type_spec => "array"};
+    #push @fields, {name => "uniprot_interpro", json_type_spec => "array", hidden => 1};
+    #push @fields, {name => "kegg", json_type_spec => "array"};
+    #push @fields, {name => "string", json_type_spec => "array"};
+    #push @fields, {name => "brenda", json_type_spec => "array"};
+    #push @fields, {name => "patric", json_type_spec => "array"};
+    #push @fields, {name => "go", json_type_spec => "array"};
+    #push @fields, {name => "organism", json_type_spec => "str"};
+    #push @fields, {name => "kw_rp", json_type_spec => "str"};
+    #push @fields, {name => "oc_domain", json_type_spec => "str", hidden => 1};
+    #push @fields, {name => "gn_gene", json_type_spec => "str"};
+    #push @fields, {name => "rhea" => json_type_spec => "array"};
+    #push @fields, {name => "efi_tid", json_type_spec => "str"};
+    #push @fields, {name => "hmp", json_type_spec => "str"};
+    #push @fields, {name => "hmp_site", json_type_spec => "str"};
+    #push @fields, {name => "hmp_oxy", json_type_spec => "str"};
+    #push @fields, {name => "gdna", json_type_spec => "str"};
+    #push @fields, {name => "reviewed_description", json_type_spec => "str"};
+    #return \@fields;
+}
+
+
+
+
+
+
+
 
 
 
 sub getEfiTids {
-    open EFITID, $efiTidFile or die "could not open efi target id file $efiTidFile\n";
-    while(<EFITID>){
-        my $line=$_;
+    open my $efitidFh, "<", $efiTidFile or die "could not open efi target id file $efiTidFile\n";
+    while (my $line = <$efitidFh>) {
         chomp $line;
         my @parts = split /\t/, $line;
-        $efiTidData{@parts[2]}=@parts[0];
+        $EfiTidData{@parts[2]} = $parts[0];
     }
-    close EFITID;
-}
-
-
-sub getOldPhylo {
-    open PHYLO, $oldPhyloFile or die "could not open phylogeny information file $oldPhyloFile\n";
-    while(<PHYLO>){
-        my $line=$_;
-        chomp $line;
-        my @line=split /\t/, $line;
-        $phylo{$line[0]}{'phylum'}=$line[3];
-        $phylo{$line[0]}{'class'}=$line[4];
-        $phylo{$line[0]}{'order'}=$line[5];
-        $phylo{$line[0]}{'family'}=$line[6];
-        $phylo{$line[0]}{'genus'}=$line[7];
-        $phylo{$line[0]}{'species'}=$line[8];
-    }
-    close PHYLO;
+    close $efitidFh;
 }
 
 
 sub getHmpData {
-    open HMP, $hmpFile or die "could not open gda file $hmpFile\n";
-    while(<HMP>){
-        my $line=$_;
+    open my $hmpFh, $hmpFile or die "could not open gda file $hmpFile\n";
+    while (my $line = <$hmpFh>) {
         chomp $line;
-        my @line=split /\t/, $line;
-        if($line[16] eq ""){
-            $line[16]='Not Specified';
+        my @line = split /\t/, $line;
+        if ($line[16] eq "") {
+            $line[16] = 'Not Specified';
         }
-        if($line[47] eq ""){
-            $line[47]='Not Specified';
+        if ($line[47] eq "") {
+            $line[47] = 'Not Specified';
         }
-        if($line[5] eq ""){
+        if ($line[5] eq "") {
             die "key is an empty value\n";
         }
-        $line[16]=~s/,\s+/,/g;
-        $line[47]=~s/,\s+/,/g;
-        push @{$hmpData{$line[5]}{'sites'}}, $line[16];
-        push @{$hmpData{$line[5]}{'oxygen'}}, $line[47];
+        $line[16] =~ s/,\s+/,/g;
+        $line[47] =~ s/,\s+/,/g;
+        push @{$HmpData{$line[5]}{'sites'}}, $line[16];
+        push @{$HmpData{$line[5]}{'oxygen'}}, $line[47];
     }
-    close HMP;
+    close $hmpFh;
     
     #remove hmp doubles and set up final hash
-    foreach my $key (keys %hmpData){
-        $hmpData{$key}{'sites'}=join(",", uniq split(",",join(",", @{$hmpData{$key}{'sites'}})));
-        $hmpData{$key}{'oxygen'}=join(",", uniq split(",",join(",", @{$hmpData{$key}{'oxygen'}})));
+    foreach my $key (keys %HmpData) {
+        $HmpData{$key}{'sites'} = join(",", uniq split(",",join(",", @{$HmpData{$key}{'sites'}})));
+        $HmpData{$key}{'oxygen'} = join(",", uniq split(",",join(",", @{$HmpData{$key}{'oxygen'}})));
     }
 }
 
 
 sub getGdnaData {
-    open GDNA, $gdnaFile or die "could not open gdna file $gdnaFile\n";
-    while(<GDNA>){
-        my $line=$_;
+    open my $gdnaFh, $gdnaFile or die "could not open gdna file $gdnaFile\n";
+    while (my $line = <$gdnaFh>) {
         chomp $line;
-        $gdnaData{$line}=1;
-        #print ":$line:\n";
+        $GdnaData{$line} = 1;
     }
-    close GDNA;
+    close $gdnaFh;
 }
 
 
 sub getGiNums {
-    open GI, $giFile or die "could not open $giFile for GI\n";
-    while (<GI>){
-        my @line=split /\s/, $_;
-        $GI{@line[0]}{'number'}=@line[2];
-        if(exists $GI{@line[0]}{'count'}){
+    open my $giFh, $giFile or die "could not open $giFile for GI\n";
+    while (my $line = <$giFh>) {
+        chomp $line;
+        my @line = split /\s/, $line;
+        $GI{@line[0]}{'number'} = @line[2];
+        if (exists $GI{@line[0]}{'count'}) {
             $GI{@line[0]}{'count'}++;
-        }else{
-            $GI{@line[0]}{'count'}=0;
+        } else {
+            $GI{@line[0]}{'count'} = 0;
         }
-        #print "GI\t@line[0]\t".$GI{@line[0]}{'number'}."\t".$GI{@line[0]}{'count'}."\n";
     }
-    close GI;
+    close $giFh;
 }
 
 

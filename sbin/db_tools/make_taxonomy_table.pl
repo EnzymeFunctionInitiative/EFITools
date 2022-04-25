@@ -159,15 +159,26 @@ sub getTabLine {
                 exists $node->{name} ? $node->{name} : "NA",
             );
     } else {
+        my $superKingdom = $node->{lineage}->{superkingdom} // "NA";
+        my $kingdom = $node->{lineage}->{kingdom} // "NA";
+        $kingdom = "NA-$superKingdom" if ($kingdom eq "NA" and $superKingdom ne "NA");
         return (
-                exists $node->{lineage}->{superkingdom} ? $node->{lineage}->{superkingdom} : "NA",
-                exists $node->{lineage}->{kingdom} ? $node->{lineage}->{kingdom} : "NA",
-                exists $node->{lineage}->{phylum} ? $node->{lineage}->{phylum} : "NA",
-                exists $node->{lineage}->{class} ? $node->{lineage}->{class} : "NA",
-                exists $node->{lineage}->{order} ? $node->{lineage}->{order} : "NA",
-                exists $node->{lineage}->{family} ? $node->{lineage}->{family} : "NA",
-                exists $node->{lineage}->{genus} ? $node->{lineage}->{genus} : "NA",
-                exists $node->{name} ? $node->{name} : "NA",
+                $superKingdom,
+                $kingdom,
+                $node->{lineage}->{phylum} // "NA",
+                $node->{lineage}->{class} // "NA",
+                $node->{lineage}->{order} // "NA",
+                $node->{lineage}->{family} // "NA",
+                $node->{lineage}->{genus} // "NA",
+                $node->{name} // "NA",
+                #exists $node->{lineage}->{superkingdom} ? $node->{lineage}->{superkingdom} : "NA",
+                #exists $node->{lineage}->{kingdom} ? $node->{lineage}->{kingdom} : "NA",
+                #exists $node->{lineage}->{phylum} ? $node->{lineage}->{phylum} : "NA",
+                #exists $node->{lineage}->{class} ? $node->{lineage}->{class} : "NA",
+                #exists $node->{lineage}->{order} ? $node->{lineage}->{order} : "NA",
+                #exists $node->{lineage}->{family} ? $node->{lineage}->{family} : "NA",
+                #exists $node->{lineage}->{genus} ? $node->{lineage}->{genus} : "NA",
+                #exists $node->{name} ? $node->{name} : "NA",
             );
     }
 }

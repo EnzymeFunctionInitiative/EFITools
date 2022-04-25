@@ -199,7 +199,7 @@ foreach my $element (@uprotnumbers) {
             my @pieces = ref $uprot{$element}{$key} ne "ARRAY" ? $uprot{$element}{$key} : @{$uprot{$element}{$key}};
             foreach my $piece (@pieces) {
                 $piece =~ s/[\x00-\x08\x0B-\x0C\x0E-\x1F]//g if $piece;
-                my $type = EFI::Annotations::get_attribute_type($key);
+                my $type = $anno->get_attribute_type($key);
                 #if ($piece or $type ne "integer") {
                 if ($type ne "integer" or ($piece and $piece ne "None")) {
                     $writer->emptyTag('att', 'type' => $type, 'name' => $displayName, 'value' => $piece);
@@ -213,7 +213,7 @@ foreach my $element (@uprotnumbers) {
                 $piece = $2 - $1 + 1;
                 print "start:$1\tend$2\ttotal:$piece\n";
             }
-            my $type = EFI::Annotations::get_attribute_type($key);
+            my $type = $anno->get_attribute_type($key);
             #if ($piece or $type ne "integer") {
             if ($type ne "integer" or ($piece and $piece ne "None")) {
                 $writer->emptyTag('att', 'name' => $displayName, 'type' => $type, 'value' => $piece);

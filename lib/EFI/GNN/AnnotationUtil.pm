@@ -12,6 +12,7 @@ sub new {
     bless($self, $class);
 
     $self->{dbh} = $args{dbh};
+    $self->{anno} = $args{efi_anno};
 
     return $self;
 }
@@ -68,8 +69,14 @@ sub getMultipleAnnotations {
 
     my (%organism, %taxId, %annoStatus, %desc);
 
+    my $spCol = "swissprot_status";
+    my $orgCol = "organism";
+    my $taxCol = "taxonomy_id";
+    my $descCol = "description";
+    my $baseSql = "select $taxCol, $spCol, metadata from annotations";
+
     foreach my $accession (@$accessions) {
-        my $sql = "select Organism,Taxonomy_ID,STATUS,Description from annotations where accession='$accession'";
+        my $sql = "$baseSql where accession='$accession'";
     
         my $sth = $self->{dbh}->prepare($sql);
         $sth->execute;
@@ -79,15 +86,13 @@ sub getMultipleAnnotations {
             $self->{dbh} = $self->{dbh}->clone() or die "Cannot reconnect to database.";
         }
 
-        my ($organism, $taxId, $annoStatus, $desc) = ("", "", "", "");
         if (my $row = $sth->fetchrow_hashref) {
-            $organism{$accession} = $row->{Organism};
-            $taxId{$accession} = $row->{Taxonomy_ID};
-            $annoStatus{$accession} = $row->{STATUS};
-            $desc{$accession} = $row->{Description};
+            my $struct = $self->{anno}->decode_meta_struct($row->{metadata});
+            $organism{$accession} = $struct->{$orgCol};
+            $desc{$accession} = $struct->{$descCol};
+            $taxId{$accession} = $row->{$taxCol};
+            $annoStatus{$accession} = $row->{$spCol};
         }
-
-        $annoStatus = $annoStatus eq "Reviewed" ? "SwissProt" : "TrEMBL";
     }
 
     return (\%organism, \%taxId, \%annoStatus, \%desc);

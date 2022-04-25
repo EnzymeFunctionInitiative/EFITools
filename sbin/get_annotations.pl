@@ -114,8 +114,14 @@ foreach my $accession (sort keys %$idMeta){
             my $sth = $dbh->prepare($sql);
             $sth->execute;
             while (my $row = $sth->fetchrow_hashref) {
+                if ($row->{metadata}) {
+                    # Decode
+                    my $struct = EFI::Annotations::parse_meta_string($row->{metadata});
+                    delete $row->{metadata};
+                    map { $row->{$_} = $struct->{$_} } keys %$struct;
+                }
                 push @rows, $row;
-                if ($row->{accession} ne $accession) {
+                if ($row->{accession} ne $accession) { # UniRef
                     push(@{$unirefIds{$accession}}, [$row->{accession}, $row->{EFI::Annotations::FIELD_SEQ_LEN_KEY}]);
                 } else {
                     $unirefClusterIdSeqLen{$accession} = $row->{EFI::Annotations::FIELD_SEQ_LEN_KEY};

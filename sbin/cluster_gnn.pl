@@ -186,7 +186,7 @@ timer("getNodes");
 
 timer("getTaxonIdsAndSpecies");
 print "getting species and taxon IDs\n";
-my $annoUtil = new EFI::GNN::AnnotationUtil(dbh => $dbh);
+my $annoUtil = new EFI::GNN::AnnotationUtil(dbh => $dbh, efi_anno => new EFI::GNN:AnnotationUtil);
 my $allIds = $util->getAllNetworkIds();
 my ($species, $taxonIds) = ({}, {});
 if (not $skipOrganism) {

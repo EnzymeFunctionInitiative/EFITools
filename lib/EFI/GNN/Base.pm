@@ -46,6 +46,7 @@ sub new {
 #    $self->{cluster_fh} = {};
     $self->{color_only} = exists $args{color_only} ? $args{color_only} : 0;
     $self->{anno} = EFI::Annotations::get_annotation_data();
+    $self->{efi_anno} = new EFI::Annotations;
 
     $self->{network} = {
         super_nodes => {},      # supernodes; clusters => metanode ID (ID as in id_label_map IDs), with domain info (if present)
@@ -148,6 +149,7 @@ sub getNodesAndEdges{
 # pass through the node list only once, so we need to grab multiple types of data in that pass.
 sub getNodes {
     my $self = shift;
+    my $writeSeqFn = shift || sub {};
 
     my $metanodeMap = {};
     my $idMap = {};

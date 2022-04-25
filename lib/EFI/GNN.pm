@@ -32,7 +32,7 @@ sub new {
 
     my $self = EFI::GNN::Base->new(%args);
 
-    my $annoUtil = new EFI::GNN::AnnotationUtil(dbh => $args{dbh});
+    my $annoUtil = new EFI::GNN::AnnotationUtil(dbh => $args{dbh}, efi_anno => $self->{efi_anno});
 
     $self->{anno_util} = $annoUtil;
     $self->{no_pfam_fh} = {};
@@ -88,26 +88,36 @@ sub getPdbInfo{
     my $pdbValueCount = 0;
     my $reviewedCount = 0;
 
+    my $spCol = "swissprot_status";
+    my $ecCol = "ec_code";
+    my $pdbCol = "pdb";
+    my $baseSql = "select $spCol, metadata from annotations";
+
     foreach my $accession (@accessions) {
-        my $sth = $self->{dbh}->prepare("select STATUS,EC,pdb from annotations where accession='$accession'");
+        my $sql = "$baseSql where accession='$accession'";
+        my $sth = $self->{dbh}->prepare($sql);
         $sth->execute;
         my $attribResults = $sth->fetchrow_hashref;
-        my $status = ($attribResults->{STATUS} and $attribResults->{STATUS} eq "Reviewed") ? "SwissProt" : "TrEMBL";
-        my $pdbNumber = $attribResults->{pdb} ? $attribResults->{pdb} : "";
-        
+        my $spVal = $self->{legacy_anno} ? ($attribResults->{swissprot_status} eq "Reviewed") : $attribResults->{swissprot_status};
+        my $status = ($attribResults->{swissprot_status} and $spVal) ? "SwissProt" : "TrEMBL";
+
+        my $metadata = $attribResults;
+        if (not $self->{anno}) {
+            my $meta = $attribResults->{metadata};
+            $metadata = $self->{efi_anno}->decode_meta_struct($meta);
+        }
+        my $pdbNumber = $metadata->{pdb} ? $metadata->{pdb} : "";
+
         if ($status eq "SwissProt") {
             $reviewedCount++;
         }
-        if ($pdbNumber ne "None") {
+        if ($pdbNumber and $pdbNumber ne "None") {
             $pdbValueCount++;
         }
 
-#        $sth=$self->{dbh}->prepare("select PDB,e from pdbhits where ACC='$accession'");
-#        $sth->execute;
-
         my $pdbEvalue = "None";
         my $closestPdbNumber = "None";
-        my $ecNum = $attribResults->{EC} ? $attribResults->{EC} : "";
+        my $ecNum = $metadata->{$ecCol} ? $metadata->{$ecCol} : "";
 #        if ($sth->rows > 0) {
 #            my $pdbresults = $sth->fetchrow_hashref;
 #            $pdbEvalue = $pdbresults->{e};
@@ -398,34 +408,6 @@ sub getAnnotations {
     my $ipros = shift;
 
     return $self->{anno_util}->getAnnotations($accession, $pfams, $ipros);
-    
-#    my $sql = "select Organism,Taxonomy_ID,STATUS,Description from annotations where accession='$accession'";
-#
-#    my $sth = $self->{dbh}->prepare($sql);
-#    $sth->execute;
-#
-#    my ($organism, $taxId, $annoStatus, $desc) = ("", "", "", "");
-#    if (my $row = $sth->fetchrow_hashref) {
-#        $organism = $row->{Organism};
-#        $taxId = $row->{Taxonomy_ID};
-#        $annoStatus = $row->{STATUS};
-#        $desc = $row->{Description};
-#    }
-#
-#    my @pfams = split '-', $pfams;
-#
-#    $sql = "select short_name from pfam_info where pfam in ('" . join("','", @pfams) . "')";
-#
-#    $sth = $self->{dbh}->prepare($sql);
-#    $sth->execute;
-#
-#    my $rows = $sth->fetchall_arrayref;
-#
-#    my $pfamDesc = join("-", map { $_->[0] } @$rows);
-#
-#    $annoStatus = $annoStatus eq "Reviewed" ? "SwissProt" : "TrEMBL";
-#
-#    return ($organism, $taxId, $annoStatus, $desc, $pfamDesc);
 }
 
 

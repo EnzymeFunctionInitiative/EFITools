@@ -71,7 +71,7 @@ $dbArgs{config_file_path} = $configFile;
 my $mysqlDb = new EFI::Database(%dbArgs);
 my $mysqlDbh = $mysqlDb->getHandle();
 my $colorUtil = new EFI::GNN::ColorUtil(dbh => $mysqlDbh);
-my $annoUtil = new EFI::GNN::AnnotationUtil(dbh => $mysqlDbh);
+my $annoUtil = new EFI::GNN::AnnotationUtil(dbh => $mysqlDbh, efi_anno => new EFI::GNN:AnnotationUtil);
 
 
 

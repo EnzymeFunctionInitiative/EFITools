@@ -12,13 +12,14 @@ use strict;
 
 
 
-my ($inputDir, $unirefList, $unirefMap, $unirefSeq) = ("", "", "", "");
+my ($inputDir, $unirefList, $unirefMap, $unirefSeq, $verbose);
 
 my $result = GetOptions(
     "in-dir=s"      => \$inputDir,
     "out-list=s"    => \$unirefList,
     "out-map=s"     => \$unirefMap,
     "out-seq=s"     => \$unirefSeq,
+    "verbose"       => \$verbose,
 );
 
 die "No input directory provided" if not $inputDir;
@@ -37,7 +38,7 @@ if ($unirefSeq) {
 my %isoformWritten;
 
 foreach my $xmlFile (glob("$inputDir/*.xml")) {
-    print "Processing $xmlFile\n";
+    print "Processing $xmlFile\n" if $verbose;
 
     my $baseTag = "uniref";
 
@@ -57,7 +58,7 @@ foreach my $xmlFile (glob("$inputDir/*.xml")) {
         my $entryId = $entry->getAttribute("id");
         my ($repMember) = $entry->findnodes("./representativeMember");
         if (not $repMember) {
-            print "Unable to find representative member for id $entryId\n";
+            print "Unable to find representative member for id $entryId\n" if $verbose;
             next;
         }
 
@@ -72,7 +73,10 @@ foreach my $xmlFile (glob("$inputDir/*.xml")) {
         my $ok = 1;
 
         ($accId, $ok) = getAccessionId($repMember);
-        print "Skipping entry $entryId since the representative member didn't have UniProtKB accession\n" and next if not $ok;
+        if (not $ok) {
+            print "Skipping entry $entryId since the representative member didn't have UniProtKB accession\n" if $verbose;
+            next;
+        }
 
         if ($accId =~ s/\-\d+$//) {
 #            if (exists $isoformWritten{$accId}) {
@@ -84,11 +88,17 @@ foreach my $xmlFile (glob("$inputDir/*.xml")) {
         }
 
         $ok = saveMembers($entry, $accId);
-        print "Skipping entry $entryId ($accId) since the representative member didn't have valid members\n" and next if not $ok;
+        if (not $ok) {
+            print "Skipping entry $entryId ($accId) since the representative member didn't have valid members\n" if $verbose;
+            next;
+        }
 
         if ($unirefSeq) {
             $ok = writeSequence($repMember, $accId);
-            print "Skipping entry $entryId since the representative member didn't have a sequence\n" and next if not $ok;
+            if (not $ok) {
+                print "Skipping entry $entryId since the representative member didn't have a sequence\n" if $verbose;
+                next;
+            }
         }
 
         print LIST $accId, "\n";
@@ -96,14 +106,14 @@ foreach my $xmlFile (glob("$inputDir/*.xml")) {
 }
 
 
-print "Completed processing\n";
+print "Completed processing\n" if $verbose;
 
 close SEQ if $unirefSeq;
 close MAP;
 close LIST;
 
 
-print "Wrapping up...\n";
+print "Wrapping up...\n" if $verbose;
 
 
 sub saveMembers {

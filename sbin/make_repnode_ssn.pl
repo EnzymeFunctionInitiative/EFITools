@@ -206,7 +206,7 @@ while (<CDHIT>) {
                     if ($key eq "Sequence_Length" and $head=~/\w{6,10}:(\d+):(\d+)/) {
                         $piece=$2-$1+1;
                     }
-                    my $type = EFI::Annotations::get_attribute_type($key);
+                    my $type = $anno->get_attribute_type($key);
                     if (($type ne "integer" and $key ne EFI::Annotations::FIELD_SEQ_KEY) or ($piece and $piece ne "None")) {
                         $writer->emptyTag('att', 'type' => $type, 'name' => $displayName, 'value' => $piece);
                     }
@@ -256,7 +256,7 @@ foreach my $key (@metas) {
         @{$clusterdata{$key}}=uniq @{$clusterdata{$key}};
         $writer->startTag('att', 'type' => 'list', 'name' => $displayName);
         foreach my $piece (@{$clusterdata{$key}}) {
-            my $type = EFI::Annotations::get_attribute_type($key);
+            my $type = $anno->get_attribute_type($key);
             if (($type ne "integer" and $key ne EFI::Annotations::FIELD_SEQ_KEY) or ($piece and $piece ne "None")) {
                 $writer->emptyTag('att', 'type' => $type, 'name' => $displayName, 'value' => $piece);
             }

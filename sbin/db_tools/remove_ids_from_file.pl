@@ -7,13 +7,14 @@ use warnings;
 use Getopt::Long;
 
 
-my ($inFile, $outFile, $idListFile, $colIdx);
+my ($inFile, $outFile, $idListFile, $colIdx, $verbose);
 
 my $result = GetOptions(
     "id-list=s"     => \$idListFile,
     "in=s"          => \$inFile,
     "out=s"         => \$outFile,
     "search-col=s"  => \$colIdx,
+    "verbose"       => \$verbose,
 );
 
 die "-id-list file is required" if not $idListFile or not -f $idListFile;
@@ -64,10 +65,10 @@ sub handleFasta {
     while (<$inFh>) {
         if (m/^\>.*?([A-Z0-9]+)/) {
             if (not exists $ids{$1}) {
-                print "Kept\t$1\n";
+                print "Kept\t$1\n" if $verbose;
                 $writeSeq = 1;
             } else {
-                print "Removed\t$1\n";
+                print "Removed\t$1\n" if $verbose;
                 $writeSeq = 0;
             }
         }
