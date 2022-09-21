@@ -9,12 +9,13 @@ use Getopt::Long;
 use Data::Dumper;
 
 
-my ($outputDir, $inputDir, $uniref50File, $uniref90File, $gene3dFile, $pfamFile, $ssfFile, $interproFile, $debugCount);
+my ($outputDir, $inputDir, $inputFile, $uniref50File, $uniref90File, $gene3dFile, $pfamFile, $ssfFile, $interproFile, $debugCount);
 my ($familyTypesFile, $treeFile, $interproInfoFile, $tigrFamFile);
 
 my $result = GetOptions(
-    "outdir=s"          => \$outputDir,
-    "indir=s"           => \$inputDir,
+    "output-dir=s"      => \$outputDir,
+    "input-dir=s"       => \$inputDir,
+    "input-file=s"      => \$inputFile,
     "uniref50=s"        => \$uniref50File,      # tab file that maps clustered UniProt IDs to representative UniRef ID
     "uniref90=s"        => \$uniref90File,      # tab file that maps clustered UniProt IDs to representative UniRef ID
     "gene3d=s"          => \$gene3dFile,        # CATH/GENE3D output file (shows up as CATHGENE3D in match_complete.xml)
@@ -28,8 +29,8 @@ my $result = GetOptions(
     "tree=s"            => \$treeFile,
 );
 
-die "No output directory provided" if not defined $outputDir or not -d $outputDir;
-die "No input directory provided" if not defined $inputDir or not -d $inputDir;
+die "No output directory provided" if not $outputDir or not -d $outputDir;
+die "No input directory provided" if (not $inputDir or not -d $inputDir) and (not $inputFile or not -f $inputFile);
 
 # Key to this hash must match the dbname attribute in the match tag.
 my %files;
@@ -40,7 +41,7 @@ $files{INTERPRO} = $interproFile if $interproFile;
 $files{TIGRFAMs} = $tigrFamFile if $tigrFamFile;
 
 
-my $verbose=0;
+my $verbose = 0;
 
 # Key to this hash must match the dbname attribute in the match tag.
 my %databases = ();
@@ -59,6 +60,14 @@ if (not $gene3dFile and not $pfamFile and not $ssfFile and not $interproFile and
     $databases{SSF} = 1 if $ssfFile;
     $databases{INTERPRO} = 1 if $interproFile;
     $databases{TIGRFAMs} = 1 if $tigrFamFile;
+}
+
+
+my @xmlFiles;
+if ($inputDir) {
+    @xmlFiles = glob("$inputDir/*.xml");
+} elsif ($inputFile) {
+    @xmlFiles = ($inputFile);
 }
 
 
@@ -101,7 +110,7 @@ $uniref90 = loadUniRefFile($uniref90File) if ($uniref90File and -f $uniref90File
 my $iter = 0;
 $| = 1;
 
-foreach my $xmlfile (glob("$inputDir/*.xml")){
+foreach my $xmlfile (@xmlFiles){
     print "Parsing $xmlfile\n";
 
     open my $fh, "<", $xmlfile;

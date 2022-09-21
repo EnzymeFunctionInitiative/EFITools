@@ -385,7 +385,7 @@ sub get_annotation_fields {
     my @fields;
 
     # db_primary_col is present if it is required to be in the same table (e.g. not stored in a JSON structure, or in an external table)
-    push @fields, {name => "accession",                 field_type => "db",     type_spec => "VARCHAR(10)",     display => "",                                                                                      db_primary_col => 1,index_name => "uniprot_accession_idx",                              primary_key => 1,   db_hidden => 1};
+    push @fields, {name => "accession",                 field_type => "db",     type_spec => "VARCHAR(10)",     display => "",                                                                                      db_primary_col => 1,index_name => "uniprot_accession_idx",                              primary_key => 1};
     push @fields, {name => "swissprot_status",          field_type => "db",     type_spec => "BOOL",            display => "UniProt Annotation Status",     base_ssn => 1,                                          db_primary_col => 1,index_name => "swissprot_status_idx"};
     push @fields, {name => "is_fragment",               field_type => "db",     type_spec => "BOOL",            display => "Sequence Status",                                                                       db_primary_col => 1,index_name => "is_fragment_idx"};
     push @fields, {name => "seq_len",                   field_type => "db",     type_spec => "INT",             display => "Sequence Length",               base_ssn => 1,  ssn_num_type => 1,                      db_primary_col => 1};
@@ -444,6 +444,7 @@ sub get_annotation_fields {
     push @fields, {name => "gdna",                      field_type => "db",     type_spec => "BOOL",            display => "P01 gDNA",                      base_ssn => 1,                                                                          json_type_spec => "str",    json_name => "gd"};
     push @fields, {name => "rhea",                      field_type => "db",     type_spec => "VARCHAR(50)",     display => "Rhea",                          base_ssn => 1,                      ssn_list_type => 1,                                 json_type_spec => "array",  json_name => "rh"};
     push @fields, {name => "efi_tid",                   field_type => "db",                                                                                                                                                                         json_type_spec => "str",                        db_hidden => 1};
+    push @fields, {name => "alphafold",                 field_type => "db",     type_spec => "VARCHAR(16)",     display => "AlphaFold",                     base_ssn => 1,                                                                          json_type_spec => "str",    json_name => "af"};
 
     push @fields, {name => "UniRef50_IDs",              field_type => "ssn",                                    display => "UniRef50 Cluster IDs",                                              ssn_list_type => 1};
     push @fields, {name => FIELD_UNIREF50_CLUSTER_SIZE, field_type => "ssn",                                    display => "UniRef50 Cluster Size",                         ssn_num_type => 1};

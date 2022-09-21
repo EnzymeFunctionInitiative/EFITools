@@ -14,7 +14,8 @@ use EFI::IdMapping::Util;
 use EFI::Annotations;
 
 
-my ($inputFile, $outputFile, $fragmentIdFile, $giFile, $efiTidFile, $gdnaFile, $hmpFile, $debug, $idMappingFile, $familyTable, $metadataFormat, $packJson);
+my ($inputFile, $outputFile, $fragmentIdFile, $giFile, $efiTidFile, $gdnaFile, $hmpFile);
+my ($debug, $idMappingFile, $familyTable, $metadataFormat, $packJson, $alphafoldFile);
 my $result = GetOptions(
     "dat=s"             => \$inputFile,
     "annotations=s"     => \$outputFile,
@@ -28,6 +29,7 @@ my $result = GetOptions(
     "family-table=s"    => \$familyTable, # Optional
     "metadata-format=s" => \$metadataFormat,
     "pack-json"         => \$packJson,
+    "alphafold=s"       => \$alphafoldFile
 );
 
 my $usage = <<USAGE;
@@ -35,7 +37,8 @@ Usage: $0 --dat combined_dat_input_file --annotations output_annotations_tab_fil
             [-uniprotgi gi_file_path --efitid efi_tid_file_path --gdna gdna_file_path --hmp hmp_file_path
              --debug num_iterations_to_run --idmapping idmapping_tab_file_path
              --uniref50 uniref50_tab_file --uniref90 uniref90_tab_file --pfam pfam_tab_file
-             --interpro interpro_tab_file --family-table tab_file --metadata-format json|tab]
+             --interpro interpro_tab_file --family-table tab_file --metadata-format json|tab
+             --alphafold alphafold_csv_file]
 
     Anything in [] is optional.
 
@@ -53,7 +56,7 @@ die "Output file --struct argument is required; $usage" if not $outputFile;
 
 
 
-my (%EfiTidData, %HmpData, %GdnaData, %GI);
+my (%EfiTidData, %HmpData, %GdnaData, %GI, %alphafoldData);
 if ($giFile) {
     getGiNums();
 }
@@ -66,6 +69,11 @@ if ($hmpFile) {
 }
 if ($efiTidFile) {
     getEfiTids();
+}
+if ($alphafoldFile) {
+print "Loading AF\n";
+    %alphafoldData = getAlphafoldData($alphafoldFile);
+print "AF Loaded\n";
 }
 
 
@@ -91,11 +99,18 @@ my $currentId = ""; # Not the UniProt accession ID
 my $lastLine;
 my $commentBlockState = {};
 
+my $lc = 0;
+$| = 1;
+
 my $debugNumRows = 0;
 while (my $line = <$datFh>) {
     chomp $line;
     $line =~ s/\&/and/g;
     $line =~ s/\\//g;
+
+    if (not ($lc % 1000000)) {
+        print "$lc\n";
+    }
 
     if ($line =~ /^ID\s+(\w+)\s+(\w+);\s+(\d+)/) {
         # Stop after a certain number of UniProt records
@@ -115,9 +130,11 @@ while (my $line = <$datFh>) {
         $commentBlockState = {};
     } elsif ($line =~ /^AC\s+(\w+);?/) {
         if ($lastLine !~ /^AC/) {
-            print "Found UniProt ID $1\n" if $debug;
-            $Data->{acc_id} = $1;
-            &{$Handlers->{efi_tid}}($Data->{metadata}, $1);
+            my $acc = $1;
+            print "Found UniProt ID $acc\n" if $debug;
+            $Data->{acc_id} = $acc;
+            &{$Handlers->{efi_tid}}($Data->{metadata}, $acc);
+            &{$Handlers->{alphafold}}($Data->{metadata}, $acc);
         }
     } elsif ($line =~ /^OX\s+NCBI_TaxID\s*=\s*(\d+)/) {
         my $taxId = $1;
@@ -435,6 +452,13 @@ sub getHandlers {
         }
         $data->{gi} = $giLine;
     };
+    $handlers{alphafold} = sub {
+        my $data = shift;
+        my $uniprotId = shift;
+        if ($alphafoldData{$uniprotId}) {
+            $data->{alphafold} = $alphafoldData{$uniprotId}->{af_id};
+        }
+    };
 
     return \%handlers;
 }
@@ -518,6 +542,23 @@ sub getFields {
 
 
 
+
+sub getAlphafoldData {
+    my $file = shift;
+
+    my %data;
+
+    open my $fh, "<", $file or die "Unable to open alphafold file $file: $!\n";
+    while (my $line = <$fh>) {
+        chomp $line;
+        next if $line =~ m/^\s*$/;
+        my ($uniprotId, $firstRes, $lastRes, $afId, $ver) = split(m/,/, $line);
+        $data{$uniprotId} = {af_id => $afId, first_res => $firstRes, last_res => $lastRes, last_ver => $ver};
+    }
+    close $fh;
+
+    return %data;
+}
 
 
 sub getEfiTids {

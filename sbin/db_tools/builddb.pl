@@ -139,7 +139,7 @@ $annoFormat = "json" if not $annoFormat;
 
 die "The BLASTDB environment variable must be present. Did you forget to \"module load BLAST\" before running this program?" if not exists $ENV{BLASTDB} and $buildPdbBlast;
 die "The EFI database home variable must be present either through argument or present in config file." if not $config->{build}->{db_home};
-die "The --db-name parameter is required." if not $dbName and not ($buildEna or $downloadOnly or $buildCountsOnly);
+die "The --db-name parameter is required." if not $dbName and not ($downloadOnly or $buildCountsOnly);
 die "The --queue parameter is required." if not $queue and not ($buildSqlOnly or $downloadOnly or $buildCountsOnly);
 
 
@@ -217,6 +217,7 @@ $dbArgs{config_file_path} = $configFile if (defined $configFile and -f $configFi
 my $UniprotLocation = $config->{build}->{uniprot_url};
 my $InterproLocation = $config->{build}->{interpro_url};
 my $TaxonomyLocation = $config->{build}->{taxonomy_url};
+my $AlphafoldLocation = $config->{build}->{alphafold_url} // "";
 
 # Set up the scheduler API.
 $scheduler = "" if not $scheduler;
@@ -244,18 +245,7 @@ my $FH = new EFI::Util::FileHandle('dryrun' => $dryRun);
 unlink $CompletedFlagFile if -f $CompletedFlagFile;
 
 
-if ($BuildType == BUILD_ENA) {
-
-    $enaDir = "$InputDir/ena/release" if not defined $enaDir;
-    if (not -d $enaDir or not -d "$enaDir/std") {
-        die "Unable to create job for building ENA table: the ENA directory $enaDir is not valid.";
-    }
-
-    # Create ENA table
-    logprint "#CREATING ENA TABLE";
-    my $enaJobId = submitEnaJob($S->getBuilder(), $enaDir, 26);
-    
-} elsif ($BuildType == BUILD_DOWNLOAD) {
+if ($BuildType == BUILD_DOWNLOAD) {
     
     #logprint "\n#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
     #logprint "# USING GOLD DATA THAT WAS LAST UPDATED LOCALLY ON ", scalar localtime((stat("$DbSupport/phylo.tab"))[9]), "\n";
@@ -385,37 +375,6 @@ sub submitIdMappingJob {
 }
 
 
-sub submitEnaJob {
-    my ($B, $enaInputDir, $fileNum) = @_;
-
-    my $file = "$BuildDir/$fileNum-ena.sh";
-    
-    $B->resource(1, 1, "300gb");
-
-    addStandardEnv($B);
-   
-    my $enaDir = "$BuildDir/ena"; 
-    mkdir $enaDir unless(-d $enaDir);
-    if (not $skipIfExists or not -f "$enaDir/pro.tab") {
-        #my @emblDirs = sort map { $_ =~ s/^.*\/Release_(\d+).*?$/$1/; $_ } glob($ENV{EFIEMBL} . "/Release_*");
-        #my $release = $emblDirs[-1];
-        #my $enaInputDir = "$ENV{EFIEMBL}/Release_$release";
-        
-        $B->addAction("$ScriptDir/make_ena_table.pl -embl $enaInputDir -pro $enaDir/pro.tab -env $enaDir/env.tab -fun $enaDir/fun.tab -com $enaDir/com.tab -interpro $OutputDir/INTERPRO.tab -pfam $OutputDir/PFAM.tab -idmapping $OutputDir/idmapping.tab -log $BuildDir/make_ena_table.log");
-        $B->addAction("date > $CompletedFlagFile.make_ena_table\n");
-        $B->addAction("cat $enaDir/env.tab $enaDir/fun.tab $enaDir/pro.tab > $OutputDir/ena.tab");
-        $B->addAction("date > $CompletedFlagFile.cat_ena\n");
-    }
-
-    $B->addAction("date > $CompletedFlagFile.$fileNum-ena\n");
-   
-    $B->outputBaseFilepath($file);
-    $B->renderToFile($file);
-
-    return $DoSubmit ? $S->submit($file) : undef;
-}
-
-
 sub submitFinalFileJob {
     my ($B, $depId, $fileNum) = @_;
 
@@ -427,13 +386,14 @@ sub submitFinalFileJob {
     
     mkdir "$BuildDir/match_complete" unless(-d "$BuildDir/match_complete");
     
-    if (not $skipIfExists or not -f "$BuildDir/match_complete/0.xml") {
-        $B->addAction("$ScriptDir/chopxml.pl -in $InputDir/match_complete.xml -outdir $BuildDir/match_complete");
-        $B->addAction("date > $CompletedFlagFile.chopxml\n");
-    }
+    #if (not $skipIfExists or not -f "$BuildDir/match_complete/0.xml") {
+    #    $B->addAction("$ScriptDir/chopxml.pl -in $InputDir/match_complete.xml -outdir $BuildDir/match_complete");
+    #    $B->addAction("date > $CompletedFlagFile.chopxml\n");
+    #}
     # Build PFAM, SSF, INTERPRO, and GENE3D .tab files
     if (not $skipIfExists or not -f "$OutputDir/INTERPRO.tab") {
-        $B->addAction("$ScriptDir/make_family_tables.pl -outdir $OutputDir -indir $BuildDir/match_complete -types $InputDir/interpro_entry.list -tree $InputDir/interpro_ParentChildTreeFile.txt");
+        #$B->addAction("$ScriptDir/make_family_tables_fast_regex.pl -output-dir $OutputDir -indir $BuildDir/match_complete -types $InputDir/interpro_entry.list -tree $InputDir/interpro_ParentChildTreeFile.txt");
+        $B->addAction("$ScriptDir/make_family_tables_fast_regex.pl --output-dir $OutputDir --input-file $InputDir/match_complete.xml --types $InputDir/interpro_entry.list --tree $InputDir/interpro_ParentChildTreeFile.txt");
         $B->addAction("date > $CompletedFlagFile.make_family_tables\n");
     }
 
@@ -709,6 +669,14 @@ sub submitDownloadJob {
                 $B->addAction("date > $CompletedFlagFile.taxonomy.xml\n");
             }
         }
+        if (not $skipIfExists or not -f "$InputDir/alphafold_accession_ids.txt") {
+            if ($AlphafoldLocation) {
+                logprint "#  Downloading $AlphafoldLocation\n";
+                $B->addAction("echo Downloading alphafold accession_ids.txt");
+                $B->addAction("curl -sS $AlphafoldLocation > $InputDir/alphafold_accession_ids.txt");
+                $B->addAction("date > $CompletedFlagFile.alphafold\n");
+            }
+        }
         if (not $skipIfExists or not -f "$InputDir/uniref50.xml.gz" and not -f "$InputDir/uniref50.xml") {
             logprint "#  Downloading $UniprotLocation/uniref/uniref50/uniref50.xml.gz\n";
             $B->addAction("echo Downloading uniref50.xml.gz");
@@ -853,10 +821,11 @@ sub submitAnnotationsJob {
     addStandardEnv($B);
 
     if (not $skipIfExists or not -f "$OutputDir/annotations.tab") {
+        my $alphafoldOpt = $AlphafoldLocation ? "--alphafold $InputDir/alphafold_accession_ids.txt" : "";
         # Exclude GI
         #$B->addAction($ScriptDir . "/make_annotations_table.pl -dat $CombinedDir/combined.dat -annotations $OutputDir/annotations.tab -uniprotgi $LocalSupportDir/gionly.dat -efitid $LocalSupportDir/efi-accession.tab -gdna $LocalSupportDir/gdna.tab -hmp $LocalSupportDir/hmp.tab -phylo $LocalSupportDir/phylo.tab");
-        my $formatArg = $annoFormat eq "json" ? "--anno-format json --pack-json" : "--anno-format tab";
-        $B->addAction($ScriptDir . "/make_annotations_table.pl --dat $CombinedDir/combined.dat --annotations $OutputDir/annotations.tab --fragment-ids $BuildDir/fragment_ids.tab --gdna $LocalSupportDir/gdna.tab --hmp $LocalSupportDir/hmp.tab $formatArg");
+        my $formatArg = $annoFormat eq "json" ? "--metadata-format json --pack-json" : "--metadata-format tab";
+        $B->addAction($ScriptDir . "/make_annotations_table.pl --dat $CombinedDir/combined.dat --annotations $OutputDir/annotations.tab --fragment-ids $BuildDir/fragment_ids.tab --gdna $LocalSupportDir/gdna.tab --hmp $LocalSupportDir/hmp.tab $formatArg $alphafoldOpt");
         $B->addAction("date > $CompletedFlagFile.make_annotations_table\n");
     }
 
