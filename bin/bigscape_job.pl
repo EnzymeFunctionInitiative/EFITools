@@ -68,7 +68,7 @@ $queue = "efi"                                  unless $queue =~ /\w/;
 $efiJobId = ""                                  unless defined $efiJobId;
 
 
-my $toolPath = abs_path("$FindBin::Bin/../sbin");
+my $toolPath = abs_path("$FindBin::Bin/../scripts");
 my $toolMod = $ENV{EFI_TOOL_MOD};
 my $blastDb = $ENV{EFI_DB_PATH} . "/combined.fasta";
 my $dbMod = $ENV{EFI_DB_MOD};

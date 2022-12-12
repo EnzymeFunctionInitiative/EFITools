@@ -50,7 +50,7 @@ sub new {
     );
 
     my $homeDir = abs_path(dirname(__FILE__) . "/../../");
-    $self->{tool_path} = "$homeDir/sbin"; #TODO: change sbin to whatever it should be.
+    $self->{tool_path} = "$homeDir/scripts";
     $self->{home_dir} = $homeDir;
 
     my $configFile = $parms->{config} // "";
