@@ -87,9 +87,15 @@ sub getMultipleAnnotations {
         }
 
         if (my $row = $sth->fetchrow_hashref) {
-            my $struct = $self->{anno}->decode_meta_struct($row->{metadata});
-            $organism{$accession} = $struct->{$orgCol};
-            $desc{$accession} = $struct->{$descCol};
+            if ($self->{legacy_anno}) {
+                $organism{$accession} = $row->{$orgCol};
+                $desc{$accession} = $row->{$descCol};
+            } else {
+                print "WARNING: missing metadata for $accession; is entry obsolete? [2]\n" if not $row->{metadata};
+                my $struct = $self->{anno}->decode_meta_struct($row->{metadata});
+                $organism{$accession} = $struct->{$orgCol};
+                $desc{$accession} = $struct->{$descCol};
+            }
             $taxId{$accession} = $row->{$taxCol};
             $annoStatus{$accession} = $row->{$spCol};
         }

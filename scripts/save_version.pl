@@ -4,8 +4,8 @@ use strict;
 
 my ($enaVer, $ipVer, $upVer) = ("n/a", "n/a", "n/a");
 
-if (exists $ENV{EFIDBVERSIONPATH} and -f $ENV{EFIDBVERSIONPATH}) {
-    open VER, $ENV{EFIDBVERSIONPATH};
+if (exists $ENV{EFI_DB_VERSION_PATH} and -f $ENV{EFI_DB_VERSION_PATH}) {
+    open VER, $ENV{EFI_DB_VERSION_PATH};
     while (<VER>) {
         chomp;
         my ($key, $val) = split(m/\t/);

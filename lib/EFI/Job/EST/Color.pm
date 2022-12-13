@@ -33,15 +33,19 @@ sub new {
         "map-file-name=s",
         "domain-map-file-name=s",
         "stats=s",
+        "conv-ratio=s",
         "cluster-sizes=s",
         "cluster-num-map=s",
         "sp-clusters-desc=s",
         "sp-singletons-desc=s",
-        "extra-ram",
+        "extra-ram:i",
+        "cleanup"
         "opt-msa-option=s",
         "opt-aa-threshold=s",
         "opt-aa-list=s",
         "opt-min-seq-msa=s",
+        "opt-max-seq-msa=s",
+        "skip-fasta",
     );
 
     my ($conf, $errors) = validateOptions($parms, $self);
@@ -78,6 +82,9 @@ sub validateOptions {
     $conf->{sp_clusters_desc} = $parms->{"sp-clusters-desc"} // "swissprot_clusters_desc.txt";
     $conf->{sp_singletons_desc} = $parms->{"sp-singletons-desc"} // "swissprot_singletons_desc.txt";
     $conf->{extra_ram} = $parms->{"extra-ram"} // 0;
+    $conf->{conv_ratio} = $parms->{"conv-ratio"} // "conv_ratio.txt";
+    $conf->{cleanup} = $parms->{"cleanup"} // 0;
+    $conf->{skip_fasta} = $parms->{"skip-fasta"} // 0;
 
     $conf->{zipped_ssn_in} = $file if $file =~ m/\.zip$/i;
     $file =~ s/\.zip$//i;
@@ -92,6 +99,7 @@ sub validateOptions {
     $conf->{opt_aa_threshold} = $parms->{"opt-aa-threshold"} // "";
     $conf->{opt_aa_list} = $parms->{"opt-aa-list"} // "";
     $conf->{opt_min_seq_msa} = $parms->{"opt-min-seq-msa"} // 5;
+    $conf->{opt_max_seq_msa} = $parms->{"opt-max-seq-msa"} // 700;
 
     $conf->{opt_msa_option} = 0 if $conf->{opt_msa_option} =~ m/CR/ and $conf->{opt_aa_list} !~ m/^[A-Z,]+$/;
 
@@ -266,8 +274,11 @@ sub getFileInfo {
         cat_tool_path => "$toolPath/cat_files.pl",
         ssn_out => "$outputDir/$conf->{ssn_out}",
         ssn_out_zip => "$outputDir/$ssnOutZip",
+
         domain_map_file => "${ssnName}_$domainMapFileName",
         map_file => "${ssnName}_$mapFileName",
+
+        input_seqs_file => "ssn-sequences.fa",
         output_dir => $outputDir,
     };
 
@@ -320,6 +331,7 @@ sub getColorSsnJob {
     my $toolPath = $self->getToolPath();
     my $blastDbDir = $self->getBlastDbDir();
     my $removeTemp = $self->getRemoveTemp();
+    my $skipFasta = $conf->{skip_fasta};
 
     my $scriptArgs = 
         " --config $configFile" .
@@ -346,7 +358,7 @@ sub getColorSsnJob {
     $B->addAction("export EFI_DB_PATH=$blastDbDir");
     $B->addAction("$toolPath/unzip_file.pl --in $conf->{zipped_ssn_in} --out $conf->{ssn_in}") if $conf->{zipped_ssn_in};
     $B->addAction("$toolPath/cluster_gnn.pl $scriptArgs");
-    EFI::GNN::Base::addFileActions($B, $fileInfo, $removeTemp);
+    EFI::GNN::Base::addFileActions($B, $fileInfo, $skipFasta);
     $B->addAction("touch $outputDir/$self->{completed_name}");
 
     return $B;

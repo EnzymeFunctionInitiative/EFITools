@@ -3,7 +3,8 @@ package EFI::GNN::NeighborUtil;
 
 use List::MoreUtils qw{uniq};
 use Array::Utils qw(:all);
-
+use Data::Dumper;
+use Time::HiRes qw(time);
 
 
 sub new {
@@ -11,6 +12,7 @@ sub new {
 
     $self->{dbh} = $args{dbh};
     $self->{use_new_neighbor_method} = exists $args{use_nnm} ? $args{use_nnm} : 1;
+    $self->{anno} = $args{efi_anno};
     
     return bless($self, $class);
 }
@@ -31,9 +33,9 @@ sub parseInterpro {
     for (my $i = 0; $i < scalar @fams; $i++) {
         next if exists $u{$fams[$i]};
         $u{$fams[$i]} = 1;
-        my $info = {family => $fams[$i], type => $types[$i]};
+        my $info = {family => $fams[$i], type => lc($types[$i])};
         #TODO: remove hardcoded constants here
-        if ($info->{type} eq "Domain" or $info->{type} eq "Family" or $info->{type} eq "Homologous_superfamily") {
+        if ($info->{type} eq "domain" or $info->{type} eq "family" or $info->{type} eq "homologous_superfamily") {
             push @info, $info;
         }
     }
@@ -41,6 +43,13 @@ sub parseInterpro {
     return @info;
 }
 
+
+sub printTime {
+    my ($t1, $name) = @_;
+    $name = $name // "t";
+    printf("$name=%.6f s\n", (time - $t1));
+    return time;
+}
 
 sub findNeighbors {
     my $self = shift;
@@ -68,6 +77,8 @@ sub findNeighbors {
     my $isCircSql = "select * from ena where AC='$ac' order by TYPE limit 1";
     $sth = $self->{dbh}->prepare($isCircSql);
     $sth->execute;
+
+#    my $t1 = time;
 
     my $row = $sth->fetchrow_hashref;
     if (not defined $row or not $row) {
@@ -127,11 +138,13 @@ SQL
         }
     }
 
+#    $t1 = printTime($t1, "t1");
+
     print "Using $genomeId as genome ID\n"                                              if $debug;
 
     my $colSql = join(", ", 
             "ena.ID as ID", "ena.AC as AC", "ena.NUM as NUM", "ena.TYPE as TYPE", "ena.DIRECTION as DIRECTION", "ena.start as start", "ena.stop as stop",
-            "annotations.organism as strain",
+            "annotations.metadata as metadata",
             "group_concat(PFAM.id) as pfam_fam",
             "group_concat(I.id) as ipro_fam",
             "group_concat(I.family_type) as ipro_type",
@@ -164,7 +177,9 @@ SQL
     my $acc_start = int($row->{start});
     my $acc_stop = int($row->{stop});
     my $acc_seq_len = int(abs($acc_stop - $acc_start) / 3 - 1);
-    my $acc_strain = $row->{strain};
+    print "WARNING: missing metadata for $row->{AC}; is entry obsolete? [N]\n" if not $row->{metadata};
+    my $md = $self->{anno}->decode_meta_struct($row->{metadata});
+    my $acc_strain = $md->{strain} // "";
     
     $low=$num-$neighborhoodSize;
     $high=$num+$neighborhoodSize;
@@ -198,11 +213,22 @@ SQL
             $clause = "and ((num >= $low and num <= $high) $subClause)";
         }
     }
+#    $t1 = printTime($t1, "t2");
 
     $query .= $clause . " group by ena.AC order by NUM";
 
     my $neighbors = $self->{dbh}->prepare($query);
     $neighbors->execute;
+
+    if ($neighbors->rows > 1) {
+        $noNeighbors = 0;
+        push @{$pfam{'withneighbors'}{$queryPfam}}, $ac;
+        push @{$ipro{'withneighbors'}{$queryIpro}}, $ac;
+    } else {
+        $noNeighbors = 1;
+        print "WARNING $ac $id\n";
+        print $warning_fh "$ac\tnoneighbor\n" if $warning_fh;
+    }
 
     my $isBound = ($low < 1 ? 1 : 0);
     $isBound = $isBound | ($high > $max ? 2 : 0);
@@ -214,9 +240,8 @@ SQL
        strain => $acc_strain, direction => $origdirection, is_bound => $isBound,
        type => $acc_type, seq_len => $acc_seq_len, ipro_family => $queryIpro, ipro_info => \@ipInfo};
 
-    my $numRows = 0;
     while(my $neighbor=$neighbors->fetchrow_hashref){
-        $numRows++;
+#        $t1 = time;
         my $pfamFam = join('-', sort {$a <=> $b} uniq split(",",$neighbor->{pfam_fam}));
         @ipInfo = $self->parseInterpro($neighbor);
         my $iproFam = join('-', map { $_->{family} } @ipInfo);
@@ -291,16 +316,8 @@ SQL
                                            distance => (abs $distance),
                                            direction => "$origdirection-$direction"
                                          };
-        }	
-    }
-
-    if ($numRows > 1) {
-        $noNeighbors = 0;
-        push @{$pfam{'withneighbors'}{$queryPfam}}, $ac;
-        push @{$ipro{'withneighbors'}{$queryIpro}}, $ac;
-    } else {
-        $noNeighbors = 1;
-        print $warning_fh "$ac\tnoneighbor\n" if $warning_fh;
+        }
+#        $t1 = printTime($t1, "t3");
     }
 
     foreach my $key (keys %{$pfam{'orig'}}){

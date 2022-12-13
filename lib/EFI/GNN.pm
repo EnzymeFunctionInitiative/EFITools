@@ -104,6 +104,7 @@ sub getPdbInfo{
         my $metadata = $attribResults;
         if (not $self->{anno}) {
             my $meta = $attribResults->{metadata};
+            print "WARNING: missing metadata for $accession; is entry obsolete? [1]\n" if not $attribResults->{metadata};
             $metadata = $self->{efi_anno}->decode_meta_struct($meta);
         }
         my $pdbNumber = $metadata->{pdb} ? $metadata->{pdb} : "";
@@ -240,7 +241,7 @@ sub getClusterHubData {
     # This is used to retain the order of the nodes in the xgmml file when we write the arrow sqlite database.
     my $sortKey = 0;
 
-    my $nbFind = new EFI::GNN::NeighborUtil(dbh => $self->{dbh}, use_nnm => $self->{use_new_neighbor_method});
+    my $nbFind = new EFI::GNN::NeighborUtil(dbh => $self->{dbh}, use_nnm => $self->{use_new_neighbor_method}, efi_anno => $self->{efi_anno});
 
     foreach my $clusterId (@{ $supernodeOrder }) {
         $noneFamily{$clusterId} = {};

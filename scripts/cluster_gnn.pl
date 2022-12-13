@@ -4,8 +4,6 @@ use strict;
 use warnings;
 
 use FindBin;
-use lib $FindBin::Bin . "/../lib";
-
 use Getopt::Long;
 use XML::LibXML;
 use IO qw(File);
@@ -14,9 +12,11 @@ use XML::LibXML::Reader;
 use JSON;
 use DBI;
 use List::MoreUtils qw(uniq);
+use Time::HiRes qw(time);
 use Storable;
 use Data::Dumper;
 
+use lib $FindBin::Bin . "/../lib";
 use EFI::Util qw(checkNetworkType);
 use EFI::Database;
 use EFI::GNN;
@@ -31,7 +31,8 @@ my ($ssnin, $neighborhoodSize, $warningFile, $gnn, $ssnout, $cooccurrence, $stat
     $uniprotIdDir, $uniprotDomainIdDir, $uniref50IdDir, $uniref90IdDir, $uniref50DomainIdDir, $uniref90DomainIdDir,
     $pfamCoocTable, $hubCountFile, $allPfamDir, $splitPfamDir, $allSplitPfamDir, $clusterSizeFile, $clusterNumMapFile, $swissprotClustersDescFile,
     $swissprotSinglesDescFile, $parentDir, $renumberClusters, $disableCache, $skipIdMapping, $skipOrganism, $debug,
-    $outputDir, $excludeFragments,
+    $outputDir, $excludeFragments, $extraSeqFile, $convRatioFile,
+    $useUniRef, $efiRefVer, $efiRefDb, $efiRef50IdDir, $efiRef70IdDir,
 );
 
 my $result = GetOptions(
@@ -72,6 +73,13 @@ my $result = GetOptions(
     "skip-id-mapping"       => \$skipIdMapping,
     "skip-organism"         => \$skipOrganism,
     "exclude-fragments"     => \$excludeFragments,
+    "ssn-sequence-file=s"   => \$extraSeqFile,
+    "include-uniref:i"      => \$useUniRef,
+    "efiref-ver=i"          => \$efiRefVer,
+    "efiref-db=s"           => \$efiRefDb,
+    "efiref-50-dir=s"       => \$efiRef50IdDir,
+    "efiref-70-dir=s"       => \$efiRef70IdDir,
+    "conv-ratio=s"          => \$convRatioFile,
     "debug"                 => \$debug,
 );
 
@@ -79,49 +87,49 @@ my $usage = <<USAGE
 usage: $0 -ssnin <filename> -ssnout <filename> -gnn <filename> -pfam <filename>
         -nb-size <positive integer>
 
-    -ssnin              name of original ssn network to process
-    -ssnout             output filename for colorized sequence similarity
+    --ssnin             name of original ssn network to process
+    --ssnout            output filename for colorized sequence similarity
                         network
-    -gnn                filename of genome neighborhood network output file
-    -pfam               file to output PFAM hub GNN to
-    -nb-size            distance (+/-) to search for neighbors
+    --gnn               filename of genome neighborhood network output file
+    --pfam              file to output PFAM hub GNN to
+    --nb-size           distance (+/-) to search for neighbors
 
-    -warning-file       output file that contains sequences without neighbors
+    --warning-file      output file that contains sequences without neighbors
                         or matches
-    -cooc               co-occurrence
-    -stats              file to output tabular statistics to
-    -cluster-size       file to output cluster sizes to
-    -sp-desc            file to write swissprot descriptions to for metanodes
-    -uniprot-id-dir     path to directory to output lists of UniProt IDs
+    --cooc              co-occurrence
+    --stats             file to output tabular statistics to
+    --cluster-size      file to output cluster sizes to
+    --sp-desc           file to write swissprot descriptions to for metanodes
+    --uniprot-id-dir    path to directory to output lists of UniProt IDs
                         (one file/list per cluster number)
-    -uniref50-id-dir    path to directory to output lists of UniRef50 IDs
+    --uniref50-id-dir   path to directory to output lists of UniRef50 IDs
                         (one file/list per cluster number)
-    -uniref90-id-dir    path to directory to output lists of UniRef90 IDs
+    --uniref90-id-dir   path to directory to output lists of UniRef90 IDs
                         (one file/list per cluster number)
-    -pfam-dir           path to directory to output PFAM cluster data (one
+    --pfam-dir          path to directory to output PFAM cluster data (one
                         file/list per cluster number)
-    -all-pfam-dir       path to directory to output all PFAM cluster data (one
+    --all-pfam-dir      path to directory to output all PFAM cluster data (one
                         file/list per cluster number), regardless of
                         cooccurrence threshold
-    -split-pfam-dir     path to directory to output PFAM cluster data,
+    --split-pfam-dir    path to directory to output PFAM cluster data,
                         separated into one filer per PFAM not domain
-    -id-out             path to a file to save the ID, cluster #, cluster color;
+    --id-out            path to a file to save the ID, cluster #, cluster color;
                         IDs are without domain info, if any
-    -id-out-domain      path to a file to save the ID, cluster #, cluster color;
+    --id-out-domain     path to a file to save the ID, cluster #, cluster color;
                         IDs are with domain info, if present on the ID. If no
                         nodes have domain info, then this file isn't output even
                         if it's provided as an argument
-    -arrow-file         path to a file to save the neighbor data necessary to
+    --arrow-file        path to a file to save the neighbor data necessary to
                         draw arrows
-    -cooc-table         path to file to save the pfam/cooccurrence table data to
-    -hub-count-file     path to a file to save the sequence count for each GNN
+    --cooc-table        path to file to save the pfam/cooccurrence table data to
+    --hub-count-file    path to a file to save the sequence count for each GNN
                         hub node
 
-    -parent-dir         directory of parent job to pull storables (numbering
+    --parent-dir        directory of parent job to pull storables (numbering
                         and neighborhood data) from
-    -renumber-clusters  renumber any clusters that already have cluster numbers
+    --renumber-clusters renumber any clusters that already have cluster numbers
 
-    -config             configuration file for database info, etc.
+    --config            configuration file for database info, etc.
 
 -ssnin and -ssnout are mandatory. If -ssnin is given and -gnn and -pfam are not
 given, then the output SSN is simply cluster-numbered and colored.  Otherwise,
@@ -152,6 +160,7 @@ $gnnArgs{all_split_pfam_dir} = $allSplitPfamDir if $allSplitPfamDir and -d $allS
 $gnnArgs{color_util} = $colorUtil;
 
 
+my $anno = new EFI::Annotations;
 
 my $util = new EFI::GNN(%gnnArgs);
 
@@ -176,20 +185,30 @@ print "found $numEdges edges\n";
 print "graph name is $title\n";
 
 
+my $writeSeqFn = sub {};
+if ($extraSeqFile) {
+    open my $seqFileFh, ">", $extraSeqFile or die "Unable to write to $extraSeqFile: $!";
+    $writeSeqFn = sub {
+        my $id = shift;
+        my $seq = shift;
+        print $seqFileFh ">$id\n$seq\n";
+    };
+}
+
 
 timer("getNodes");
 print "parsing nodes for accession information\n";
-my ($swissprotDesc) = $util->getNodes();
+my ($swissprotDesc) = $util->getNodes($writeSeqFn);
 timer("getNodes");
 
 
 
 timer("getTaxonIdsAndSpecies");
 print "getting species and taxon IDs\n";
-my $annoUtil = new EFI::GNN::AnnotationUtil(dbh => $dbh, efi_anno => new EFI::GNN:AnnotationUtil);
 my $allIds = $util->getAllNetworkIds();
 my ($species, $taxonIds) = ({}, {});
 if (not $skipOrganism) {
+    my $annoUtil = new EFI::GNN::AnnotationUtil(dbh => $dbh, efi_anno => new EFI::Annotations);
     ($species, $taxonIds) = $annoUtil->getMultipleAnnotations($allIds);
 }
 timer("getTaxonIdsAndSpecies");
@@ -238,14 +257,47 @@ timer("numberClusters");
 
 
 timer("idMapping");
+my $efiRefMap;
+my $efiNodeAttrWriter = sub { return []; };
+my $efiGetIdsFn;
+my $efiGetClusterIdsFn;
+if ($efiRefVer) {
+    $efiRefMap = getEfiRefIds($efiRefVer);
+    $efiNodeAttrWriter = sub {
+        my $nodeId = shift;
+        my $itemWriter = shift;
+        my $listWriter = shift;
+        # Order: attr name, attr type, attr value
+        if ($efiRefVer == 70 and $efiRefMap->{efi70}->{$nodeId}) {
+            &$listWriter("EfiRef70 Cluster IDs", "string", $efiRefMap->{efi70}->{$nodeId});
+        } elsif ($efiRefVer == 50 and $efiRefMap->{efi50}->{$nodeId}) {
+            &$listWriter("EfiRef50 Cluster IDs", "string", $efiRefMap->{efi50}->{$nodeId});
+        }
+    };
+    $efiGetClusterIdsFn = sub {
+        my $clNum = shift;
+        return $efiRefMap->{$efiRefVer}->{$clNum} // [];
+    };
+}
+my ($ssnType) = checkNetworkType($ssnin);
 my $hasDomain = 0;
+my $uniProtUniRefIdMap;
+my $allSwissprotDesc = {};
+my $lookupSwissprot = ($util->getSequenceSource() ne "UniProt");
 if (not $skipIdMapping) {
     print "saving the cluster-protein ID mapping tables\n";
-    my ($ssnType, $hasDom) = checkNetworkType($ssnin);
-    my $result = doClusterMapping($dbh, $util, $ssnType);
+    my ($result, $uniProtUniRefMap, $uniProtClusterMap, $spDesc) = doClusterMapping($dbh, $util, $ssnType, $efiRefMap, $lookupSwissprot);
+    $allSwissprotDesc = $spDesc;
     $hasDomain = $result->{has_domain};
     saveClusterNumMap($clusterNumMapFile, $result->{sizes}) if $result->{sizes} and $clusterNumMapFile;
     saveClusterSizes($clusterSizeFile, $result->{sizes}) if $result->{sizes};
+    $uniProtUniRefIdMap = $uniProtUniRefMap;
+    if ($efiRefVer) {
+        $efiGetIdsFn = sub {
+            my $clNum = shift;
+            return $uniProtClusterMap->{$clNum} // [];
+        };
+    }
 }
 $idOutputDomainFile = "" if not $hasDomain;
 timer("idMapping");
@@ -259,7 +311,9 @@ if (not $colorOnly) { # and not $skipIdMapping) {
     my $useCircTest = 1;
     timer("getClusterHubData");
     my ($clusterNodes, $withNeighbors, $noMatchMap, $noNeighborMap, $genomeIds, $noneFamily, $accessionData);
-    my ($allNbAccDataForArrows);
+    my $allNbAccDataForArrows = {};
+    my $uniRef50Map = {};
+    my $uniRef90Map = {};
     if ($hasParent and -f $nbCacheFile) {
         print "USING PARENT NEIGHBOR DATA with $neighborhoodSize\n";
         my $data = retrieve($nbCacheFile);
@@ -283,10 +337,13 @@ if (not $colorOnly) { # and not $skipIdMapping) {
         store($data, $nbCacheFile) if $nbCacheFile and $enableCache;
         $allNbAccDataForArrows = $allNbAccessionData;
     }
+    $useUniRef = $util->getSequenceSource() eq "UniRef50" ? 50 : ($util->getSequenceSource() eq "UniRef90" ? 90 : 0);
+    if ($useUniRef) {
+        my ($ur50, $ur90) = calcUniRefMap($uniProtUniRefIdMap, $allNbAccDataForArrows);
+        $uniRef50Map = $ur50 if $useUniRef == 50;
+        $uniRef90Map = $ur90 if $useUniRef >= 50;
+    }
     timer("getClusterHubData");
-
-    #TODO: save the all* data to a temp file for reading later for filtering
-
 
     timer("getPfamCooccurrenceTable");
     if ($pfamCoocTable) {
@@ -318,7 +375,7 @@ if (not $colorOnly) { # and not $skipIdMapping) {
     timer("writeArrows");
     if ($arrowDataFile) {
         print "writing to arrow data file\n";
-        my $arrowTool = new EFI::GNN::Arrows(color_util => $colorUtil);
+        my $arrowTool = new EFI::GNN::Arrows(color_util => $colorUtil, ssn_type => $ssnType);
         my $clusterCenters = $arrowTool->computeClusterCenters($util, $nodeDegrees);
         (my $jobName = $ssnin) =~ s%^.*/([^/]+)$%$1%;
         $jobName =~ s/\.(xgmml|zip)//g;
@@ -329,7 +386,7 @@ if (not $colorOnly) { # and not $skipIdMapping) {
             neighborhood_size => EFI::GNN::MAX_NB_SIZE,
             type => "gnn"
         };
-        $arrowTool->writeArrowData($allNbAccDataForArrows, $clusterCenters, $arrowDataFile, $arrowMeta);
+        $arrowTool->writeArrowData($allNbAccDataForArrows, $clusterCenters, $arrowDataFile, $arrowMeta, [], $uniRef50Map, $uniRef90Map);
     }
     timer("writeArrows");
 
@@ -354,7 +411,7 @@ if ($ssnout) {
     my $output=new IO::File(">$ssnout");
     my $writer=new XML::Writer(DATA_MODE => 'true', DATA_INDENT => 2, OUTPUT => $output);
 
-    $util->writeColorSsn($writer, $gnnData);
+    $util->writeColorSsn($writer, $gnnData, $efiNodeAttrWriter);
 }
 timer("writeColorSsn");
 
@@ -369,7 +426,9 @@ print "writing mapping and statistics\n";
 $util->writeIdMapping($idOutputFile, $idOutputDomainFile, $taxonIds, $species) if $idOutputFile;
 # The cluster size mapping file is written near the beginning of the process, so we don't want to
 # write it here.
-$util->writeSsnStats($swissprotDesc, $statsFile, "", $swissprotClustersDescFile, $swissprotSinglesDescFile) if $statsFile and $swissprotClustersDescFile and $swissprotSinglesDescFile;
+my $spDesc = $lookupSwissprot ? $allSwissprotDesc : $swissprotDesc;
+$util->writeSsnStats($allSwissprotDesc, $statsFile, "", $swissprotClustersDescFile, $swissprotSinglesDescFile, $efiGetIdsFn) if $statsFile and $swissprotClustersDescFile and $swissprotSinglesDescFile;
+$util->writeConvRatio($convRatioFile, $nodeDegrees, $efiGetIdsFn, $efiGetClusterIdsFn) if $convRatioFile;
 $util->finish();
 timer("wrapup");
 
@@ -488,6 +547,8 @@ sub saveClusterSizes {
             print SIZE "Cluster Number\tUniProt Cluster Size";
             print SIZE "\tUniRef90 Cluster Size" if $data->{uniref90}->{$clusterNum};
             print SIZE "\tUniRef50 Cluster Size" if $data->{uniref50}->{$clusterNum};
+            print SIZE "\tEfiRef70 Cluster Size" if $data->{efiref70}->{$clusterNum};
+            print SIZE "\tEfiRef50 Cluster Size" if $data->{efiref50}->{$clusterNum};
             print SIZE "\n";
         }
 
@@ -497,12 +558,10 @@ sub saveClusterSizes {
         } else {
             next;
         }
-        if ($data->{uniref90}->{$clusterNum}) {
-            print SIZE "\t$data->{uniref90}->{$clusterNum}";
-        }
-        if ($data->{uniref50}->{$clusterNum}) {
-            print SIZE "\t$data->{uniref50}->{$clusterNum}";
-        }
+        print SIZE "\t$data->{uniref90}->{$clusterNum}" if $data->{uniref90}->{$clusterNum};
+        print SIZE "\t$data->{uniref50}->{$clusterNum}" if $data->{uniref50}->{$clusterNum};
+        print SIZE "\t$data->{efiref70}->{$clusterNum}" if $data->{efiref70}->{$clusterNum};
+        print SIZE "\t$data->{efiref50}->{$clusterNum}" if $data->{efiref50}->{$clusterNum};
         print SIZE "\n";
     }
     
@@ -517,7 +576,7 @@ sub saveClusterNumMap {
     open MAP, ">", $mapFile ;#or die "Unable to open map file $mapFile for writing: $!";
 
     my @clusterNumData = $util->getClusterNumbers(CLUSTER_MAPPING);
-
+    
     my $wroteHeader = 0;
     foreach my $numData (@clusterNumData) {
         if (not $wroteHeader) {
@@ -525,12 +584,65 @@ sub saveClusterNumMap {
             print MAP "Sequence Cluster Number\tNode Cluster Number";
             print MAP "\n";
         }
-        my @row = (@{$numData}, $sizeData->{uniprot}->{$numData->[0]});
-        push @row, $sizeData->{uniref50}->{$numData->[0]}  if $sizeData->{uniref50}->{$numData->[0]};
+        my @row = @{$numData};
+        push @row, $sizeData->{uniprot}->{$numData->[0]} if defined $sizeData->{uniprot}->{$numData->[0]};
+        push @row, $sizeData->{uniref50}->{$numData->[0]} if defined $sizeData->{uniref50}->{$numData->[0]};
         print MAP join("\t", @row), "\n";
     }
-
+    
     close MAP;
+}
+
+
+sub getEfiRefIds {
+    my $efiRefVer = shift;
+
+    my $data = {};
+
+    my $dbh = DBI->connect("dbi:SQLite:dbname=$efiRefDb","","");
+    my %efi70; # EfiRef70 to UniRef90
+    my %efi50; # EfiRef50 to EfiRef70
+
+    my $sql = "SELECT * FROM efi70";
+    my $sth = $dbh->prepare($sql);
+    $sth->execute;
+    while (my $row = $sth->fetchrow_hashref) {
+        push @{$efi70{$row->{cluster_id}}}, $row->{member_id};
+    }
+    $sql = "SELECT * FROM efi50";
+    $sth = $dbh->prepare($sql);
+    $sth->execute;
+    while (my $row = $sth->fetchrow_hashref) {
+        push @{$efi50{$row->{cluster_id}}}, $row->{member_id};
+    }
+
+    $data->{efi70} = \%efi70 if $efiRefVer <= 70;
+    $data->{efi50} = \%efi50 if $efiRefVer == 50;
+    
+    my @clusterNumbers = $util->getClusterNumbers();
+    foreach my $clNum (@clusterNumbers) {
+        my $ids = $util->getIdsInCluster($clNum, ALL_IDS);
+        $data->{70}->{$clNum} = [];
+        $data->{50}->{$clNum} = [];
+        $data->{70}->{$clNum} = $ids if $efiRefVer == 70;
+        $data->{50}->{$clNum} = $ids if $efiRefVer == 50;
+        my @cl70Ids;
+        if ($efiRefVer == 50) {
+            foreach my $id (@$ids) {
+                push @cl70Ids, @{ $efi50{$id} }; # These are EfiRef70
+            }
+            $data->{70}->{$clNum} = \@cl70Ids;
+        }
+        if ($efiRefVer <= 70) {
+            @cl70Ids = @$ids if $efiRefVer == 70;
+            foreach my $id (@cl70Ids) {
+                warn "Couldn't find $id in efi70" and next if not $efi70{$id};
+                push @{$data->{7090}->{$clNum}}, @{ $efi70{$id} }; # These are UniRef90
+            }
+        }
+    }
+
+    return $data;
 }
 
 
@@ -538,8 +650,15 @@ sub doClusterMapping {
     my $dbh = shift;
     my $util = shift;
     my $ssnType = shift;
-    
-    my ($uniprotMap, $domainMap, $uniref50Map, $uniref90Map, $singletonMap) = getClusterToIdMapping($dbh, $util);
+    my $efiRefMap = shift;
+    my $lookupSwissprot = shift || 0;
+   
+    my ($uniprotMap, $domainMap, $uniref50Map, $uniref90Map, $singletonMap, $uniProtUniRefMap, $swissprot);
+    if ($efiRefVer) {
+        ($uniprotMap, $domainMap, $uniref50Map, $uniref90Map, $singletonMap, $uniProtUniRefMap, $swissprot) = getEfiClusterToIdMapping($dbh, $util, $efiRefMap->{7090}, $lookupSwissprot);
+    } else {
+        ($uniprotMap, $domainMap, $uniref50Map, $uniref90Map, $singletonMap, $uniProtUniRefMap, $swissprot) = getClusterToIdMapping($dbh, $util, $lookupSwissprot);
+    }
 
     my $domainOutDir = $ssnType eq "UniRef50" ? $uniref50DomainIdDir : 
                             $ssnType eq "UniRef90" ? $uniref90DomainIdDir :
@@ -565,46 +684,83 @@ sub doClusterMapping {
         my ($idCount, $sizes) = saveClusterIdFiles2($uniref90Map, "UniRef90", $uniref90IdDir, $singletonMap);
         $sizeData->{uniref90} = $sizes;
     }
+    if ($efiRefVer) {
+        if ($efiRefVer == 50 and $efiRef50IdDir and -d $efiRef50IdDir) {
+            my ($idCount, $sizes) = saveClusterIdFiles2($efiRefMap->{50}, "EfiRef50", $efiRef50IdDir, $singletonMap);
+            $sizeData->{efiref50} = $sizes;
+        }
+        if ($efiRefVer <= 70 and $efiRef70IdDir and -d $efiRef70IdDir) {
+            my ($idCount, $sizes) = saveClusterIdFiles2($efiRefMap->{70}, "EfiRef70", $efiRef70IdDir, $singletonMap);
+            $sizeData->{efiref70} = $sizes;
+        }
+    }
 
     $result->{sizes} = $sizeData;
 
-    return $result;
+    return $result, $uniProtUniRefMap, $uniprotMap, $swissprot;
 }
 
 
-sub getClusterToIdMapping {
+sub getSharedClusterToIdMapping {
     my $dbh = shift;
-    my $util = shift;
+    my $ssnSeqSource = shift;
+    my $clusterNums = shift;
+    my $idMapper = shift;
+    my $lookupSwissprot = shift || 0;
 
-    my $ssnSeqSource = $util->getSequenceSource(); # uniprot, uniref50, or uniref90
-    $ssnSeqSource =~ s/\D//g; # remove all non digits
+    my $swissprot = {};
 
-    my @clusterNumbers = $util->getClusterNumbers();
+    # Remove the legacy after summer 2022
+    my $spCol = "swissprot_description";
+    my $spStatusCol = "swissprot_status";
+    my $fragCol = "is_fragment";
+    my $swissprotSql = "";
+    my $swissprotSqlCol = "";
+    if ($lookupSwissprot or $excludeFragments) {
+        $swissprotSql = "LEFT JOIN annotations AS A ON U.accession = A.accession";
+        $swissprotSqlCol = ", A.metadata, A.$spStatusCol";
+    }
+    my $baseSql = "SELECT U.* $swissprotSqlCol FROM uniref AS U $swissprotSql";
+
+    my @clusterNumbers = @$clusterNums;
 
     # Get a mapping of IDs to cluster numbers.
     my (%uniref50IdsClusterMap, %uniref90IdsClusterMap, %uniprotIdsClusterMap, %uniprotDomainIdsClusterMap, %singletonClusters);
+    my %uniProtUniRefMap;
     foreach my $clNum (@clusterNumbers) {
-        my $nodeIds = $util->getIdsInCluster($clNum, ALL_IDS);
+        my $nodeIds = &$idMapper($clNum);
         $singletonClusters{$clNum} = 1 if scalar @$nodeIds == 1;
         foreach my $id (@$nodeIds) {
             (my $proteinId = $id) =~ s/:\d+:\d+$//;
+            # UniRef
             if ($ssnSeqSource) {
-                my $sql = "SELECT * FROM uniref WHERE accession = '$proteinId'";
+                my $sql = "$baseSql WHERE U.accession = '$proteinId'";
                 if ($excludeFragments) {
-                    $sql = "SELECT U.* FROM uniref AS U LEFT JOIN annotations AS A ON U.accession = A.accession WHERE U.accession = '$proteinId' AND A.Fragment = 0";
+                    $sql = " AND A.$fragCol = 0";
                 }
                 my $sth = $dbh->prepare($sql);
                 $sth->execute;
                 while (my $row = $sth->fetchrow_hashref) {
+                    if ($lookupSwissprot) {
+                        my $descVal = "";
+                        print "WARNING: missing metadata for $proteinId; is entry obsolete? [3]\n" if not $row->{metadata};
+                        my $struct = $anno->decode_meta_struct($row->{metadata});
+                        $descVal = $row->{swissprot_status} ? ($struct->{description} // "NA") : "NA";
+                        #TODO: fix this after 202203 release
+                        $descVal =~ s/(Short|Flags|AltName|RecName)[:=].*$//;
+                        $descVal =~ s/;?\s*$//;
+                        push @{$swissprot->{$proteinId}}, $descVal;
+                    }
                     $uniref50IdsClusterMap{$row->{uniref50_seed}} = $clNum if $ssnSeqSource < 90;
                     $uniref90IdsClusterMap{$row->{uniref90_seed}} = $clNum if $ssnSeqSource >= 50;
+                    $uniProtUniRefMap{$proteinId} = [$row->{uniref50_seed}, $row->{uniref90_seed}];
                 }
             }
             
             my $addSeq = 1;
             if ($excludeFragments) {
                 $addSeq = 1;
-                my $sql = "SELECT Fragment FROM annotations WHERE accession = '$proteinId' AND Fragment = 0";
+                my $sql = "SELECT $fragCol FROM annotations WHERE accession = '$proteinId' AND $fragCol = 0";
                 my $sth = $dbh->prepare($sql);
                 $sth->execute;
                 $addSeq = $sth->fetchrow_hashref ? 1 : 0;
@@ -612,6 +768,22 @@ sub getClusterToIdMapping {
             if ($addSeq) {
                 $uniprotIdsClusterMap{$proteinId} = $clNum;
                 $uniprotDomainIdsClusterMap{$id} = $clNum if $id ne $proteinId;
+            }
+            if (not $ssnSeqSource and $lookupSwissprot) {
+                my $sql = "SELECT metadata FROM annotations WHERE accession = '$proteinId'";
+#                print "UP SP $sql\n";
+                my $sth = $dbh->prepare($sql);
+                $sth->execute;
+                while (my $row = $sth->fetchrow_hashref) {
+                    my $descVal = "";
+                    print "WARNING: missing metadata for $proteinId; is entry obsolete? [4]\n" if not $row->{metadata};
+                    my $struct = $anno->decode_meta_struct($row->{metadata});
+                    $descVal = $row->{swissprot_status} ? ($struct->{description} // "NA") : "NA";
+                    #todo: FIX THIS After 202203 release
+                    $descVal =~ s/(Short|Flags|AltName|RecName)[:=].*$//;
+                    $descVal =~ s/;?\s*$//;
+                    push @{$swissprot->{$proteinId}}, $row->{swissprot_description};
+                }
             }
         }
     }
@@ -632,7 +804,83 @@ sub getClusterToIdMapping {
         }
     }
 
-    return \%uniprotIdsMap, \%uniprotDomainIdsMap, \%uniref50ClusterIdsMap, \%uniref90ClusterIdsMap, \%singletonClusters;
+    return \%uniprotIdsMap, \%uniprotDomainIdsMap, \%uniref50ClusterIdsMap, \%uniref90ClusterIdsMap, \%singletonClusters, \%uniProtUniRefMap, $swissprot;
+}
+sub getClusterToIdMapping {
+    my $dbh = shift;
+    my $util = shift;
+    my $lookupSwissprot = shift || 0;
+
+    my $ssnSeqSource = $util->getSequenceSource(); # uniprot, uniref50, or uniref90
+    $ssnSeqSource =~ s/\D//g; # remove all non digits
+
+    my @clusterNumbers = $util->getClusterNumbers();
+
+    my $idMapper = sub {
+        my $clNum = shift;
+        return $util->getIdsInCluster($clNum, ALL_IDS);
+    };
+
+    return getSharedClusterToIdMapping($dbh, $ssnSeqSource, \@clusterNumbers, $idMapper, $lookupSwissprot);
+}
+sub getEfiClusterToIdMapping {
+    my $dbh = shift;
+    my $util = shift;
+    my $uniRef90Map = shift;
+    my $lookupSwissprot = shift || 0;
+
+    my $ssnSeqSource = 90;
+
+    my @clusterNumbers = $util->getClusterNumbers();
+
+    my $idMapper = sub {
+        my $clNum = shift;
+        my $ids = $uniRef90Map->{$clNum} // [];
+        my @uniprots;
+        foreach my $id (@$ids) {
+            my $sql = "SELECT * FROM uniref WHERE uniref90_seed = '$id'";
+            my $sth = $dbh->prepare($sql);
+            $sth->execute;
+            while (my $row = $sth->fetchrow_hashref) {
+                push @uniprots, $row->{accession};
+            }
+        }
+        return \@uniprots;
+    };
+
+    return getSharedClusterToIdMapping($dbh, $ssnSeqSource, \@clusterNumbers, $idMapper, $lookupSwissprot);
+}
+
+
+sub calcUniRefMap {
+    my $mapping = shift;
+    my $data = shift || {};
+
+    my %ur90;
+    my %ur5090;
+
+    foreach my $upId (keys %$mapping) {
+        push @{$ur90{$mapping->{$upId}->[1]}}, $upId;
+        $ur5090{$mapping->{$upId}->[0]}->{$mapping->{$upId}->[1]}++;
+    }
+
+    my %ur50;
+    foreach my $ur50 (keys %ur5090) {
+        foreach my $ur90 (keys %{$ur5090{$ur50}}) {
+            push @{$ur50{$ur50}}, $ur90;
+        }
+    }
+
+    foreach my $id (keys %$data) {
+        my $size = 0;
+        $size = scalar @{$ur90{$id}} if $ur90{$id};
+        $data->{$id}->{attributes}->{uniref90_size} = $size;
+        $size = 0;
+        $size = scalar @{$ur50{$id}} if $ur50{$id};
+        $data->{$id}->{attributes}->{uniref50_size} = $size;
+    }
+
+    return \%ur50, \%ur90;
 }
 
 
@@ -646,6 +894,8 @@ sub saveClusterIdFiles2 {
     return 0 if not scalar @clusterNumbers;
     
     open SINGLES, ">", "$outputDir/singleton_${filePattern}_IDs.txt";
+    open NODESINGLES, ">", "$outputDir/node_singleton_${filePattern}_IDs.txt";
+#    open NODESINGLES5, ">", "$outputDir/node5_singleton_${filePattern}_IDs.txt";
 
     my $sizeData = {};
 
@@ -654,21 +904,27 @@ sub saveClusterIdFiles2 {
     foreach my $clNum (@clusterNumbers) {
         my @accIds = sort @{$mapping->{$clNum}};
         if (not exists $singletonClusters->{$clNum}) {
+#            print "$clNum $outputDir/cluster_${filePattern}_IDs_${clNum}.txt\n";
             open FH, ">", "$outputDir/cluster_${filePattern}_IDs_${clNum}.txt";
+            my $isSmall = scalar @accIds < 5;
             foreach my $accId (@accIds) {
                 print FH "$accId\n";
                 push @ids, $accId;
+                print NODESINGLES "$accId\n" if $isSmall;
             }
             close FH;
             $sizeData->{$clNum} = scalar @accIds;
         } else {
             my $accId = $accIds[0];
             print SINGLES "$accId\n";
+#            print NODESINGLES "$accId\n";
         }
         $idCount++;
     }
 
     close SINGLES;
+    close NODESINGLES;
+#    close NODESINGLES5;
 
     open ALL, ">", "$outputDir/cluster_All_${filePattern}_IDs.txt";
     foreach my $id (sort @ids) {
@@ -736,17 +992,18 @@ sub saveClusterIdFiles {
 
 
 sub validateInputs {
-    if ((not $configFile or not -f $configFile) and not exists $ENV{EFICONFIG}) {
-        die "Either the configuration $configFile file or the EFICONFIG environment variable must be set\n$usage";
-    } elsif (not $configFile or not -f $configFile) {
-        $configFile = $ENV{EFICONFIG};
+    $configFile = $ENV{EFI_CONFIG} if not $configFile;
+    $configFile = "" if not $configFile;
+
+    if (not $configFile or not -f $configFile) {
+        die "Either the configuration $configFile file or the EFI_CONFIG environment variable must be set\n$usage";
     }
     
     #error checking on input values
     
     if (not $ssnin or not -s $ssnin){
-        $ssnin = "" if not $ssnin;
         die "-ssnin $ssnin does not exist or has a zero size\n$usage";
+        $ssnin = "" if not $ssnin;
     }
     
     $hasParent = $parentDir and -d $parentDir;
@@ -783,6 +1040,7 @@ sub defaultParameters {
     $idOutputDomainFile = "" if not defined $idOutputDomainFile;
     $idOutputFile = "" if not defined $idOutputFile;
     $debug = defined $debug ? 1 : 0;
+    $useUniRef = defined $useUniRef ? $useUniRef : 0;
 
     $outputDir = $ENV{'PWD'} if not defined $outputDir;
     $uniprotIdDir = "$outputDir/uniprot-ids"                    if not $uniprotIdDir;
@@ -815,6 +1073,8 @@ sub defaultParameters {
     $arrowDataFile = "" if not $arrowDataFile;
     $pfamCoocTable = "" if not $pfamCoocTable;
     $hubCountFile = "" if not $hubCountFile;
+    $extraSeqFile = "ssn-sequences.fa" if not $extraSeqFile; 
+    $convRatioFile = "" if not $convRatioFile;
 
     $excludeFragments = defined($excludeFragments);
 }
@@ -847,6 +1107,8 @@ sub adjustRelativePaths {
     $arrowDataFile = "$outputDir/$arrowDataFile"                if $arrowDataFile and $arrowDataFile !~ m/^\//;
     $pfamCoocTable = "$outputDir/$pfamCoocTable"                if $pfamCoocTable and $pfamCoocTable !~ m/^\//;
     $hubCountFile = "$outputDir/$hubCountFile"                  if $hubCountFile and $hubCountFile !~ m/^\//;
+    $extraSeqFile = "$outputDir/$extraSeqFile"                  if $extraSeqFile and $extraSeqFile !~ m/^\//;
+    $convRatioFile = "$outputDir/$convRatioFile"                if $convRatioFile and $convRatioFile !~ m/^\//;
 }
 
 
