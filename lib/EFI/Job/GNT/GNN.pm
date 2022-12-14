@@ -49,6 +49,7 @@ sub new {
         "parent-dir=s",
         "disable-nnm",
         "gnn-only",
+        "extra-ram",
     );
 
     my $conf = {};
@@ -124,6 +125,7 @@ sub validateOptions {
     $conf->{parent_dir} = $parms->{"parent-dir"} // "";
     $conf->{disable_nnm} = defined $parms->{"disable-nnm"} ? 1 : 0;
     $conf->{full_gnt_run} = not (defined $parms->{"gnn-only"} ? 1 : 0);
+    $conf->{extra_ram} = $parms->{"extra-ram"} // 0;
 
     my $err = checkInputs($conf);
     return $err if $err;

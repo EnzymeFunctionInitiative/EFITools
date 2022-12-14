@@ -202,10 +202,16 @@ sub makeJobs {
     my $job1 = $self->getColorSsnJob($fileInfo);
     push @jobs, {job => $job1, deps => [], name => "color_ssn"};
 
+    my $job2;
     if ($conf->{opt_msa_option}) {
-        #TODO: implement this
-        #my $job2 = $self->getHmmAndStuffJob($fileInfo);
-        #push @jobs, {job => $job2, deps => [$job1], name => "hmm_and_stuff"};
+        $job2 = $self->getHmmAndStuffJob($fileInfo);
+        push @jobs, {job => $job2, deps => [$job1], name => "hmm_and_stuff"};
+    }
+
+    if ($conf->{cleanup}) {
+        my $job3 = $self->getCleanupJob($fileInfo);
+        my $deps = $job2 ? [$job2] : [$job1];
+        push @jobs, {job => $job3, deps => $deps, name => "color_cleanup"};
     }
 
     return @jobs;
@@ -312,6 +318,10 @@ sub getFileInfo {
         $fileInfo->{cluster_size_file} = $conf->{cluster_sizes};
         $fileInfo->{ssn_type} = $ssnType;
         $fileInfo->{hmm_zip_prefix} = "${ssnName}";
+
+        $fileInfo->{compute_pim} = 1;
+
+        $fileInfo->{weblogo_bin} = "$toolPath/weblogo";
     }
 
     # Shared.pm
@@ -359,6 +369,57 @@ sub getColorSsnJob {
     $B->addAction("$toolPath/unzip_file.pl --in $conf->{zipped_ssn_in} --out $conf->{ssn_in}") if $conf->{zipped_ssn_in};
     $B->addAction("$toolPath/cluster_gnn.pl $scriptArgs");
     EFI::GNN::Base::addFileActions($B, $fileInfo, $skipFasta);
+
+    $B->addAction("touch $outputDir/$self->{completed_name}") if (not $conf->{opt_msa_option} and not $conf->{cleanup});
+
+    return $B;
+}
+
+
+sub getHmmAndStuffJob {
+    my $self = shift;
+    my $info = shift;
+    my $conf = $self->{conf}->{color};
+
+    my $outputPath = $self->getOutputDir();
+    my $np = $info->{num_tasks} ? $info->{num_tasks} : 1;
+
+    my $B = $self->getBuilder();
+    $B->setScriptAbortOnError(0); # don't abort on error
+
+    $self->requestResourcesByName($B, 1, $np, "hmm");
+
+    map { $B->addAction($_); } $self->getEnvironment("color-hmm-pim") if $info->{compute_pim};
+    map { $B->addAction($_); } $self->getEnvironment("color-hmm");
+
+    EFI::Job::EST::Color::HMM::makeJob($B, $info);
+
+    $B->addAction("touch $outputDir/$self->{completed_name}") if not $conf->{cleanup};
+
+    return $B;
+}
+
+
+sub getCleanupJob {
+    my $self = shift;
+    my $info = shift;
+    my $conf = $self->{conf}->{color};
+
+    my $outputPath = $self->getOutputDir();
+
+    my $B = $self->getBuilder();
+
+    $self->requestResources($B, 1, 1, 1);
+
+    my @dirs = (
+        $info->{uniprot_node_data_dir}, $info->{fasta_data_dir}, $info->{uniprot_domain_node_data_dir}, $info->{fasta_uniprot_domain_data_dir},
+        $info->{uniref90_node_data_dir}, $info->{fasta_uniref90_data_dir}, $info->{uniref90_domain_node_data_dir}, $info->{fasta_uniref90_domain_data_dir},
+        $info->{uniref50_node_data_dir}, $info->{fasta_uniref50_data_dir}, $info->{uniref50_domain_node_data_dir}, $info->{fasta_uniref50_domain_data_dir},
+    );
+    my $paths = join(" ", grep { -d $_ } map { "$outputPath/$_" } @dirs);
+
+    $B->addAction("cd $outputPath");
+    $B->addAction("rm -rf $paths");
     $B->addAction("touch $outputDir/$self->{completed_name}");
 
     return $B;
