@@ -6,3 +6,7 @@ environment.sh
 *.bak
 bak
 *.swp
+*.swo
+*.swn
+__pycache__
+
