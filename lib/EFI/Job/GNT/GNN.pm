@@ -28,7 +28,7 @@ sub new {
     my $self = $class->SUPER::new(%args);
 
     my $parms = {};
-    my $result = GetOptions(
+    my $result = $self->GetEfiOptions(
         $parms,
         "ssn-in|ssnin=s",
         "nb-size|n=s",
@@ -77,6 +77,7 @@ sub validateOptions {
 
     return "No valid --ssn-in argument provided" if not -f $conf->{ssn_in};
 
+    #TODO: set this to be the job#
     (my $inputFileBase = $conf->{ssn_in}) =~ s%^.*/([^/]+)$%$1%;
     $inputFileBase =~ s/\.zip$//;
     $inputFileBase =~ s/\.xgmml$//;

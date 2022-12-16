@@ -8,12 +8,12 @@ use Cwd qw(abs_path);
 use File::Basename qw(dirname);
 use lib dirname(abs_path(__FILE__)) . "/../../../";
 
+use Data::Dumper;
+
 use EFI::GNN::Arrows;
 use EFI::Job::GNT::Shared;
 
 use parent qw(EFI::Job::GNT);
-
-use Getopt::Long qw(:config pass_through);
 
 use constant JOB_TYPE => "gnd";
 
@@ -25,24 +25,32 @@ sub new {
     my $self = $class->SUPER::new(%args);
 
     my $parms = {};
-    my $result = GetOptions(
+    my $result = $self->GetEfiOptions(
         $parms,
-        "output=s",
-        "title=s",
-        "job-type=s",
+        "output=s",                 # output file name (should be job_id.sqlite)
+        "title=s",                  # title stored inside of the GND
+        "job-type=s",               # unzip, BLAST, ID_LOOKUP, FASTA, TAXONOMY
 
-        # First mode
-        "blast-seq|blast=s",
+        # Mode 1
+        "upload-file=s",
+
+        # Mode 2
+        "blast-seq-file=s",
         "evalue=n",
         "max-seq=n",
-        "nb-size=n",
 
-        # Second and third mode
+        # Mode 3 and 4
         "id-file=s",
         "fasta-file=s",
 
-        # Fourth mode
-        "upload-file=s",
+        # Mode 5
+        "tax-file=s",
+        "tax-tree-id=s",
+        "tax-id-type=s",
+
+        "seq-db-type=s",
+        "reverse-uniref",
+        "nb-size=n",
     );
 
     my $conf = {};
@@ -61,6 +69,18 @@ sub new {
 }
 
 
+
+sub ok {
+    my $val = shift;
+    my $default = shift || "";
+    if (not defined $val) {
+        return $default;
+    } elsif (not $val) {
+        return $default;
+    } else {
+        return $val;
+    }
+}
 sub validateOptions {
     my $self = shift;
     my $parms = shift;
@@ -70,43 +90,56 @@ sub validateOptions {
 
     $conf->{title} = $parms->{"title"} // "Untitled";
 
-    my $defaultOutputFile = "$outputDir/$conf->{title}.sqlite";
+    my $defaultOutputFile = "$outputDir/" . $self->getJobId();
     my $defaultEvalue = 5;
     my $defaultMaxSeq = 200;
     my $defaultNbSize = 10;
 
+    print Dumper($parms);
+
     $conf->{title} = "\"$conf->{title}\"";
     $conf->{output} = $parms->{"output"} // $defaultOutputFile;
     $conf->{job_type} = $parms->{"job-type"} // "";
-
-    # First mode
-    $conf->{blast_seq} = $parms->{"blast-seq"} // "";
-    $conf->{evalue} = $parms->{"evalue"} // $defaultEvalue;
-    $conf->{max_seq} = $parms->{"max-seq"} // $defaultMaxSeq;
-    $conf->{nb_size} = $parms->{"nb-size"} // $defaultNbSize;
-    # Second and third mode
-    $conf->{id_file} = $parms->{"id-file"} // "";
-    $conf->{fasta_file} = $parms->{"fasta-file"} // "";
-    # Fourth mode
-    $conf->{upload_file} = $parms->{"upload-file"} // "";
-
     $conf->{output} = "$outputDir/$conf->{output}" if $conf->{output} !~ m%^/%;
 
-    if ($conf->{blast_seq} and -f $conf->{blast_seq}) {
-        my $seq = "";
-        my $result = open my $fh, "<", $conf->{blast_seq};
-        if ($result) {
-            while (<$fh>) {
-                s/^\s*(.*?)[\s\r\n]*$/$1/s;
-                $seq .= $_;
-            }
-            close $fh;
-        }
-        $conf->{blast_seq} = $seq;
-    }
+    # Mode 1
+    $conf->{upload_file} = $parms->{"upload-file"} // "";
 
-    return "Requires one of --blast-seq, --id-file, --fasta-file, or --upload-file" if not -f $conf->{upload_file} and not $conf->{blast_seq} and not -f $conf->{id_file} and not -f $conf->{fasta_file};
-    return "";
+    # Mode 2
+    $conf->{blast_seq_file} = $parms->{"blast-seq-file"} // "";
+    $conf->{evalue} = $parms->{"evalue"} // $defaultEvalue;
+    $conf->{max_seq} = $parms->{"max-seq"} // $defaultMaxSeq;
+    $conf->{nb_size} = ok($parms->{"nb-size"}, $defaultNbSize);
+
+    # Mode 3 and 4
+    $conf->{id_file} = $parms->{"id-file"} // "";
+    $conf->{fasta_file} = $parms->{"fasta-file"} // "";
+
+    $conf->{tax_file} = $parms->{"tax-file"} // "";
+    $conf->{tax_tree_id} = $parms->{"tax-tree-id"} // "";
+    $conf->{tax_id_type} = $parms->{"tax-id-type"} // "";
+
+    $conf->{seq_db_type} = $parms->{"seq-db-type"} // "";
+    $conf->{reverse_uniref} = $parms->{"reverse-uniref"} ? 1 : 0;
+
+    my $mode = $conf->{job_type};
+
+    return "Requires job-type" if not $mode;
+
+    if ($mode eq "unzip" and (not $conf->{upload_file} or not -f $conf->{upload_file})) {
+        return "--job-type unzip requires --upload-file";
+    } elsif ($mode eq "BLAST" and (not $conf->{blast_seq_file} or not -f not $conf->{blast_seq_file})) {
+        return "--job-type BLAST requires --blast-seq-file";
+    } elsif ($mode eq "ID_LOOKUP" and (not $conf->{id_file} or not -f $conf->{id_file})) {
+        return "--job-type ID_LOOKUP requires --id-file";
+    } elsif ($mode eq "FASTA" and (not $conf->{fasta_file} or not -f $conf->{fasta_file})) {
+        return "--job-type FASTA requires --fasta-file";
+    } elsif ($mode eq "TAXONOMY" and (not $conf->{tax_file} or not -f $conf->{tax_file} or not $conf->{tax_tree_id} or not $conf->{tax_id_type})) {
+        return "--job-type TAXONOMY requires --tax-file --tax-tree-id and -tax-id-type";
+    } else {
+        #return "Requires one of --blast-seq, --id-file, --fasta-file, --upload-file, or --tax-file";
+        return "";
+    }
 }
 
 
@@ -116,10 +149,21 @@ sub setupDefaults {
 
     my $outputDir = $self->getOutputDir();
 
-    $conf->{job_type} = "BLAST" if $conf->{blast_seq};
-    $conf->{job_type} = "ID_LOOKUP" if $conf->{id_file};
-    $conf->{job_type} = "FASTA" if $conf->{fasta_file};
-    $conf->{job_type} = "unzip" if $conf->{upload_file};
+    my $seq = "";
+    my $result = open my $fh, "<", $conf->{blast_seq_file};
+    if ($result) {
+        while (<$fh>) {
+            s/^\s*(.*?)[\s\r\n]*$/$1/s;
+            $seq .= $_;
+        }
+        close $fh;
+    }
+    $conf->{blast_seq} = $seq;
+
+    #$conf->{job_type} = "BLAST" if $conf->{blast_seq_file};
+    #$conf->{job_type} = "ID_LOOKUP" if $conf->{id_file};
+    #$conf->{job_type} = "FASTA" if $conf->{fasta_file};
+    #$conf->{job_type} = "unzip" if $conf->{upload_file};
 
     $conf->{error_file} = "$outputDir/stderr.log";
     $conf->{completed_file} = "$outputDir/$self->{completed_name}";
@@ -131,31 +175,40 @@ sub getUsage {
     my $self = shift;
 
     my $usage = <<USAGE;
---output <OUTPUT_FILE> [--title "JOB_TITLE" --job-type BLAST|ID_LOOKUP|FASTA|unzip --nb-size #]
-    [--blast-seq <SEQ> [--evalue # --max-seq #]] [--id-file <FILE>] [--fasta-file <FILE>]
-    [--upload-file <FILE>]
+--output <OUTPUT_FILE> [--title "JOB_TITLE" --job-type BLAST|ID_LOOKUP|FASTA|unzip|TAXONOMY --nb-size #]
+    [--blast-seq-file <FILE> [--evalue # --max-seq #]] [--id-file <FILE>] [--fasta-file <FILE>]
+    [--upload-file <FILE>] [--tax-file <FILE> --tax-tree-id NODE_ID --tax-id-type uniprot|uniref50|uniref90]
 
-    --output            the file to output arrow/diagram data to
+    --job-type          specifies the job type, as well as the string to put in for the
+                        job type (used by the web app)
 
-    # OPTION 1: provide a FASTA sequence and retrievel related sequences for GND viewer
-    --blast-seq         the sequence for Option A, which uses BLAST to get similar sequences
+    # MODE 1: upload a .sqlite file (optionally .zip'ped) for viewing in GND viewer
+    --upload-file       the file to unzip/prep for viewing in GND
+
+    # MODE 2: provide a FASTA sequence and retrievel related sequences for GND viewer
+    --blast-seq-file    the sequence for Option A, which uses BLAST to get similar sequences
     --evalue            the evalue to use for BLAST; default 5
     --max-seq           the maximum number of sequences to return from the BLAST; default 200
 
-    # OPTION 2: provide a file containing a list of IDs for GND viewer
+    # MODE 3: provide a file containing a list of IDs for GND viewer
     --id-file           file containing a list of IDs to use to generate the diagrams
 
-    # OPTION 3: provide a file containing a list of IDs in FASTA format for GND viewer
+    # MODE 4: provide a file containing a list of IDs in FASTA format for GND viewer
     --fasta-file        file containing FASTA sequences with headers; we extract the IDs from
                         the headers and use those IDs to generate the diagrams
 
-    # OPTION 4: upload a .sqlite file (optionally .zip'ped) for viewing in GND viewer
-    --upload-file       the file to unzip/prep for viewing in GND
+    # MODE 5: extract IDs from the taxonomy tree
+    --tax-file          path to the taxonomy json file
+    --tax-tree-id       node ID
+    --tax-id-type       ID type to use (uniprot|uniref90|uniref50)
 
     --output            output sqlite file for Options A-D
     --title             the job title to save in the output file; shows up in GND viewer
-    --job-type          the string to put in for the job type (used by the web app)
     --nb-size           the neighborhood window on either side of the query sequences; default 10
+    --seq-db-type       uniprot [default], uniprot-nf, uniref{50,90}[-nf]
+    --reverse-uniref    if --seq-db-type is uniref##[-nf], then assume input ID list is
+                        UniProt; otherwise assume input ID list are UniRef cluster IDs
+
 USAGE
 
     return $usage;
@@ -186,6 +239,10 @@ sub getJobInfo {
     # Fourth mode
     push @$info, [upload_file => $conf->{upload_file}] if $conf->{upload_file};
 
+    push @$info, [tax_file => $conf->{tax_file}] if $conf->{tax_file};
+    push @$info, [tax_tree_id => $conf->{tax_tree_id}] if $conf->{tax_tree_id};
+    push @$info, [tax_id_type => $conf->{tax_id_type}] if $conf->{tax_id_type};
+
     return $info;
 }
 
@@ -197,18 +254,23 @@ sub makeJobs {
     my @jobs;
     my $B;
 
-    if ($conf->{blast_seq}) {
-        my $job = $self->getBlastJob();
-        push @jobs, {job => $job, deps => [], name => "diagram_blast"};
-    } elsif ($conf->{id_file}) {
-        my $job = $self->getIdLookupJob();
-        push @jobs, {job => $job, deps => [], name => "diagram_id_lookup"};
-    } elsif ($conf->{fasta_file}) {
-        my $job = $self->getFastaFileJob();
-        push @jobs, {job => $job, deps => [], name => "diagram_fasta"};
-    } elsif ($conf->{upload_file}) {
+    my $mode = $conf->{job_type};
+
+    if ($mode eq "upload") {
         my $job = $self->getUploadFileJob();
         push @jobs, {job => $job, deps => [], name => "diagram_upload"};
+    } elsif ($mode eq "BLAST") {
+        my $job = $self->getBlastJob();
+        push @jobs, {job => $job, deps => [], name => "diagram_blast"};
+    } elsif ($mode eq "ID_LOOKUP") {
+        my $job = $self->getIdLookupJob();
+        push @jobs, {job => $job, deps => [], name => "diagram_id_lookup"};
+    } elsif ($mode eq "FASTA") {
+        my $job = $self->getFastaFileJob();
+        push @jobs, {job => $job, deps => [], name => "diagram_fasta"};
+    } elsif ($mode eq "TAXONOMY") {
+        my $job = $self->getTaxonomyJob();
+        push @jobs, {job => $job, deps => [], name => "diagram_taxonomy"};
     }
 
     return @jobs;
@@ -219,11 +281,8 @@ sub getBlastJob {
     my $self = shift;
     my $conf = $self->{conf}->{gnd};
 
-    my $configFile = $self->getConfigFile();
     my $outputDir = $self->getOutputDir();
-    my $toolPath = $self->getToolPath();
     my $blastDb = $self->getBlastDbPath("uniprot");
-    my $diagramVersion = $EFI::GNN::Arrows::Version;
 
     my $B = $self->getBuilder();
 
@@ -238,19 +297,31 @@ sub getBlastJob {
     $self->requestResourcesByName($B, 1, 1, "diagram_blast");
     map { $B->addAction($_); } $self->getEnvironment("gnt");
 
-    $B->addAction("blastall -p blastp -i $seqFile -d $blastDb -m 8 -e $conf->{evalue} -b $conf->{max_seq} -o $blastOutFile");
-    $B->addAction("grep -v '#' $blastOutFile | cut -f 2,11,12 | sort -k3,3nr | sed 's/[\t ]\\{1,\\}/|/g' | cut -d'|' -f2,4 > $blastIdListFile");
-    $B->addAction("$toolPath/create_diagram_db.pl --id-file $blastIdListFile --db-file $conf->{output} --blast-seq-file $seqFile --job-type $conf->{job_type} --title $conf->{title} --nb-size $conf->{nb_size} --config $configFile");
-    $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
+    my @acts;
+    push @acts, "blastall -p blastp -i $seqFile -d $blastDb -m 8 -e $conf->{evalue} -b $conf->{max_seq} -o $blastOutFile";
+    push @acts, "grep -v '#' $blastOutFile | cut -f 2,11,12 | sort -k3,3nr | sed 's/[\t ]\\{1,\\}/|/g' | cut -d'|' -f2,4 > $blastIdListFile";
 
-    addBashErrorCheck($conf, $B, 1, $conf->{output});
+    my $action = sub {
+        return (\@acts, $blastIdListFile, ["--blast-seq-file $seqFile"], 0);
+    };
 
-    return $B;
+    return $self->getSharedJob($action);
 }
 
 
 sub getIdLookupJob {
     my $self = shift;
+
+    my $action = sub {
+        return ([], $self->{conf}->{gnd}->{id_file}, ["--do-id-mapping"]);
+    };
+    return $self->getSharedJob($action);
+}
+
+
+sub getSharedJob {
+    my $self = shift;
+    my $extraActions = shift;
     my $conf = $self->{conf}->{gnd};
 
     my $configFile = $self->getConfigFile();
@@ -261,12 +332,40 @@ sub getIdLookupJob {
     my $B = $self->getBuilder();
 
     $self->requestResourcesByName($B, 1, 1, "diagram");
-    $B->addAction("$toolPath/create_diagram_db.pl --id-file $conf->{id_file} --db-file $conf->{output} --job-type $conf->{job_type} --title $conf->{title} --nb-size $conf->{nb_size} --do-id-mapping --config $configFile");
+
+    my $idFile = $conf->{id_file};
+    my $extraArgs = "";
+
+    if ($extraActions and ref $extraActions eq "CODE") {
+        my ($extra, $extraIdFile, $createArgs)= &$extraActions();
+        map { $B->addAction("$_"); } @$extra;
+        $idFile = $extraIdFile;
+        $extraArgs = ($createArgs and ref $createArgs eq "ARRAY") ? join(" ", @$createArgs) : "";
+    }
+
+    $B->addAction("$toolPath/create_diagram_db.pl --id-file $idFile --db-file $conf->{output} --job-type $conf->{job_type} --title $conf->{title} --nb-size $conf->{nb_size} $extraArgs --config $configFile");
     $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
 
     addBashErrorCheck($conf, $B, 0, $conf->{output});
 
     return $B;
+}
+
+
+sub getTaxonomyJob {
+    my $self = shift;
+    my $conf = $self->{conf}->{gnd};
+
+    my $toolPath = $self->getToolPath();
+
+    my $tempIdFile = "$conf->{output}.temp-ids";
+    my $act = "$toolPath/extract_taxonomy_tree.pl --json-file $conf->{tax_file} --output-file $tempIdFile --id-type $conf->{tax_id_type} --tree-id $conf->{tax_tree_id}";
+
+    my $action = sub {
+        return ([$act], $tempIdFile, []);
+    };
+
+    return $self->getSharedJob($action);
 }
 
 
@@ -274,23 +373,16 @@ sub getFastaFileJob {
     my $self = shift;
     my $conf = $self->{conf}->{gnd};
 
-    my $configFile = $self->getConfigFile();
-    my $outputDir = $self->getOutputDir();
     my $toolPath = $self->getToolPath();
-    my $diagramVersion = $EFI::GNN::Arrows::Version;
-
-    my $B = $self->getBuilder();
+    my $configFile = $self->getConfigFile();
 
     my $tempIdFile = "$conf->{output}.temp-ids";
+    my $action = sub {
+        my $act = "$toolPath/extract_ids_from_fasta.pl --fasta-file $conf->{fasta_file} --output-file $tempIdFile --config $configFile";
+        return ([$act], $tempIdFile, ["--do-id-mapping"]);
+    };
 
-    $self->requestResourcesByName($B, 1, 1, "diagram");
-    $B->addAction("$toolPath/extract_ids_from_fasta.pl --fasta-file $conf->{fasta_file} --output-file $tempIdFile --config $configFile");
-    $B->addAction("$toolPath/create_diagram_db.pl --id-file $tempIdFile --db-file $conf->{output} --job-type $conf->{job_type} --title $conf->{title} --nb-size $conf->{nb_size} --do-id-mapping --config $configFile");
-    $B->addAction("echo $diagramVersion > $outputDir/diagram.version");
-
-    addBashErrorCheck($conf, $B, 0, $conf->{output});
-
-    return $B;
+    return $self->getSharedJob($action);
 }
 
 

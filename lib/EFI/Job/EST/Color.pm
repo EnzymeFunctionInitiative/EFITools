@@ -39,7 +39,7 @@ sub new {
         "sp-clusters-desc=s",
         "sp-singletons-desc=s",
         "extra-ram:i",
-        "cleanup"
+        "cleanup",
         "opt-msa-option=s",
         "opt-aa-threshold=s",
         "opt-aa-list=s",
@@ -171,6 +171,7 @@ sub setupDefaults {
     $conf->{domain_map_file_name} = "$conf->{ssn_name}_$conf->{domain_map_file_name}";
     $conf->{use_domain} = (not $conf->{ssn_type} or $conf->{is_domain});
     
+    #TODO: set this to be the job#
     (my $inputFileBase = $conf->{ssn_in}) =~ s%^.*/([^/]+)$%$1%;
     $inputFileBase =~ s/\.zip$//;
     $inputFileBase =~ s/\.xgmml$//;
@@ -394,7 +395,7 @@ sub getHmmAndStuffJob {
 
     EFI::Job::EST::Color::HMM::makeJob($B, $info);
 
-    $B->addAction("touch $outputDir/$self->{completed_name}") if not $conf->{cleanup};
+    $B->addAction("touch $outputPath/$self->{completed_name}") if not $conf->{cleanup};
 
     return $B;
 }
@@ -420,7 +421,7 @@ sub getCleanupJob {
 
     $B->addAction("cd $outputPath");
     $B->addAction("rm -rf $paths");
-    $B->addAction("touch $outputDir/$self->{completed_name}");
+    $B->addAction("touch $outputPath/$self->{completed_name}");
 
     return $B;
 }

@@ -15,7 +15,7 @@ use File::Basename qw(dirname);
 use lib dirname(abs_path(__FILE__)) . "/../";
 
 use Data::Dumper;
-use Getopt::Long qw(:config pass_through);
+use Getopt::Long qw(GetOptionsFromArray :config pass_through);
 use FindBin;
 
 use EFI::SchedulerApi;
@@ -30,12 +30,12 @@ sub new {
     my $class = shift;
     my %args = @_;
 
+    my $parms = {};
     my $self = {};
     bless($self, $class);
 
-    my $parms = {};
-    my $result = GetOptions(
-        $parms, # options are stored in this hash
+    my $result = $self->GetEfiOptions(
+        $parms,
         "job-id|j=s",
         "config=s",
         "dry-run|dryrun",
@@ -47,6 +47,7 @@ sub new {
         "walltime=s",
         "help",
         "serial-script=s", # file to place the serial execute commands into (has a default value)
+        "job-setup=s",
     );
 
     my $homeDir = abs_path(dirname(__FILE__) . "/../../");
@@ -687,6 +688,47 @@ sub addBlastEnvVars {
 sub checkSafeFileName {
     my $file = shift;
     return $file !~ m%[^/a-zA-Z0-9\-_\.+=]%;
+}
+
+
+# We can use the scripts in two ways.  One is by specifying all of the parameters to the scripts on the
+# command line.  The other is by specifying a job-setup file, which contains the same arguments as the
+# command line, but are stored in the file instead, making it unnecessary to put all arguments on the
+# command line.
+sub GetEfiOptions {
+    my $self = shift;
+    my $parms = shift;
+    my @argsSpec = @_;
+
+    my @args;
+    if ($self->{job_setup_args}) {
+        @args = @{ $self->{job_setup_args} };
+    } else {
+        # From Getopt::Long
+        my $locParms = {};
+        my $result = GetOptions($locParms, "job-setup=s");
+
+        my $setupFile = $locParms->{"job-setup"};
+        if ($setupFile and -f $setupFile) {
+            open my $fh, "<", $setupFile or die "Unable to read setup file $setupFile : $!";
+            while (my $opt = <$fh>) {
+                chomp $opt;
+                next if $opt =~ m/^\s*\;/;
+
+                $opt =~ s/^\s*(.*?)=*\s*$/$1/;
+                next if not $opt;
+
+                $opt = "--$opt" if $opt !~ m/^\-/;
+                push @args, $opt;
+            }
+            close $fh;
+        }
+
+        $self->{job_setup_args} = \@args;
+    }
+
+    GetOptionsFromArray(\@args, $parms, @argsSpec);
+    GetOptionsFromArray(\@ARGV, $parms, @argsSpec);
 }
 
 
