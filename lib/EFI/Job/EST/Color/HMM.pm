@@ -13,6 +13,7 @@ sub makeJob {
     
     my $hmmRelPath = $info->{hmm_rel_path};
     my $outputPath = $info->{output_path};
+    my $resultsPath = $info->{results_path};
     my $minSeqMsa = $info->{hmm_min_seq_msa};
     my $hmmOption = $info->{hmm_option};
     my $hmmDataDir = $info->{hmm_data_dir};
@@ -43,12 +44,12 @@ sub makeJob {
     my $doPim = $info->{compute_pim} // 0;
 
     my $checkFn = sub { return $info->{$_[0]}->{fasta_dir} ? $_[0] : ""; };
-    my $dataType = &$checkFn("efiref50") ? "efiref50" : (&$checkFn("uniref50") ? "uniref50" : (&$checkFn("efiref70") ? "efiref70" : (&$checkFn("uniref90") ? "uniref90" : "uniprot")));
+    my $dataType = &$checkFn("uniref50") ? "uniref50" : (&$checkFn("uniref90") ? "uniref90" : "uniprot");
     $dataType = "uniprot" if not $dataType;
     my $mainFastaDir = $info->{uniprot}->{fasta_dir};
     my $dirs = $info->{$dataType};
     my $fastaDir = $dirs->{fasta_dir};
-    $dataType = &$checkFn("efiref50_domain") ? "efiref50_domain" : (&$checkFn("uniref50_domain") ? "uniref50_domain" : (&$checkFn("efiref70_domain") ? "efiref70_domain" : (&$checkFn("uniref90_domain") ? "uniref90_domain" : "uniprot_domain")));
+    $dataType = &$checkFn("uniref50_domain") ? "uniref50_domain" : (&$checkFn("uniref90_domain") ? "uniref90_domain" : "uniprot_domain");
     my $domDirs = $info->{$dataType};
     my $fastaDomainDir = $domDirs->{fasta_dir};
 
@@ -62,8 +63,8 @@ sub makeJob {
     my $domClusterListFile = "$domOutDir/cluster_list_min_seq.txt";
     my $fullCountFile = "$fullOutDir/cluster_node_counts.txt";
     my $domCountFile = "$domOutDir/cluster_node_counts.txt";
-    my $domainMapFile = "$outputPath/$info->{domain_map_file}";
-    my $mapFile = "$outputPath/$info->{map_file}";
+    my $domainMapFile = "$resultsPath/$info->{domain_map_file}";
+    my $mapFile = "$resultsPath/$info->{map_file}";
     
     my $zipPrefix = $info->{hmm_zip_prefix};
 
@@ -102,8 +103,8 @@ SCRIPT
             );
         }
 
-        my $zipFilename= "${zipPrefix}_MSAs_Full.zip";
-        my $zipFile = "$outputPath/$zipFilename";
+        my $zipFilename= "${zipPrefix}MSAs_Full.zip";
+        my $zipFile = "$resultsPath/$zipFilename";
         $B->addAction(<<SCRIPT
 
     #MAKE MULTIPLE SEQUENCE ALIGNMENTs FOR FULL SEQUENCES
@@ -124,8 +125,8 @@ SCRIPT
             );
         }
         if ($doPim) {
-            my $pimZipFilename= "${zipPrefix}_PIMs_Full.zip";
-            my $pimZipFile = "$outputPath/$pimZipFilename";
+            my $pimZipFilename= "${zipPrefix}PIMs_Full.zip";
+            my $pimZipFile = "$resultsPath/$pimZipFilename";
             $B->addAction(<<SCRIPT
     mkdir -p $fullPimDir
     cat $fullClusterListFile | xargs -P $np -I % bash -c "clustalo -i $fullAlignDir/cluster_%.clw --percent-id --distmat-out=$fullPimDir/cluster_%.txt --full --force || true"
@@ -148,8 +149,8 @@ SCRIPT
 
     ########## FULL - HMM
     if ($hmmOption =~ m/HMM/i) {
-        my $zipFilename = "${zipPrefix}_HMMs_Full.zip";
-        my $zipFile = "$outputPath/$zipFilename";
+        my $zipFilename = "${zipPrefix}HMMs_Full.zip";
+        my $zipFile = "$resultsPath/$zipFilename";
         $B->addAction(<<SCRIPT
     mkdir -p $fullOutDir/hmm
     cat $fullClusterListFile | xargs -P $np -I % hmmbuild $fullOutDir/hmm/cluster_%.hmm $fullAlignDir/cluster_%.afa
@@ -166,8 +167,8 @@ SCRIPT
 
     ########## FULL - CONSENSUS RESIDUE OR WEBLOGO
     if ($hmmOption =~ m/CR|WEBLOGO/i) {
-        my $zipFilename= "${zipPrefix}_WebLogos_Full.zip";
-        my $zipFile = "$outputPath/$zipFilename";
+        my $zipFilename= "${zipPrefix}WebLogos_Full.zip";
+        my $zipFile = "$resultsPath/$zipFilename";
         $B->addAction(<<SCRIPT
     mkdir -p $fullOutDir/weblogo
     cat $fullClusterListFile | xargs -P $np -I % $weblogoBin -D fasta -F png --resolution 300 --stacks-per-line 80 -f $fullAlignDir/cluster_%.afa -o $fullOutDir/weblogo/cluster_%.png $colorList
@@ -185,8 +186,8 @@ SCRIPT
     if ($hmmOption =~ m/CR/i) {
         foreach my $aa (@aas) {
             my $consDir = "$fullOutDir/consensus_residue_results_$aa";
-            my $consZipName = "${zipPrefix}_ConsensusResidue_${aa}_Full.zip";
-            my $consZip = "$outputPath/$consZipName";
+            my $consZipName = "${zipPrefix}ConsensusResidue_${aa}_Full.zip";
+            my $consZip = "$resultsPath/$consZipName";
             $B->addAction("    mkdir -p $consDir");
             my $mergeCounts = "";
             my $mergePercent = "";
@@ -203,11 +204,11 @@ SCRIPT
                 $mergeCounts .= " --position-file $ct=$consDir/${baseFile}_position.txt";
                 $mergePercent .= " --percentage-file $ct=$consDir/${baseFile}_percentage.txt";
             }
-            my $outBaseName = "${zipPrefix}_ConsensusResidue_${aa}";
+            my $outBaseName = "${zipPrefix}ConsensusResidue_${aa}";
             my $posSumFileName = "${outBaseName}_Position_Summary_Full.txt";
             my $pctSumFileName = "${outBaseName}_Percentage_Summary_Full.txt";
             $B->addAction(<<SCRIPT
-    $appDir/make_summary_tables.pl --position-summary-file $outputPath/$posSumFileName --percentage-summary-file $outputPath/$pctSumFileName $mergeCounts $mergePercent
+    $appDir/make_summary_tables.pl --position-summary-file $resultsPath/$posSumFileName --percentage-summary-file $resultsPath/$pctSumFileName $mergeCounts $mergePercent
     DIR=`pwd`
     cd $consDir && zip -r $consZip . -i '*'
     cd \$DIR
@@ -222,8 +223,8 @@ SCRIPT
 
     ########## FULL - LENGTH HISTOGRAM
     if ($hmmOption =~ m/HIST/i) {
-        my $zipFilename= "${zipPrefix}_LenHist_UniProt_Full.zip";
-        my $zipFile = "$outputPath/$zipFilename";
+        my $zipFilename= "${zipPrefix}LenHist_UniProt_Full.zip";
+        my $zipFile = "$resultsPath/$zipFilename";
         my $outDir = "$fullOutDir/hist-uniprot";
         $B->addAction(<<SCRIPT
     mkdir -p $outDir
@@ -239,8 +240,8 @@ SCRIPT
             my $dirs = shift;
             my $urType = shift;
             my $fileType = lc($urType);
-            my $zipFilename= "${zipPrefix}_LenHist_${urType}_Full.zip";
-            my $zipFile = "$outputPath/$zipFilename";
+            my $zipFilename= "${zipPrefix}LenHist_${urType}_Full.zip";
+            my $zipFile = "$resultsPath/$zipFilename";
             my $outDir = "$fullOutDir/hist-$fileType";
             $B->addAction(<<SCRIPT
     mkdir -p $outDir
@@ -254,9 +255,7 @@ SCRIPT
             );
         };
         &$outputFn($info->{uniref90}, "uniref90") if $info->{uniref90} and $info->{uniref90}->{fasta_dir};
-        &$outputFn($info->{efiref70}, "efiref70") if $info->{efiref70} and $info->{efiref70}->{fasta_dir};
         &$outputFn($info->{uniref50}, "uniref50") if $info->{uniref50} and $info->{uniref50}->{fasta_dir};
-        &$outputFn($info->{efiref50}, "efiref50") if $info->{efiref50} and $info->{efiref50}->{fasta_dir};
     }
 
     $B->addAction(<<SCRIPT
@@ -285,8 +284,8 @@ SCRIPT
 
     ########## DOMAIN - MSA
     if ($hmmOption =~ m/HMM|CR|WEBLOGO/) {
-        my $msaZipFilename = "${zipPrefix}_WebLogos_Full.zip";
-        my $msaZip = "$outputPath/$msaZipFilename";
+        my $msaZipFilename = "${zipPrefix}WebLogos_Full.zip";
+        my $msaZip = "$resultsPath/$msaZipFilename";
         $B->addAction(<<SCRIPT
     mkdir -p $domAlignDir
     $appDir/get_cluster_count.pl --fasta-dir $fastaDomainDir --count-file $domCountFile
@@ -310,8 +309,8 @@ SCRIPT
             );
         }
 
-        my $zipFilename= "${zipPrefix}_MSAs_Domain.zip";
-        my $zipFile = "$outputPath/$zipFilename";
+        my $zipFilename= "${zipPrefix}MSAs_Domain.zip";
+        my $zipFile = "$resultsPath/$zipFilename";
         $B->addAction(<<SCRIPT
 
     #MAKE MULTIPLE SEQUENCE ALIGNMENTs FOR DOMAIN SEQUENCES
@@ -343,8 +342,8 @@ SCRIPT
 
     ########## DOMAIN - CONSENSUS RESIDUE OR WEBLOGO
     if ($hmmOption =~ m/CR|WEBLOGO/i) {
-        my $zipFilename= "${zipPrefix}_WebLogos_Domain.zip";
-        my $zipFile = "$outputPath/$zipFilename";
+        my $zipFilename= "${zipPrefix}WebLogos_Domain.zip";
+        my $zipFile = "$resultsPath/$zipFilename";
         $B->addAction(<<SCRIPT
     #MAKE WEBLOGOs
     mkdir -p $domOutDir/weblogo
@@ -361,8 +360,8 @@ SCRIPT
 
     ########## DOMAIN - HMM
     if ($hmmOption =~ m/HMM/i) {
-        my $zipFilename = "${zipPrefix}_HMMs_Domain.zip";
-        my $zipFile = "$outputPath/$zipFilename";
+        my $zipFilename = "${zipPrefix}HMMs_Domain.zip";
+        my $zipFile = "$resultsPath/$zipFilename";
         foreach my $type (@types) {
             my $typeDir = "$domOutDir/hmm";
             $B->addAction(<<SCRIPT
@@ -384,8 +383,8 @@ SCRIPT
     if ($hmmOption =~ m/CR/i) {
         foreach my $aa (@aas) {
             my $consDir = "$domOutDir/consensus_residue_results_$aa";
-            my $consZipName = "${zipPrefix}_ConsensusResidue_${aa}_Domain.zip";
-            my $consZip = "$outputPath/$consZipName";
+            my $consZipName = "${zipPrefix}ConsensusResidue_${aa}_Domain.zip";
+            my $consZip = "$resultsPath/$consZipName";
             $B->addAction("    mkdir -p $consDir");
             my $mergeCounts = "";
             my $mergePercent = "";
@@ -402,11 +401,11 @@ SCRIPT
                 $mergeCounts .= " --position-file $ct=$consDir/${baseFile}_position.txt";
                 $mergePercent .= " --percentage-file $ct=$consDir/${baseFile}_percentage.txt";
             }
-            my $outBaseName = "${zipPrefix}_ConsensusResidue_${aa}";
+            my $outBaseName = "${zipPrefix}ConsensusResidue_${aa}";
             my $posSumFileName = "${outBaseName}_Position_Summary_Domain.txt";
             my $pctSumFileName = "${outBaseName}_Percentage_Summary_Domain.txt";
             $B->addAction(<<SCRIPT
-    $appDir/make_summary_tables.pl --position-summary-file $outputPath/$posSumFileName --percentage-summary-file $outputPath/$pctSumFileName $mergeCounts $mergePercent
+    $appDir/make_summary_tables.pl --position-summary-file $resultsPath/$posSumFileName --percentage-summary-file $resultsPath/$pctSumFileName $mergeCounts $mergePercent
     DIR=`pwd`
     cd $consDir && zip -r $consZip . -i '*'
     cd \$DIR
@@ -425,8 +424,8 @@ SCRIPT
             my $dirs = shift;
             my $urType = shift;
             my $fileType = lc($urType);
-            my $zipFilename= "${zipPrefix}_LenHist_${fileType}_Domain.zip";
-            my $zipFile = "$outputPath/$zipFilename";
+            my $zipFilename= "${zipPrefix}LenHist_${fileType}_Domain.zip";
+            my $zipFile = "$resultsPath/$zipFilename";
             my $outDir = "$domOutDir/hist-$fileType";
             $B->addAction(<<SCRIPT
     mkdir -p $outDir
@@ -445,10 +444,6 @@ SCRIPT
             &$outputFn($info->{uniref90_domain});
         } elsif ($info->{uniref50_domain}) {
             &$outputFn($info->{uniref50_domain});
-        } elsif ($info->{efiref70_domain}) {
-            &$outputFn($info->{efiref70_domain});
-        } elsif ($info->{efiref50_domain}) {
-            &$outputFn($info->{efiref50_domain});
         }
     }
 

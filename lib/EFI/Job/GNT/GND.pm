@@ -8,12 +8,9 @@ use Cwd qw(abs_path);
 use File::Basename qw(dirname);
 use lib dirname(abs_path(__FILE__)) . "/../../../";
 
-use Data::Dumper;
+use parent qw(EFI::Job::GNT);
 
 use EFI::GNN::Arrows;
-use EFI::Job::GNT::Shared;
-
-use parent qw(EFI::Job::GNT);
 
 use constant JOB_TYPE => "gnd";
 
@@ -35,7 +32,7 @@ sub new {
         "upload-file=s",
 
         # Mode 2
-        "blast-seq-file=s",
+        "seq-file=s",
         "evalue=n",
         "max-seq=n",
 
@@ -95,8 +92,6 @@ sub validateOptions {
     my $defaultMaxSeq = 200;
     my $defaultNbSize = 10;
 
-    print Dumper($parms);
-
     $conf->{title} = "\"$conf->{title}\"";
     $conf->{output} = $parms->{"output"} // $defaultOutputFile;
     $conf->{job_type} = $parms->{"job-type"} // "";
@@ -106,7 +101,7 @@ sub validateOptions {
     $conf->{upload_file} = $parms->{"upload-file"} // "";
 
     # Mode 2
-    $conf->{blast_seq_file} = $parms->{"blast-seq-file"} // "";
+    $conf->{blast_seq_file} = $parms->{"seq-file"} // "";
     $conf->{evalue} = $parms->{"evalue"} // $defaultEvalue;
     $conf->{max_seq} = $parms->{"max-seq"} // $defaultMaxSeq;
     $conf->{nb_size} = ok($parms->{"nb-size"}, $defaultNbSize);
@@ -128,8 +123,8 @@ sub validateOptions {
 
     if ($mode eq "unzip" and (not $conf->{upload_file} or not -f $conf->{upload_file})) {
         return "--job-type unzip requires --upload-file";
-    } elsif ($mode eq "BLAST" and (not $conf->{blast_seq_file} or not -f not $conf->{blast_seq_file})) {
-        return "--job-type BLAST requires --blast-seq-file";
+    } elsif ($mode eq "BLAST" and (not $conf->{blast_seq_file} or not -f $conf->{blast_seq_file})) {
+        return "--job-type BLAST requires --seq-file";
     } elsif ($mode eq "ID_LOOKUP" and (not $conf->{id_file} or not -f $conf->{id_file})) {
         return "--job-type ID_LOOKUP requires --id-file";
     } elsif ($mode eq "FASTA" and (not $conf->{fasta_file} or not -f $conf->{fasta_file})) {
@@ -176,7 +171,7 @@ sub getUsage {
 
     my $usage = <<USAGE;
 --output <OUTPUT_FILE> [--title "JOB_TITLE" --job-type BLAST|ID_LOOKUP|FASTA|unzip|TAXONOMY --nb-size #]
-    [--blast-seq-file <FILE> [--evalue # --max-seq #]] [--id-file <FILE>] [--fasta-file <FILE>]
+    [--seq-file <FILE> [--evalue # --max-seq #]] [--id-file <FILE>] [--fasta-file <FILE>]
     [--upload-file <FILE>] [--tax-file <FILE> --tax-tree-id NODE_ID --tax-id-type uniprot|uniref50|uniref90]
 
     --job-type          specifies the job type, as well as the string to put in for the
@@ -186,7 +181,7 @@ sub getUsage {
     --upload-file       the file to unzip/prep for viewing in GND
 
     # MODE 2: provide a FASTA sequence and retrievel related sequences for GND viewer
-    --blast-seq-file    the sequence for Option A, which uses BLAST to get similar sequences
+    --seq-file          the sequence for Option A, which uses BLAST to get similar sequences
     --evalue            the evalue to use for BLAST; default 5
     --max-seq           the maximum number of sequences to return from the BLAST; default 200
 
@@ -302,7 +297,7 @@ sub getBlastJob {
     push @acts, "grep -v '#' $blastOutFile | cut -f 2,11,12 | sort -k3,3nr | sed 's/[\t ]\\{1,\\}/|/g' | cut -d'|' -f2,4 > $blastIdListFile";
 
     my $action = sub {
-        return (\@acts, $blastIdListFile, ["--blast-seq-file $seqFile"], 0);
+        return (\@acts, $blastIdListFile, ["--file $seqFile"], 0);
     };
 
     return $self->getSharedJob($action);

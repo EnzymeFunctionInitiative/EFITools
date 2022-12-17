@@ -4,7 +4,7 @@ and the general file format.
 
 # GND usage 
 
-    submit_diagram.pl --job-setup=/path/to/setup_file.txt ...global_args...
+    efi.pl gnd --job-setup=/path/to/setup_file.txt ...global_args...
 
 (If run automatically from cron, the cron job that creates these jobs creates the output directory and
 provides it to the script.  Otherwise you must specify it according to the `global_args` as documented
