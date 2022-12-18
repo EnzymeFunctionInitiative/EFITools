@@ -38,7 +38,7 @@ sub new {
     my ($conf, $errors) = validateOptions($parms, $self);
 
     $self->{conf}->{blast} = $conf;
-    $self->{conf}->{blast}->{temp_blast_file} = "initialblast.tab";
+    $self->{conf}->{blast}->{temp_blast_file} = "blastfinal.tab";
     $self->{conf}->{blast}->{query_file} = "query.fa";
 
     push @{$self->{startup_errors}}, @$errors;
@@ -169,7 +169,8 @@ sub getInitialBlastJob {
     $B->addAction("    echo \$OUT > $outputDir/1.out.failed");
     $B->addAction("    exit 1");
     $B->addAction("fi");
-    $B->addAction("cat $outputDir/initialblast.out |grep -v '#'|cut -f 1,2,3,4,12 |sort -k5,5nr > $outputDir/$conf->{temp_blast_file}");
+    $B->addAction("cat $outputDir/initblast.out |grep -v '#'|cut -f 1,2,3,4,12 |sort -k5,5nr > $outputDir/$conf->{temp_blast_file}");
+    $B->addAction("cat $outputDir/initblast.out |grep -v '#'|cut -f 2,11 |sort -k2nr > $outputDir/$conf->{temp_blast_file}");
     $B->addAction("SZ=`stat -c%s $outputDir/$conf->{temp_blast_file}`");
     $B->addAction("if [[ \$SZ == 0 ]]; then");
     $B->addAction("    echo \"BLAST Failed. Check input sequence.\"");
