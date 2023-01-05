@@ -140,6 +140,9 @@ hmp=
 ; sections are not guaranteed to immediately follow the scheduler headers.
 [environment.headers]
 
+; EFI_HOME is set by the scripts
+[environment.global]
+
 ; Anytime the "est-std" environment is requested by the scripts, the following directives are inserted
 ; into the job script.
 ; These are used to add environment variables to job scripts, and are directly inserted into the

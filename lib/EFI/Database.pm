@@ -26,6 +26,7 @@ sub new {
     } else {
         $self->{load_infile} = 0;
     }
+    $self->{db}->{name} = $args{db_name} if $args{db_name};
 
     return $self;
 }

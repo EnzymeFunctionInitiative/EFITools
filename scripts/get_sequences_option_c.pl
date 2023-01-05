@@ -15,7 +15,7 @@ use EFI::EST::Family;
 use EFI::EST::FASTA;
 
 
-my ($familyConfig, $dbh, $configFile, $seqObj, $accObj, $metaObj, $statsObj) = setupConfig();
+my ($inputConfig, $dbh, $configFile, $seqObj, $accObj, $metaObj, $statsObj) = setupConfig();
 
 $metaObj->configureSourceTypes(
     EFI::Annotations::FIELD_SEQ_SRC_VALUE_FAMILY,
@@ -32,21 +32,23 @@ my $familyIds = {};
 my $familyMetadata = {};
 my $familyStats = {};
 my $unirefMap = {};
+my $familyObject;
 
-if (exists $familyConfig->{data}) {
-    my $famData = new EFI::EST::Family(dbh => $dbh);
-    $famData->configure($familyConfig);
+if (exists $inputConfig->{data}) {
+    my $famData = new EFI::EST::Family(dbh => $dbh, db_version => $inputConfig->{db_version});
+    $famData->configure($inputConfig);
     $famData->retrieveFamilyAccessions();
     $familyIds = $famData->getSequenceIds();
     $familyMetadata = $famData->getMetadata();
     $familyStats = $famData->getStatistics();
     $unirefMap = $famData->getUniRefMapping();
+    $familyObject = $famData;
 }
 
 
-my %fastaArgs = EFI::EST::FASTA::getFastaCmdLineArgs();
-my $fastaData = new EFI::EST::FASTA(config_file_path => $configFile);
-$fastaData->configure(%fastaArgs);
+my $fastaArgs = EFI::EST::FASTA::loadParameters($inputConfig);
+my $fastaData = new EFI::EST::FASTA(dbh => $dbh, config_file_path => $configFile);
+$fastaData->configure($fastaArgs);
 $fastaData->parseFile();
 
 
@@ -59,4 +61,7 @@ $seqObj->retrieveAndSaveSequences($familyIds, $userIds, $userSeq, $unirefMap); #
 $accObj->saveSequenceIds($familyIds, $userIds, $unirefMap); # file path is configured by setupConfig
 my $mergedMetadata = $metaObj->saveSequenceMetadata($familyMetadata, $userMetadata, $unirefMap);
 $statsObj->saveSequenceStatistics($mergedMetadata, $userMetadata, $familyStats, $userStats);
+
+$fastaData->setFamilySunburstIds($familyObject) if $familyObject;
+$fastaData->saveSunburstIdsToFile($fastaArgs->{sunburst_tax_output});
 

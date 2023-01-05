@@ -399,10 +399,10 @@ sub getColorSsnJob {
     my $targetSsn = "$outputPath/input_ssn.xgmml";
     if ($conf->{zipped_ssn_in}) {
         my $targetZip = "$outputPath/input_ssn.zip";
-        $B->addAction("copy $conf->{zipped_ssn_in} $targetZip");
+        $B->addAction("cp $conf->{zipped_ssn_in} $targetZip");
         $B->addAction("$toolPath/unzip_file.pl --in $targetZip --out $targetSsn");
     } else {
-        $B->addAction("copy $conf->{ssn_in} $targetSsn");
+        $B->addAction("cp $conf->{ssn_in} $targetSsn");
     }
 
     my $scriptArgs = 

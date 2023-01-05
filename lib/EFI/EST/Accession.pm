@@ -1,14 +1,10 @@
 
 package EFI::EST::Accession;
 
-use strict;
+
 use warnings;
+use strict;
 
-use Cwd qw(abs_path);
-use File::Basename qw(dirname);
-use lib dirname(abs_path(__FILE__)) . "/../";
-
-use Data::Dumper;
 use Getopt::Long qw(:config pass_through);
 use List::MoreUtils qw(uniq);
 
@@ -37,21 +33,28 @@ sub new {
 # Public
 sub configure {
     my $self = shift;
-    my %args = @_;
+    my $args = shift;
 
-    die "No accession ID file provided" if not $args{id_file} or not -f $args{id_file};
+    die "No accession ID file provided" if not $args->{id_file} or not -f $args->{id_file};
 
-    $self->{config}->{id_file} = $args{id_file};
-    $self->{config}->{domain_family} = $args{domain_family};
-    $self->{config}->{uniref_version} = ($args{uniref_version} and ($args{uniref_version} == 50 or $args{uniref_version} == 90)) ? $args{uniref_version} : "";
-    $self->{config}->{domain_region} = $args{domain_region};
-    $self->{config}->{exclude_fragments} = $args{exclude_fragments};
+    $self->{config}->{id_file} = $args->{id_file};
+    $self->{config}->{domain_family} = $args->{domain_family};
+    $self->{config}->{uniref_version} = ($args->{uniref_version} and ($args->{uniref_version} == 50 or $args->{uniref_version} == 90)) ? $args->{uniref_version} : "";
+    $self->{config}->{domain_region} = $args->{domain_region};
+    $self->{config}->{exclude_fragments} = $args->{exclude_fragments};
+    $self->{config}->{tax_search} = $args->{tax_search};
+    $self->{config}->{tax_invert} = $args->{tax_invert} // 0;
+    $self->{config}->{legacy_anno} = $args->{legacy_anno} // 0;
+    $self->{config}->{sunburst_tax_output} = $args->{sunburst_tax_output};
+    $self->{config}->{family_filter} = $args->{family_filter};
+    $self->{config}->{debug_sql} = $args->{debug_sql};
 }
 
 
 # Public
 # Look in @ARGV
-sub getAccessionCmdLineArgs {
+sub loadParameters {
+    my $inputConfig = shift // {};
 
     my ($idFile, $noMatchFile);
     my $result = GetOptions(
@@ -62,7 +65,17 @@ sub getAccessionCmdLineArgs {
     $idFile = "" if not $idFile;
     $noMatchFile = "" if not $noMatchFile;
 
-    return (id_file => $idFile, no_match_file => $noMatchFile);
+    my %args = (id_file => $idFile, no_match_file => $noMatchFile);
+    $args{domain_family}        = $inputConfig->{domain_family};
+    $args{domain_region}        = $inputConfig->{domain_region};
+    $args{uniref_version}       = $inputConfig->{uniref_version};
+    $args{exclude_fragments}    = $inputConfig->{exclude_fragments};
+    $args{tax_search}           = $inputConfig->{tax_search};
+    $args{sunburst_tax_output}  = $inputConfig->{sunburst_tax_output};
+    $args{family_filter}        = $inputConfig->{family_filter};
+    $args{debug_sql}            = $inputConfig->{debug_sql};
+
+    return \%args;
 }
 
 
@@ -95,15 +108,40 @@ sub parseFile {
 
     $self->{data}->{ids} = \%rawIds;
 
-    my $idMapper = new EFI::IdMapping(config_file_path => $self->{config_file_path}, uniprot_check => 1);
+    my $idMapper = new EFI::IdMapping(config_file_path => $self->{config_file_path});
     $self->reverseLookupManualAccessions($idMapper);
 
-    if ($self->{config}->{exclude_fragments}) {
-        $self->excludeFragments();
+    my $unirefIds = {};
+
+    if ($self->{config}->{exclude_fragments} or $self->{config}->{tax_search} or $self->{config}->{family_filter}) {
+        print "Doing Filtering\n";
+        my $doTaxFilter = $self->{config}->{tax_search} ? 1 : 0;
+        my $doFamilyFilter = $self->{config}->{family_filter} ? 1 : 0;
+
+        my ($filteredIds, $unirefIdsList) = $self->excludeIds($self->{data}->{uniprot_ids}, $doTaxFilter, $doFamilyFilter);
+        $self->{data}->{uniprot_ids} = $filteredIds;
+        $unirefIds = $unirefIdsList;
+        printIds($filteredIds, "FILTERED_IDS") if $self->{config}->{debug_sql};
+        printIds($unirefIds->{50}, "UNIREF50_IDS") if $self->{config}->{debug_sql};
+        printIds($unirefIds->{90}, "UNIREF90_IDS") if $self->{config}->{debug_sql};
+
+        my $data = $self->{data};
+        # Remove any metdata for nodes that were filtered out
+        map { delete $data->{meta}->{$_} if not $data->{uniprot_ids}->{$_}; } keys %{ $data->{meta} };
+    } else {
+        print "Getting UniRef IDs (no filtering)\n";
+        $unirefIds = $self->retrieveUniRefIds();
+        printIds($self->{data}->{uniprot_ids}, "NO_FILTERED_IDS") if $self->{config}->{debug_sql};
+        printIds($unirefIds->{50}, "NO_FILTERED_UNIREF50_IDS") if $self->{config}->{debug_sql};
+        printIds($unirefIds->{90}, "NO_FILTERED_UNIREF90_IDS") if $self->{config}->{debug_sql};
     }
 
+    die "Stopping retrieval due to debug flag" if $self->{config}->{debug_sql};
+
+    $self->addSunburstIds($self->{data}->{uniprot_ids}, $unirefIds);
+
     if ($self->{config}->{uniref_version}) {
-        $self->retrieveUniRefMetadata();
+        $self->retrieveUniRefMetadata($unirefIds);
     }
 
     if ($self->{config}->{domain_family}) {
@@ -114,46 +152,168 @@ sub parseFile {
 }
 
 
-sub retrieveUniRefMetadata {
+sub printIds {
+    my $hash = shift;
+    my $prefix = shift // "ID";
+    foreach my $key (sort keys %$hash) {
+        print "$prefix: $key\n";
+    }
+}
+
+
+sub addSunburstIds {
+    my $self = shift;
+    my $inputIds = shift;
+    my $unirefMapping = shift;
+
+    my $sunburstIds = $self->{sunburst_ids}->{user_ids};
+
+    my @uniprotIds;
+    foreach my $ver (keys %$unirefMapping) {
+        foreach my $unirefId (keys %{ $unirefMapping->{$ver} }) {
+            my @ids = @{ $unirefMapping->{$ver}->{$unirefId} };
+            push @uniprotIds, @ids;
+            map { $sunburstIds->{$_}->{"uniref${ver}"} = $unirefId; } @ids;
+        }
+    }
+
+    foreach my $id (@uniprotIds) {
+        $sunburstIds->{$id} = {uniref50 => "", uniref90 => ""} if not $sunburstIds->{$id};
+        $sunburstIds->{$id}->{uniref50} = "" if not exists $sunburstIds->{$id}->{uniref50};
+        $sunburstIds->{$id}->{uniref90} = "" if not exists $sunburstIds->{$id}->{uniref90};
+    }
+}
+
+
+sub retrieveUniRefIds {
     my $self = shift;
 
     my $version = $self->{config}->{uniref_version};
 
-    my $metaKey = "UniRef${version}_IDs";
-    foreach my $id (keys %{$self->{data}->{uniprot_ids}}) {
-        my $sql = "SELECT accession FROM uniref WHERE uniref${version}_seed = '$id'";
-        if ($self->{config}->{exclude_fragments}) {
-            $sql = "SELECT U.accession FROM uniref AS U LEFT JOIN annotations AS A ON U.accession = A.accession WHERE uniref${version}_seed = '$id' AND A.Fragment = 0";
-        }
+    my $unirefIds = {50 => {}, 90 => {}};
+
+    my $whereField = $version =~ m/^\d+$/ ? "uniref${version}_seed" : "accession";
+
+    foreach my $id (keys %{$self->{data}->{uniprot_ids}}) { # uniprot_ids is uniref if the job is uniref
+        my $sql = "SELECT * FROM uniref WHERE $whereField = '$id'";
         my $sth = $self->{dbh}->prepare($sql);
         $sth->execute;
         while (my $row = $sth->fetchrow_hashref) {
-            push @{$self->{data}->{meta}->{$id}->{$metaKey}}, $row->{accession};
+            push @{ $unirefIds->{50}->{$row->{uniref50_seed}} }, $row->{accession};
+            push @{ $unirefIds->{90}->{$row->{uniref90_seed}} }, $row->{accession};
         }
     }
+
+    return $unirefIds;
 }
 
 
-sub excludeFragments {
+sub retrieveUniRefMetadata {
     my $self = shift;
+    my $unirefIds = shift;
 
-    my %full;
+    my $version = $self->{config}->{uniref_version};
 
-    my @ids = keys %{$self->{data}->{uniprot_ids}};
-    my $batchSize = 20;
-    while (scalar @ids) {
-        my @group = splice(@ids, 0, $batchSize);
-        my $whereIds = join(",", map { "'$_'" } @group);
-        my $sql = "SELECT accession FROM annotations WHERE accession IN ($whereIds) AND Fragment = 0";
-        my $sth = $self->{dbh}->prepare($sql);
-        $sth->execute;
-        while (my $row = $sth->fetchrow_hashref) {
-            $full{$row->{accession}} = $self->{data}->{uniprot_ids}->{$row->{accession}};
-        }
+    my $metaKey = "UniRef${version}_IDs";
+    foreach my $unirefId (keys %{ $unirefIds->{$version} }) {
+        #map { push @{$self->{data}->{meta}->{$unirefId}->{$metaKey}}, $_; } @{ $unirefIds->{$version}->{$unirefId} };
+        push @{$self->{data}->{meta}->{$unirefId}->{$metaKey}}, @{ $unirefIds->{$version}->{$unirefId} };
     }
-
-    $self->{data}->{uniprot_ids} = \%full;
 }
+
+
+#sub retrieveUniRefMetadata {
+#    my $self = shift;
+#
+#    my $version = $self->{config}->{uniref_version};
+#
+#    my $taxSearch = $self->{config}->{tax_search};
+#    my $taxInvert = $self->{config}->{tax_invert};
+#
+#    my @extraCols;
+#    my @extraJoin;
+#    my @extraWhere;
+#    if ($self->{config}->{exclude_fragments} or $taxSearch) {
+#        push @extraJoin, "LEFT JOIN annotations AS A ON U.accession = A.accession";
+#        if ($self->{config}->{exclude_fragments}) {
+#            # Remove the legacy after summer 2022
+#            my $fragmentCol = $self->{config}->{legacy_anno} ? "Fragment" : "is_fragment";
+#            push @extraWhere, "A.$fragmentCol = 0";
+#        }
+#        # This code removes any members of a UniRef cluster that do not match the taxonomy filter.  As of 2/23/22 it is disabled
+#        # because we want to include all members.
+#        if ($taxSearch) {
+#            # Remove the legacy after summer 2022
+#            my $colVer = $self->{config}->{legacy_anno} ? "Taxonomy_ID" : "taxonomy_id";
+#            push @extraJoin, "LEFT JOIN taxonomy AS T ON A.$colVer = T.$colVer";
+#            my @taxWhere;
+#            foreach my $cat (keys %$taxSearch) {
+#                push @extraCols, "T.$cat AS T_$cat";
+#                # Exclude any seed sequences that do not match the filter
+#                push @taxWhere, "T_$cat NOT LIKE '$taxSearch->{$cat}\%'" if $taxInvert;
+#            }
+#            push @extraWhere, @taxWhere;
+#        }
+#    }
+#
+#    my $extraWhere = join(" AND ", @extraWhere);
+#    $extraWhere = "AND $extraWhere" if $extraWhere;
+#    my $extraJoin = join(" ", @extraJoin);
+#    my $extraCols = join(", ", @extraCols);
+#    $extraCols = ", $extraCols" if $extraCols;
+#
+#    my %taxValues;
+#    my $metaKey = "UniRef${version}_IDs";
+#    foreach my $id (keys %{$self->{data}->{uniprot_ids}}) {
+#        my $sql = "SELECT U.accession $extraCols FROM uniref AS U $extraJoin WHERE U.uniref${version}_seed = '$id' $extraWhere";
+#        print "ACCESSION METADATA $sql\n";
+#        my $sth = $self->{dbh}->prepare($sql);
+#        $sth->execute;
+#        while (my $row = $sth->fetchrow_hashref) {
+#            push @{$self->{data}->{meta}->{$id}->{$metaKey}}, $row->{accession};
+#
+#            # Get the taxonomy
+#            if ($taxSearch) {
+#                foreach my $cat (keys %$taxSearch) {
+#                    $taxValues{$row->{accession}}->{$cat} = $row->{"T_$cat"};
+#                }
+#            }
+#        }
+#    }
+#
+#    # Returns 1 if one or more of the IDs had a match in the taxonomy category.
+#    my $matchTaxFilter = sub {
+#        my @theIds = @_;
+#        foreach my $cat (keys %$taxSearch) {
+#            foreach my $pat (@{ $taxSearch->{$cat} }) {
+#                foreach my $id (@theIds) {
+#                    # Continue if the ID isn't present in the given tax category.
+#                    next if not $taxValues{$id}->{$cat};
+#                    if (not $taxInvert and $taxValues{$id}->{$cat} =~ m/$pat/i) { return 1; }
+#                    elsif ($taxInvert and $taxValues{$id}->{$cat} !~ m/$pat/i) { return 1; }
+#                }
+#            }
+#        }
+#        return 0;
+#    };
+#
+#    if ($taxSearch) {
+#        my $unirefData = $self->{data}->{meta};
+#        foreach my $unirefId (keys %taxValues) {
+#            # If it's not in the hash, then this is a uniref ID
+#            next if not $unirefData->{$unirefId};
+#
+#            # Get all of the UniProt IDs in this UniRef cluster
+#            my @clusterIds = @{ $unirefData->{$unirefId}->{$metaKey} };
+#
+#            # The UniRef sub-ID matches one of the taxonomy filter categories, so we delete it from the network.
+#            if (not &$matchTaxFilter(@clusterIds)) {
+#                delete $unirefData->{$unirefId};
+#                delete $self->{data}->{uniprot_ids}->{$unirefId};
+#            }
+#        }
+#    }
+#}
 
 
 sub retrieveDomains {
@@ -163,7 +323,9 @@ sub retrieveDomains {
 
     my $domainFamily = uc($self->{config}->{domain_family});
     my $famTable = $domainFamily =~ m/^PF/ ? "PFAM" : "INTERPRO";
-    my $seqLenField = $domReg eq "cterminal" ? ", Sequence_Length AS full_len" : "";
+    # Remove the legacy after summer 2022
+    my $colVer = $self->{config}->{legacy_anno} ? "Sequence_Length" : "seq_len";
+    my $seqLenField = $domReg eq "cterminal" ? ", seq_len AS full_len" : "";
     my $seqLenJoin = $domReg eq "cterminal" ? "LEFT JOIN annotations ON $famTable.accession = annotations.accession" : "";
     
     my $selectFn = sub {
@@ -245,6 +407,7 @@ sub getDomainRegion {
         my $metaKey = "UniRef$self->{config}->{uniref_version}_IDs";
         my @upIds;
         foreach my $id (keys %{$self->{data}->{uniprot_ids}}) {
+            push @upIds, $id and next if not exists $self->{data}->{meta}->{$id}->{$metaKey};
             my @clIds = @{$self->{data}->{meta}->{$id}->{$metaKey}};
             push @upIds, grep { exists $self->{data}->{uniref_cluster_members}->{$_} } @clIds;
         }

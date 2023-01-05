@@ -9,4 +9,5 @@ bak
 *.swo
 *.swn
 __pycache__
+perl5
 

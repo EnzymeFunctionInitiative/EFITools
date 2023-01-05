@@ -1,4 +1,4 @@
-requires 'perl', '>=5.10.1';
+requires 'perl', '>=5.10.0';
 requires 'DBI', '>=1.609';
 requires 'DBD::mysql', '>=4.013';
 requires 'DBD::SQLite', '>=1.27';
@@ -9,10 +9,6 @@ requires 'Getopt::Long', '>=2.48';
 requires 'List::Util', '>=1.45';
 requires 'List::MoreUtils', '>=0.428';
 requires 'IO::File', '>=1.16';
-requires 'XML::Writer', '>=0.606';
-requires 'XML::LibXML', '>=1.70';
-requires 'XML::Parser', '>=2.36';
-requires 'XML::LibXML::Reader','>=2.0129';
 requires 'Data::Dumper', '>=2.160';
 requires 'File::Slurp', '>=9999.19';
 requires 'JSON', '>=2.15';
@@ -21,6 +17,6 @@ requires 'Scalar::Util', '>=1.45';
 requires 'Array::Utils', '>=0.5';
 requires 'Config::IniFiles', '>=3.000002';
 requires 'Statistics::Descriptive', '>=3.0702';
-requires 'GD','>=2.49';
-requires 'GD::Graph::boxplot', '>=1.0';
+requires 'Time::HiRes', '>=1.8';
+requires 'Statistics::R','>=0.34';
 

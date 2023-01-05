@@ -1,0 +1,45 @@
+
+queue=efi
+mem_queue=efimem
+
+generate.results_dir_name=output
+generate.finish_file=1.out.completed
+generate.output_dir=<JOBS_DIR>/results/est
+generate.uploads_dir=<JOBS_DIR>/uploads/est
+generate.env=source /etc/profile
+generate.env=module load efiest/prod
+generate.env=module load efidb/ip91
+generate.env=module load efignt/prod
+generate.env=export EFI_PERL_ENV=/home/groups/efi/apps/perl_env.sh
+generate.env=source $EFI_PERL_ENV
+
+analysis.results_dir_name=output
+analysis.finish_file=stats.tab.completed
+analysis.output_dir=<JOBS_DIR>/results/est
+analysis.env=source /etc/profile
+analysis.env=module load efiest/prod
+analysis.env=module load efidb/ip91
+analysis.env=export EFI_PERL_ENV=/home/groups/efi/apps/perl_env.sh
+analysis.env=source $EFI_PERL_ENV
+
+gnn.results_dir_name=output
+gnn.finish_file=gnn.completed
+gnn.output_dir=<JOBS_DIR>/results/gnt
+gnn.uploads_dir=<JOBS_DIR>/uploads/gnt
+gnn.env=source /etc/profile
+gnn.env=module load efidb/ip91
+gnn.env=module load efignt/prod
+gnn.env=export EFI_PERL_ENV=/home/groups/efi/apps/perl_env.sh
+gnn.env=source $EFI_PERL_ENV
+
+diagram.results_dir_name=output
+diagram.finish_file=job.completed
+diagram.output_dir=<JOBS_DIR>/results/gnd
+diagram.uploads_dir=<JOBS_DIR>/uploads/gnd
+diagram.env=source /etc/profile
+diagram.env=module load efidb/ip91
+diagram.env=module load efignt/prod
+diagram.env=export EFI_PERL_ENV=/home/groups/efi/apps/perl_env.sh
+diagram.env=source $EFI_PERL_ENV
+
+

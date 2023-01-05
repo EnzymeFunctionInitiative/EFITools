@@ -6,7 +6,6 @@ use warnings;
 use Getopt::Long;
 use FindBin;
 use Data::Dumper;
-use Time::HiRes qw(time);
 
 use lib $FindBin::Bin . "/../lib";
 
@@ -180,36 +179,19 @@ sub findNeighbors {
     my $printProgress = sub {
         print "$sortKey / " . $#ids . " completed\n";
     };
-    my $timeData = {};
-
-    my $fnTime = 0;
-    my $gaTime = 0;
 
     foreach my $id (@ids) {
         my $checkProgress = ($sortKey % 50) == 0;
 
         my $localData = {};
-
-        $fnTime += timer("findNeighbors", $timeData) if $checkProgress;
-
         my (undef, undef, undef, undef) = $nbFind->findNeighbors($id, $nbSize, $warningFh, $useCircTest, $noneFamily, $localData);
-
-        $fnTime += timer("findNeighbors", $timeData) if $checkProgress;
-
         $accessionData->{$id} = $localData;
-
-        $gaTime += timer("getAnnotations", $timeData) if $checkProgress;
-
         getAnnotations($dbh, $id, $accessionData, $sortKey, $evalues, $uniRef50, $uniRef90);
-
-        $gaTime += timer("getAnnotations", $timeData) if $checkProgress;
 
         $sortKey++;
         &$printProgress if $checkProgress;
         last if ($debugLimit and $sortKey > $debugLimit);
     }
-
-    print "NB=$fnTime GA=$gaTime\n";
 
     close NO_NB_WARN;
 
@@ -217,27 +199,7 @@ sub findNeighbors {
 }
 
 
-sub timer {
-    my $id = shift;
-    my $data = shift;
-    if (exists $data->{$id}) {
-        my $diff = time - $data->{$id};
-        delete $data->{$id};
-        $diff;
-    } else {
-        $data->{$id} = time;
-        return 0;
-    }
-}
 
-
-
-sub printTime {
-    my ($t1, $name) = @_;
-    $name = $name // "t";
-    printf("$name=%.6f s\n", (time - $t1));
-    return time;
-}
 
 sub getAnnotations {
     my $dbh = shift;
@@ -250,7 +212,6 @@ sub getAnnotations {
 
     my $attr = $accessionData->{$accession}->{attributes};
 
-#    my $t1 = time;
     my ($organism, $taxId, $annoStatus, $desc, $familyDesc, $iproFamilyDesc) = $annoUtil->getAnnotations($accession, $attr->{family}, $attr->{ipro_family});
     $attr->{sort_order} = $sortKey;
     $attr->{organism} = $organism;
@@ -273,9 +234,6 @@ sub getAnnotations {
             $attr->{uniref90_size} = $size;
         }
     }
-#    $t1 = printTime($t1, "main");
-
-#    $t1 = time;
     foreach my $nbObj (@{ $accessionData->{$accession}->{neighbors} }) {
         my ($nbOrganism, $nbTaxId, $nbAnnoStatus, $nbDesc, $nbFamilyDesc, $ipFamilyDesc) =
             $annoUtil->getAnnotations($nbObj->{accession}, $nbObj->{family}, $nbObj->{ipro_family});
@@ -285,7 +243,6 @@ sub getAnnotations {
         $nbObj->{family_desc} = $nbFamilyDesc;
         $nbObj->{ipro_family_desc} = $ipFamilyDesc;
     }
-#    $t1 = printTime($t1, "nb");
 }
 
 

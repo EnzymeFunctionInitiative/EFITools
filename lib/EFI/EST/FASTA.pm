@@ -1,14 +1,10 @@
 
 package EFI::EST::FASTA;
 
-use strict;
+
 use warnings;
+use strict;
 
-use Cwd qw(abs_path);
-use File::Basename qw(dirname);
-use lib dirname(abs_path(__FILE__)) . "/../";
-
-use Data::Dumper;
 use Getopt::Long qw(:config pass_through);
 
 use parent qw(EFI::EST::Base);
@@ -26,6 +22,7 @@ sub new {
     die "No config parameter provided" if not exists $args{config_file_path};
 
     $self->{config_file_path} = $args{config_file_path};
+    $self->{dbh} = $args{dbh};
 
     return $self;
 }
@@ -34,18 +31,22 @@ sub new {
 # Public
 sub configure {
     my $self = shift;
-    my %args = @_;
+    my $args = shift // {};
 
-    die "No FASTA file provided" if not $args{fasta_file} or not -f $args{fasta_file};
+    die "No FASTA file provided" if not $args->{fasta_file} or not -f $args->{fasta_file};
 
-    $self->{config}->{use_headers} = exists $args{use_headers} ? $args{use_headers} : 0;
-    $self->{config}->{fasta_file} = $args{fasta_file};
+    $self->{config}->{use_headers} = exists $args->{use_headers} ? $args->{use_headers} : 0;
+    $self->{config}->{fasta_file} = $args->{fasta_file};
+    $self->{config}->{tax_search} = $args->{tax_search};
+    $self->{config}->{sunburst_tax_output} = $args->{sunburst_tax_output};
+    $self->{config}->{family_filter} = $args->{family_filter};
 }
 
 
 # Public
 # Look in @ARGV
-sub getFastaCmdLineArgs {
+sub loadParameters {
+    my $inputConfig = shift // {};
 
     my ($fastaFileIn, $useHeaders);
     my $result = GetOptions(
@@ -56,7 +57,12 @@ sub getFastaCmdLineArgs {
     $useHeaders = defined $useHeaders ? 1 : 0;
     $fastaFileIn = "" if not $fastaFileIn;
 
-    return (fasta_file => $fastaFileIn, use_headers => $useHeaders);
+    my %fastaArgs = (fasta_file => $fastaFileIn, use_headers => $useHeaders);
+    $fastaArgs{tax_search}          = $inputConfig->{tax_search};
+    $fastaArgs{sunburst_tax_output} = $inputConfig->{sunburst_tax_output};
+    $fastaArgs{family_filter}       = $inputConfig->{family_filter};
+
+    return \%fastaArgs;
 }
 
 
@@ -114,10 +120,12 @@ sub parseFile {
                     $hasUniprot = 1;
                     $lastId = -1;
                     $numMultUniprotIdSeq += scalar @{ $result->{uniprot_ids} } - 1;
+                    my $desc = substr((split(m/>/, $result->{raw_headers}))[0], 0, 150);
                     foreach my $res (@{ $result->{uniprot_ids} }) {
                         $upMeta->{$res->{uniprot_id}} = {
                             query_id => $res->{other_id},
-                            other_ids => $result->{other_ids}
+                            other_ids => $result->{other_ids},
+                            description => $desc,
                         };
                     }
                 }
@@ -168,13 +176,30 @@ sub parseFile {
     $parser->finish();
 
     my @fastaUniprotMatch = sort keys %$upMeta;
+    my $numRemoved = 0;
+    print "WHAT\n";
+    if ($self->{config}->{tax_search} or $self->{config}->{family_filter}) {
+        my $doTaxFilter = $self->{config}->{tax_search} ? 1 : 0;
+        my $doFamilyFilter = $self->{config}->{family_filter} ? 1 : 0;
+        print "$doTaxFilter|$doFamilyFilter|\n";
+        my ($filteredIds, $unirefMapping) = $self->excludeIds($upMeta, $doTaxFilter, $doFamilyFilter);
+        foreach my $origId (@fastaUniprotMatch) {
+            if (not $filteredIds->{$origId}) {
+                $numRemoved++;
+                delete $upMeta->{$origId};
+            }
+        }
+        @fastaUniprotMatch = sort keys %$upMeta;
+    }
 
     $self->{data}->{seq} = {};
     $self->{data}->{seq_meta} = {};
     map {
             my $id = $seq{$_}->{id};
-            $self->{data}->{seq}->{$id} = $seq{$_}->{seq};
-            $self->{data}->{seq_meta}->{$id} = $seqMeta->{$_};
+            if ($id) {
+                $self->{data}->{seq}->{$id} = $seq{$_}->{seq};
+                $self->{data}->{seq_meta}->{$id} = $seqMeta->{$_};
+            }
         } keys %seq;
     $self->{data}->{uniprot_meta} = $upMeta; # Metadata for IDs that had a UniProt match
     $self->{data}->{uniprot_ids} = \@fastaUniprotMatch;
@@ -184,8 +209,44 @@ sub parseFile {
     $self->{stats}->{num_multi_id} = $numMultUniprotIdSeq;
     $self->{stats}->{num_matched} = scalar @fastaUniprotMatch;
     $self->{stats}->{num_unmatched} = $seqCount + $numMultUniprotIdSeq - $self->{stats}->{num_matched};
+    $self->{stats}->{num_filter_removed} = $numRemoved;
+
+    $self->addSunburstIds();
 
     return 1;
+}
+
+
+sub addSunburstIds {
+    my $self = shift;
+
+    my $unirefMapping = $self->retrieveUniRefIds();
+
+    my $sunburstIds = $self->{sunburst_ids}->{user_ids};
+
+    foreach my $id (keys %$unirefMapping) {
+        $sunburstIds->{$id} = {uniref50 => $unirefMapping->{$id}->[0], uniref90 => $unirefMapping->{$id}->[1]};
+    }
+}
+
+
+sub retrieveUniRefIds {
+    my $self = shift;
+
+    my $whereField = "accession";
+
+    my $data = {};
+
+    foreach my $id (@{$self->{data}->{uniprot_ids}}) {
+        my $sql = "SELECT * FROM uniref WHERE $whereField = '$id'";
+        my $sth = $self->{dbh}->prepare($sql);
+        $sth->execute;
+        if (my $row = $sth->fetchrow_hashref) {
+            $data->{$id} = [$row->{uniref50_seed}, $row->{uniref90_seed}];
+        }
+    }
+
+    return $data;
 }
 
 

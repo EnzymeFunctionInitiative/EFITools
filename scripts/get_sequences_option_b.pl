@@ -7,7 +7,6 @@ use FindBin;
 use lib "$FindBin::Bin/../lib";
 
 use Getopt::Long;
-use Data::Dumper;
 
 use EFI::Annotations;
 use EFI::EST::Setup;
@@ -15,9 +14,9 @@ use EFI::EST::Family;
 use EFI::LengthHistogram;
 
 
-my ($familyConfig, $dbh, $configFile, $seqObj, $accObj, $metaObj, $statsObj, $otherConfig) = setupConfig();
+my ($inputConfig, $dbh, $configFile, $seqObj, $accObj, $metaObj, $statsObj) = setupConfig();
 
-if (not exists $familyConfig->{data}) {
+if (not exists $inputConfig->{data}) {
     print "ERROR: No family provided.\n";
     exit(1);
 }
@@ -29,9 +28,9 @@ $statsObj->configureSourceTypes(
     EFI::Annotations::FIELD_SEQ_SRC_VALUE_FAMILY,
 );
 
+my $famData = new EFI::EST::Family(dbh => $dbh, db_version => $inputConfig->{db_version});
+$famData->configure($inputConfig);
 
-my $famData = new EFI::EST::Family(dbh => $dbh, db_version => $otherConfig->{db_version});
-$famData->configure($familyConfig);
 
 $famData->retrieveFamilyAccessions();
 
@@ -48,10 +47,11 @@ $seqObj->retrieveAndSaveSequences($familyIds); # file path is configured by setu
 $accObj->saveSequenceIds($familyIds); # file path is configured by setupConfig
 my $mergedMetadata = $metaObj->saveSequenceMetadata($familyMetadata, $userMetadata, $unirefMap);
 $statsObj->saveSequenceStatistics($mergedMetadata, {}, $familyStats, {});
+$famData->saveSunburstIdsToFile($inputConfig->{config}->{sunburst_output_file});
 
-if ($otherConfig->{uniprot_domain_length_file}) {
+if ($inputConfig->{uniprot_domain_length_file}) {
     my $histo = new EFI::LengthHistogram;
     $histo->addData($familyFullDomainIds);
-    $histo->saveToFile($otherConfig->{uniprot_domain_length_file});
+    $histo->saveToFile($inputConfig->{uniprot_domain_length_file});
 }
 

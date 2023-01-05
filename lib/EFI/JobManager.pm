@@ -8,6 +8,7 @@ use JSON;
 use Capture::Tiny qw(capture);
 use File::Copy;
 use Data::Dumper;
+use File::Basename;
 
 
 my $STATUS_TABLE = "job_info";
@@ -125,7 +126,7 @@ sub isJobRunning {
         return 0;
     }
 }
-
+ 
 
 sub processNewJobs {
     my $self = shift;
@@ -293,15 +294,17 @@ sub makeArgs {
         push @args, "--memqueue", $self->{config}->{mem_queue};
 
         if ($subType eq TYPE_COLORSSN or $subType eq TYPE_CLUSTER or $subType eq TYPE_CONVRATIO or $subType eq TYPE_NBCONN) {
-            my $sourceFile = $self->getUploadFile($type, $jobId);
+            my $sourceFile = $self->getUploadFile($type, $jobId, $parms);
             $info->{source_file} = $sourceFile->{file_path};
             #my $targetName = "$jobId.$sourceFile->{ext}";
             #$info->{target_file} = "$jobDir/$targetName";
+            my $targetName = getBaseSsnName($parms->{generate_fasta_file});
 
             warn "Unable to generate $subType job because upload file doesn't exist" and next if not $sourceFile;
             push @args, "--ssn-in", $info->{source_file};
             #push @args, "--ssn-in", $info->{target_file};
-            push @args, "--ssn-out", "ssn.xgmml";
+            push @args, "--ssn-out", "ssn.zip";
+            push @args, "--ssn-file-name", "${jobId}_$targetName";
             push @args, "--large-mem", "--extra-ram", $parms->{extra_ram} if $parms->{extra_ram};
 
             if ($subType eq TYPE_COLORSSN) {
@@ -323,7 +326,7 @@ sub makeArgs {
 
             # Shared
             push @args, "--map-dir-name", "'cluster-data'";
-            push @args, "--map-file-name", "mapping_table.txt",
+            push @args, "--map-file-name", "mapping_table.txt";
             push @args, "--domain-map-file-name", "mapping_table_domain.txt";
             push @args, "--stats", "stats.txt";
             push @args, "--cluster-sizes", "cluster_sizes.txt";
@@ -372,7 +375,7 @@ sub makeArgs {
                     }
                 }
                 if (not $parms->{tax_job_id}) {
-                    my $sourceFile = $self->getUploadFile($type, $jobId);
+                    my $sourceFile = $self->getUploadFile($type, $jobId, $parms);
                     warn "Unable to generate $subType job because upload file doesn't exist" and next if not $sourceFile;
                     #$targetName = "$jobId.$sourceFile->{ext}";
                     #$info->{source_file} = $sourceFile->{file_path};
@@ -384,7 +387,7 @@ sub makeArgs {
                 if ($subType eq TYPE_FASTA_ID) {
                     push @args, "--use-fasta-headers";
                 }
-                my $sourceFile = $self->getUploadFile($type, $jobId);
+                my $sourceFile = $self->getUploadFile($type, $jobId, $parms);
                 warn "Unable to generate $subType job because upload file doesn't exist" and next if not $sourceFile;
                 #$info->{source_file} = $sourceFile->{file_path};
                 #my $targetName = "$jobId.$sourceFile->{ext}";
@@ -422,9 +425,12 @@ sub makeArgs {
         }
 
         my $parms = decode_json($row->{analysis_params});
+        $parms = {} if (not $parms or ref $parms ne "HASH"); # this can happen if there are no values
+
         push @args, "--use-anno_spec" if $parms->{use_min_node_attr};
         push @args, "--use-min-edge-attr" if $parms->{use_min_edge_attr};
         push @args, "--compute-nc" if $parms->{compute_nc};
+        #push @args, "--no-repnode" if (exists $parms->{build_repnode} and not $parms->{build_repnode});
         push @args, "--no-repnode" if not $parms->{build_repnode};
         push @args, "--remove-fragments" if $parms->{remove_fragments};
 
@@ -432,27 +438,68 @@ sub makeArgs {
             push @args, "--tax-search", "\"" . $parms->{tax_search} . "\"";
             push @args, "--tax-search-hash", $parms->{tax_search_hash};
         }
-    } elsif ($type eq TYPE_GND) {
-        push @args, "--queue", $self->{config}->{mem_queue};
 
-    } elsif ($type eq TYPE_GNN) {
-        my $parms = decode_json($row->{generate_params});
+        push @args, "--name", $parms->{analysis_name};
+    } elsif ($type eq TYPE_GND) {
+        my $parms = decode_json($row->{diagram_params});
+
         push @args, "--queue", $self->{config}->{mem_queue};
-        my $sourceFile = $self->getUploadFile($type, $jobId);
+        my $subType = $row->{diagram_type};
+        my $title = $row->{diagram_title} // "";
+
+        if ($subType eq "DIRECT" or $subType eq "DIRECT_ZIP") {
+        } elsif ($subType eq "BLAST") {
+            my $seq = $parms->{blast_seq} // "";
+            $seq =~ s/[\n\r]//gs;
+            push @args, "--blast", "\"$seq\"";
+            push @args, "--evalue", $parms->{evalue} if $parms->{evalue};
+            push @args, "--seq-db-type", $parms->{seq_db_type} if $parms->{seq_db_type};
+        } elsif ($subType eq "ID_LOOKUP") {
+            if ($parms->{tax_job_id} and $parms->{tax_id_type} and exists $parms->{tax_tree_id}) {
+                my $sourceFile = $self->resultsFileExists($type, TYPE_TAXONOMY, $parms->{tax_job_id});
+                if ($sourceFile) {
+                    push @args, "--tax-file", $sourceFile, "--tax-id-type", $parms->{tax_id_type}, "--tax-tree-id", $parms->{tax_tree_id};
+                }
+            } else {
+                my $uploadsDir = $self->{info}->{$type}->getUploadsDir();
+                my $sourceFile = "$uploadsDir/$jobId.txt";
+                push @args, "--id-file", $sourceFile;
+            }
+            push @args, "--seq-db-type", $parms->{seq_db_type} if $parms->{seq_db_type};
+        } elsif ($subType eq "FASTA") {
+            my $uploadsDir = $self->{info}->{$type}->getUploadsDir();
+            my $sourceFile = "$uploadsDir/$jobId.txt";
+            push @args, "--fasta-file", $sourceFile;
+        }
+
+        push @args, "--output", "$jobId.sqlite";
+        push @args, "--title", "\"" . $title . "\"" if $title;
+        push @args, "--job-type", $subType;
+        push @args, "--nb-size", $parms->{neighborhood_size} if $parms->{neighborhood_size};
+    } elsif ($type eq TYPE_GNN) {
+        my $parms = decode_json($row->{gnn_params});
+        push @args, "--queue", $self->{config}->{mem_queue};
+        my $sourceFile = $self->getUploadFile($type, $jobId, $parms);
         warn "Unable to process $type job because upload file doesn't exist" and next if not $sourceFile;
         $info->{source_file} = $sourceFile->{file_path};
         push @args, "--ssn-in", $info->{source_file};
 
+        my ($fn, $fp, $fx) = fileparse($parms->{filename}, ".xgmml", ".xgmml.zip", ".zip");
+        my $filename = "${jobId}_$fn";
+
+        my $nameSuffix = "_co$parms->{cooccurrence}_ns$parms->{neighborhood_size}";
+
         push @args, "--nb-size", $parms->{neighborhood_size};
         push @args, "--cooc", $parms->{cooccurrence};
-        push @args, "--gnn", "ssn_cluster_gnn.zip";
-        push @args, "--ssnout", "coloredssn.zip";
+        push @args, "--name", "\"" . $filename . "\"";
+        push @args, "--gnn", "${filename}_ssn_cluster_gnn$nameSuffix.zip";
+        push @args, "--ssnout", "${filename}_coloredssn$nameSuffix.zip";
+        push @args, "--pfam", "${filename}_pfam_family_gnn$nameSuffix.zip";
         push @args, "--stats", "stats.txt";
         push @args, "--cluster-sizes", "cluster_sizes.txt";
         push @args, "--sp-clusters-desc", "swissprot_clusters_desc.txt";
         push @args, "--sp-singletons-desc", "swissprot_singletons_desc.txt";
         push @args, "--warning-file", "nomatches_noneighbors.txt";
-        push @args, "--pfam", "pfam_family_gnn.zip";
         push @args, "--id-out", "mapping_table.txt";
         push @args, "--id-out-domain", "domain_mapping_table.txt";
         push @args, "--extra-ram" if $parms->{extra_ram};
@@ -467,19 +514,26 @@ sub makeArgs {
         push @args, "--uniref50-domain-id-zip", "UniRef50_Domain_IDs.zip";
         push @args, "--uniref90-id-zip", "UniRef90_IDs.zip";
         push @args, "--uniref90-domain-id-zip", "UniRef90_Domain_IDs.zip";
-        push @args, "--none-zip", "nomatches_noneighbors.txt";
+        push @args, "--none-zip", "no_pfam_neighbors.zip";
         push @args, "--fasta-zip", "FASTA.zip";
         push @args, "--fasta-domain-zip", "FASTA_Domain.zip";
         push @args, "--fasta-uniref90-zip", "FASTA_UniRef90.zip";
         push @args, "--fasta-uniref90-domain-zip", "FASTA_Domain_UniRef90.zip";
         push @args, "--fasta-uniref50-zip", "FASTA_UniRef50.zip";
         push @args, "--fasta-uniref50-domain-zip", "FASTA_Domain_UniRef50.zip";
-        push @args, "--arrow-file", "arrow_data.zip";
+        push @args, "--arrow-file", "$jobId.sqlite";
         push @args, "--cooc-table", "cooc_table.txt";
         push @args, "--hub-count-file", "hub_count.txt";
     }
 
     return @args;
+}
+
+
+sub getBaseSsnName {
+    my $file = shift;
+    my ($fn, $fp, $fx) = fileparse($file, ".xgmml", ".xgmml.zip", ".zip");
+    return $fn;
 }
 
 
@@ -532,18 +586,18 @@ sub getUploadFile {
     my $self = shift;
     my $type = shift;
     my $jobId = shift;
+    my $parms = shift;
 
-    my $tableName = $self->{info}->{$type}->getTableName();
-
-    my $sql = "SELECT ${tableName}_params AS parms FROM $tableName WHERE ${tableName}_id = ?";
-    my $sth = $self->{dbh}->prepare($sql);
-    $sth->execute($jobId);
-    my $row = $sth->fetchrow_hashref;
-
-    #TODO
-    return undef if not $row;
-
-    my $parms = $row->{parms};
+    if (not $parms) {
+        my $tableName = $self->{info}->{$type}->getTableName();
+        my $sql = "SELECT ${tableName}_params AS parms FROM $tableName WHERE ${tableName}_id = ?";
+        my $sth = $self->{dbh}->prepare($sql);
+        $sth->execute($jobId);
+        my $row = $sth->fetchrow_hashref;
+        #TODO
+        return undef if not $row;
+        $parms = $row->{parms};
+    }
 
     my $fileInfo = $self->{info}->{$type}->getUploadedFilename($jobId, $parms);
     return undef if not $fileInfo;
@@ -592,6 +646,7 @@ sub getJobParameters {
 
     my $outputPath = "";;
     my $argJobId = $jobId;
+    $argJobId = $row->{analysis_generate_id} if $type eq TYPE_ANALYSIS;
     #    if ($type eq TYPE_ANALYSIS) {
     #        $outputPath = $self->{info}->{&TYPE_GENERATE}->getJobDir($row->{analysis_generate_id});
     #        $argJobId = $row->{analysis_generate_id};
@@ -605,7 +660,7 @@ sub getJobParameters {
     $info->{results_dir} = $self->{info}->{$type}->getResultsDirName($jobId);
     my $tmpDir = $self->{info}->{$type}->getTmpDirName();
 
-    my @globalArgs = ("--scheduler", "slurm", "--job-id", $argJobId, "--remove-temp", "--output-path", $outputPath, "--output-dir", $outputPath, "--tmp", $tmpDir, "--out-dir", $info->{results_dir});
+    my @globalArgs = ("--scheduler", "slurm", "--job-id", $argJobId, "--remove-temp", "--output-path", $outputPath, "--job-dir", $outputPath, "--results-dir-name", $info->{results_dir});
 
     my @args = $self->makeArgs($jobId, $type, $row, $info);
 

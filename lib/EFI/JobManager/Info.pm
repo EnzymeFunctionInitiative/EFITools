@@ -36,7 +36,7 @@ sub getFinishFile {
     my $self = shift;
     my $jobId = shift;
     my $jobDir = $self->getJobDir($jobId);
-    my $suffix = $self->getResultsDirName($jobId);
+    my $suffix = $self->getResultsDirName($jobId, 1);
     my $resultsDir = "$jobDir/$suffix";
     my $finishFile = "$resultsDir/$self->{info}->{finish_file}";
     return $finishFile;
@@ -69,9 +69,10 @@ sub getTmpDirName {
 sub getResultsDirName {
     my $self = shift;
     my $jobId = shift;
+    my $expandIfAnalysis = shift || 0;
 
     my $dirName = $self->{info}->{results_dir_name};
-    if ($self->{info}->{type} eq TYPE_ANALYSIS) {
+    if ($self->{info}->{type} eq TYPE_ANALYSIS and $expandIfAnalysis) {
         my $sql = "SELECT * FROM analysis WHERE analysis_id = ?";
         my $sth = $self->{dbh}->prepare($sql);
         $sth->execute($jobId);
@@ -80,7 +81,9 @@ sub getResultsDirName {
 
         # Unfortunately this is a bit hacky.  We need to come up with a better way to share info
         # between the web app and this app.
-        my $params = decode_json($dbRow->{analysis_params});
+        my $json = $dbRow->{analysis_params};
+        my $params = decode_json($json);
+        $params = {} if (not $params or ref $params ne "HASH"); # this can happen if there are no values
         my $taxSearch = $params->{"tax_search_hash"} ? "-" . $params->{"tax_search_hash"} : "";
         my $ncSuffix = $params->{"compute_nc"} ? "-nc" : "";
         my $nfSuffix = $params->{"remove_fragments"} ? "-nf" : "";
@@ -152,26 +155,24 @@ sub parseForSlurmId {
 sub getUploadedFilename {
     my $self = shift;
     my $jobId = shift;
-    my $parmsStr = shift;
+    my $parms = shift;
 
     if ($self->{info}->{type} eq TYPE_GND) {
-        return {file => "$jobId.txt", ext => "txt"};
+        return {file => "$jobId.sqlite", ext => "sqlite"};
     }
 
     my $type = $self->{info}->{type};
     my $info;
     if ($type eq TYPE_COLORSSN or $type eq TYPE_CLUSTER or $type eq TYPE_NBCONN or $type eq TYPE_CONVRATIO) {
-        my $cparms = decode_json($parmsStr);
-
+        #TODO:
         # Create a color SSN job from an EST job
-        if ($cparms->{generate_color_ssn_source_id} and exists $cparms->{generate_color_ssn_source_idx}) {
+        if ($parms->{generate_color_ssn_source_id} and exists $parms->{generate_color_ssn_source_idx}) {
         # Create color SSN job from another color SSN job
-        } elsif ($cparms->{color_ssn_source_color_id}) {
+        } elsif ($parms->{color_ssn_source_color_id}) {
         }
     }
 
     if (not $info) {
-        my $parms = decode_json($parmsStr);
         my $file = $parms->{$self->{info}->{file_name_key}};
         return {file => "$jobId.", ext => ""} if $file !~ m/\./;
         $file =~ s/^.*\.([^\.]+)$/$1/; # extension

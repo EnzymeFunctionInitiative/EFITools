@@ -9,6 +9,8 @@ use Getopt::Long qw(:config pass_through);
 
 use parent qw(EFI::EST::Base);
 
+use EFI::EST::Filter qw(parse_tax_search flatten_tax_search get_tax_search_fields run_tax_search get_tax_filter_sql);
+
 
 
 sub new {
@@ -33,25 +35,18 @@ sub hasUniRef {
 
 
 # Look on the command line @ARGV for family configuration parameters.
-sub loadFamilyParameters {
+sub loadParameters {
     my ($ipro, $pfam, $gene3d, $ssf);
-    my ($useDomain, $fraction, $maxSequence, $maxFullFam);
-    my ($unirefVersion);
-    my ($domainFamily, $domainRegion, $excludeFragments);
+    my ($fraction, $maxSequence, $maxFullFam);
 
     my $result = GetOptions(
         "ipro=s"                => \$ipro,
         "pfam=s"                => \$pfam,
         "gene3d=s"              => \$gene3d,
         "ssf=s"                 => \$ssf,
+        "fraction=i"            => \$fraction,
         "max-sequence=s"        => \$maxSequence,
         "max-full-fam-ur90=i"   => \$maxFullFam,
-        "domain=s"              => \$useDomain,
-        "domain-family=s"       => \$domainFamily, # Option D
-        "domain-region=s"       => \$domainRegion, # Option D
-        "fraction=i"            => \$fraction,
-        "uniref-version=s"      => \$unirefVersion,
-        "exclude-fragments"     => \$excludeFragments,
     );
 
     my $data = {interpro => [], pfam => [], gene3d => [], ssf => []};
@@ -75,29 +70,21 @@ sub loadFamilyParameters {
     my $numFam = scalar @{$data->{interpro}} + scalar @{$data->{pfam}} + scalar @{$data->{gene3d}} + scalar @{$data->{ssf}};
 
     my $config = {};
-    $config->{fraction} =       (defined $fraction and $fraction !~ m/\D/ and $fraction > 0) ? $fraction : 1;
-    $config->{use_domain} =     (defined $useDomain and $useDomain eq "on");
-    $config->{uniref_version} = defined $unirefVersion ? $unirefVersion : "";
-    $config->{max_seq} =        defined $maxSequence ? $maxSequence : 0;
-    $config->{max_full_fam} =   defined $maxFullFam ? $maxFullFam : 0;
-    $config->{domain_family} =  ($config->{use_domain} and $domainFamily) ? $domainFamily : "";
-    $config->{domain_region} =  ($config->{use_domain} and $domainRegion) ? $domainRegion : "";
-    $config->{exclude_fragments}    = $excludeFragments;
+    $config->{fraction}         = (defined $fraction and $fraction !~ m/\D/ and $fraction > 0) ? $fraction : 1;
+    $config->{max_seq}          = defined $maxSequence ? $maxSequence : 0;
+    $config->{max_full_fam}     = defined $maxFullFam ? $maxFullFam : 0;
+    $config->{data}             = $data if $numFam;
 
-    if ($numFam) {
-        return {data => $data, config => $config};
-    } else {
-        return {config => $config};
-    }
+    return $config;
 }
 
 
 sub configure {
     my $self = shift;
-    my $config = shift;
+    my $inputConfig = shift;
 
-    $self->{family} = $config->{data};
-    $self->{config} = $config->{config};
+    $self->{family} = $inputConfig->{data};
+    $self->{config} = $inputConfig;
 }
 
 
@@ -119,32 +106,38 @@ sub retrieveFamilyAccessions {
             my $count = shift;
             my $status = shift || "";
             # Always return true for SwissProt proteins
-            return ($status eq "Reviewed" or $count % $self->{config}->{fraction} == 0);
+            return ($status or $count % $self->{config}->{fraction} == 0);
         };
     }
 
-    $self->{data}->{uniprot_ids} = {};
-    $self->{data}->{uniref_data} = {}; # Maps UniRef cluster ID to the list of IDs that are members of the cluster.
-    $self->{data}->{uniref_mapping} = {}; # Maps UniProt ID to the UniRef cluster ID that it belongs to.
-    
+    $self->{data}->{uniprot_ids} = {}; # When using UniRef, this only contains UniRef IDs that are members of the family.
+    $self->{data}->{uniref_data} = {}; # Maps UniRef cluster ID to the list of IDs that are members of the cluster. May contain UniRef IDs that are not part of the family.
+    $self->{data}->{uniref_mapping} = {}; # Maps UniProt ID to the UniRef cluster ID that it belongs to. May contain UniRef IDs that are not part of the family.
+
     # This is the full list of IDs in the given family, not just the UniRef
     # cluster IDs.  We need this when using domain options, so we can write out
     # a histogram of the entire family, not just the UniRef sequences.
     # Only used when domains are enabled.
     $self->{data}->{full_dom_uniprot_ids} = $self->{config}->{use_domain} ? {} : undef;
 
-    my ($actualI, $fullFamSizeI) = $self->getDomainFromDb("INTERPRO", $fractionFunc, $self->{family}->{interpro});
-    my ($actualP, $fullFamSizeP) = $self->getDomainFromDb("PFAM", $fractionFunc, \@pfam);
-    my ($actualG, $fullFamSizeG) = $self->getDomainFromDb("GENE3D", $fractionFunc, $self->{family}->{gene3d});
-    my ($actualS, $fullFamSizeS) = $self->getDomainFromDb("SSF", $fractionFunc, $self->{family}->{ssf});
-    
+    my ($actualI, $fullFamSizeI, $allIdsI) = $self->getDomainFromDb("INTERPRO", $fractionFunc, $self->{family}->{interpro});
+    my ($actualP, $fullFamSizeP, $allIdsP) = $self->getDomainFromDb("PFAM", $fractionFunc, \@pfam);
+    #my ($actualG, $fullFamSizeG, $allIdsG) = $self->getDomainFromDb("GENE3D", $fractionFunc, $self->{family}->{gene3d});
+    #my ($actualS, $fullFamSizeS, $allIdsS) = $self->getDomainFromDb("SSF", $fractionFunc, $self->{family}->{ssf});
+    my ($actualG, $fullFamSizeG, $allIdsG) = (0, 0, []);
+    my ($actualS, $fullFamSizeS, $allIdsS) = (0, 0, []);
+
     my $domReg = $self->{config}->{domain_region};
     if ($domReg eq "cterminal" or $domReg eq "nterminal") {
         $self->getDomainRegion($domReg);
     }
-
+    
     $self->{stats}->{num_ids} = $actualI + $actualP + $actualG + $actualS;
-    $self->{stats}->{num_full_family} = $fullFamSizeI + $fullFamSizeP + $fullFamSizeG + $fullFamSizeS;
+    # Not correct
+    #$self->{stats}->{num_full_family} = $fullFamSizeI + $fullFamSizeP + $fullFamSizeG + $fullFamSizeS;
+    my %allIds;
+    map { $allIds{$_} = 1 } (@$allIdsI, @$allIdsP, @$allIdsG, @$allIdsS);
+    $self->{stats}->{num_full_family} = scalar keys %allIds;
 } 
 
 
@@ -176,38 +169,38 @@ sub getDomainFromDb {
     my $domReg = $self->{config}->{domain_region};
 
     my $ids = $self->{data}->{uniprot_ids};
-    my $fullFamIds = $useDomain ? $self->{data}->{full_dom_uniprot_ids} : {};
     my $unirefData = $self->{data}->{uniref_data};
     my $unirefMapping = $self->{data}->{uniref_mapping};
+    my $isTaxSearch = $self->{config}->{tax_search} ? 1 : 0;
+    my $taxSearch = $self->{config}->{tax_search};
+    my $taxFilterByExclude = 0; # This should always be 0, rather than specified by $self->{config}->{tax_filter_by_exclude};
 
     my $count = 1;
     my %unirefFamSizeHelper;
     my %idsProcessed;
 
-    my $unirefField = "";
-    my $unirefCol = "";
-    my $unirefJoin = "";
-    if ($unirefVersion) {
-        $unirefField = $unirefVersion eq "90" ? "uniref90_seed" : "uniref50_seed";
-        $unirefCol = ", $unirefField";
-        $unirefJoin = "LEFT JOIN uniref ON $table.accession = uniref.accession";
-    }
-
+    my $unirefField = $unirefVersion eq "90" ? "uniref90_seed" : "uniref50_seed";
+    my $unirefCol = ", uniref90_seed, uniref50_seed";
+    my $unirefJoin = "LEFT JOIN uniref ON $table.accession = uniref.accession";
     my $annoTable = "annotations";
-    my $annoJoinStr = "LEFT JOIN $annoTable ON $table.accession = $annoTable.accession"; # Used conditionally
+    my $annoJoin = "LEFT JOIN $annoTable ON $table.accession = $annoTable.accession";
 
-    my $annoJoin = ($self->{config}->{fraction} > 1 or $self->{config}->{exclude_fragments} or $domReg eq "cterminal") ? $annoJoinStr : "";
-    my $spCol = $self->{config}->{fraction} > 1 ? ", $annoTable.STATUS AS STATUS" : "";
-    my $fragWhere = "";
-    if ($self->dbSupportsFragment() and $self->{config}->{exclude_fragments}) {
-        $fragWhere = " AND $annoTable.Fragment = 0";
-    }
-    
-    my $seqLenCol = $domReg eq "cterminal" ? ", Sequence_Length AS full_len" : "";
-    #$annoJoin = ($domReg eq "cterminal" and not $annoJoin) ? $annoJoinStr : "";
+    my $seqLenCol = $domReg eq "cterminal" ? ", $annoTable.seq_len AS full_len" : "";
 
+    my $spCol = $self->{config}->{fraction} > 1 ? ", $annoTable.swissprot_status" : "";
+    my $fragWhere = ($self->{config}->{exclude_fragments} and $self->dbSupportsFragment()) ? " AND $annoTable.is_fragment = 0" : "";
+    my ($taxSearchWhere, $taxSearchJoin, $taxCols) = $self->getTaxSearchSql($taxSearch, $unirefVersion, $isTaxSearch);
+    my ($seqLenFiltWhere) = $self->getSeqLenSql($domReg, $annoTable, \$seqLenCol);
+
+    # For sunbursts
+    my $uniref90IdMap = {};
+    my $uniref50IdMap = {};
+    my $uniprotIdMap = {};
+
+    my %taxValues;
+    my $fullFamIds;
     foreach my $family (@families) {
-        my $sql = "SELECT $table.accession AS accession, start, end $unirefCol $spCol $seqLenCol FROM $table $unirefJoin $annoJoin WHERE $table.id = '$family' $fragWhere";
+        my $sql = "SELECT $table.accession AS accession, start, end $unirefCol $spCol $seqLenCol $taxCols FROM $table $unirefJoin $annoJoin $taxSearchJoin WHERE $table.id = '$family' $fragWhere $taxSearchWhere $seqLenFiltWhere";
         print "SQL $sql\n";
         my $sth = $self->{dbh}->prepare($sql);
         $sth->execute;
@@ -217,33 +210,48 @@ sub getDomainFromDb {
             next if (not $useDomain and exists $idsProcessed{$uniprotId});
             $idsProcessed{$uniprotId} = 1;
 
-            my $isSwissProt = $self->{config}->{fraction} > 1 ? $row->{STATUS} eq "Reviewed" : 0;
+            my $isSwissProt = 0;
+            if ($self->{config}->{fraction} > 1) {
+                my $spVal = $row->{swissprot_status};
+                $isSwissProt = ($self->{config}->{fraction} > 1 and $spVal);
+            }
             my $isFraction = &$fractionFunc($count);
 
             if ($unirefVersion) {
                 my $unirefId = $row->{$unirefField};
-                $ac++;
-                push @{$unirefData->{$unirefId}}, $uniprotId;
-                # The accession element will be overwritten multiple times, once for each accession ID 
-                # in the UniRef cluster that corresponds to the UniRef cluster ID.
-                my $piece = {'start' => $row->{start}, 'end' => $row->{end}};
-                $piece->{full_len} = $row->{full_len} if $seqLenCol;
-                print "LEN $piece->{full_len}\n";
-                if ($unirefId eq $uniprotId and ($isSwissProt or $isFraction)) {
-                    push @{$ids->{$uniprotId}}, \%$piece;
-                    push @{$fullFamIds->{$uniprotId}}, \%$piece if $useDomain;
-                } elsif ($useDomain and ($isSwissProt or $isFraction)) {
-                    push @{$fullFamIds->{$uniprotId}}, \%$piece;
-                }
-                if ($unirefId ne $uniprotId and ($isSwissProt or $isFraction)) {
-                    $unirefMapping->{$uniprotId} = $unirefId;
-                }
                 # Only increment the family size if the uniref cluster ID hasn't yet been encountered.  This
                 # is because the select query above retrieves all accessions in the family based on UniProt
                 # not based on UniRef.
                 if (not exists $unirefFamSizeHelper{$unirefId}) {
                     $unirefFamSizeHelper{$unirefId} = 1;
                     $count++;
+                }
+                $ac++;
+                #push @{$unirefData->{$unirefId}}, $uniprotId;
+                $unirefData->{$unirefId}->{$uniprotId} = 1;
+
+                # Skip if we are using fractions and the current ID does not have a SwissProt annotation.
+                next if (not $isSwissProt and not $isFraction);
+
+                # Get the taxonomy
+                if ($isTaxSearch and $unirefVersion and $taxFilterByExclude) {
+                    foreach my $cat (get_tax_search_fields($taxSearch)) {
+                        $taxValues{$uniprotId}->{$cat} = $row->{"T_$cat"};
+                    }
+                }
+                
+                # The accession element will be overwritten multiple times, once for each accession ID 
+                # in the UniRef cluster that corresponds to the UniRef cluster ID.
+                my $piece = {'start' => $row->{start}, 'end' => $row->{end}};
+                $piece->{full_len} = $row->{full_len} if $seqLenCol;
+                if ($unirefId eq $uniprotId) { # This is only true if the UniRef ID is a member of the family.
+                    push @{$ids->{$uniprotId}}, \%$piece;
+                }
+
+                push @{$fullFamIds->{$uniprotId}}, \%$piece;
+
+                if ($unirefId ne $uniprotId) {
+                    $unirefMapping->{$uniprotId} = $unirefId;
                 }
             } else {
                 if ($isFraction or $isSwissProt) {
@@ -254,20 +262,181 @@ sub getDomainFromDb {
                 }
                 $count++;
             }
+
+            $self->addSunburstIds($uniprotId, $row, $uniref50IdMap, $uniref90IdMap, $uniprotIdMap);
         }
         $sth->finish;
     }
 
+    $self->finalizeSunburstIds($uniref50IdMap, $uniref90IdMap, $uniprotIdMap, $unirefMapping);
+    $self->runUniRefTaxFilter($taxSearch, \%taxValues, $unirefData, $ids, $unirefMapping, $fullFamIds, \%unirefFamSizeHelper) if ($isTaxSearch and $unirefVersion and $taxFilterByExclude);
+    my ($fullFamCount, $fullIds) = $self->getActualFamilyCount(\@families, $table, $unirefVersion);
+    $self->{data}->{full_dom_uniprot_ids} = $fullFamIds if $useDomain;
+
+    return ($count, $fullFamCount, $fullIds);
+}
+
+
+sub getActualFamilyCount {
+    my $self = shift;
+    my $families = shift;
+    my $familyTable = shift;
+    my $unirefVersion = shift;
+
     # Get actual family count
     my $fullFamCount = 0;
+    my @fullIds;
     if ($unirefVersion) {
-        my $sql = "select count(distinct accession) from $table where $table.id in ('" . join("', '", @families) . "')";
+        #my $sql = "select count(distinct accession) from $familyTable where $familyTable.id in ('" . join("', '", @families) . "')";
+        #my $sth = $self->{dbh}->prepare($sql);
+        #$sth->execute;
+        #$fullFamCount = $sth->fetchrow;
+        my $sql = "select distinct accession from $familyTable where $familyTable.id in ('" . join("', '", @$families) . "')";
         my $sth = $self->{dbh}->prepare($sql);
         $sth->execute;
-        $fullFamCount = $sth->fetchrow;
+        while (my $row = $sth->fetchrow_hashref) {
+            push @fullIds, $row->{accession};
+        }
+        $fullFamCount = scalar @fullIds;
     }
 
-    return ($count, $fullFamCount);
+    return ($fullFamCount, \@fullIds);
+}
+
+
+sub getTaxSearchSql {
+    my $self = shift;
+    my $taxSearch = shift;
+    my $unirefVersion = shift;
+    my $isTaxSearch = shift;
+
+    my ($taxSearchWhere, $taxSearchJoin, $taxCols) = get_tax_filter_sql($taxSearch, $unirefVersion, $isTaxSearch);
+
+    return ($taxSearchWhere, $taxSearchJoin, $taxCols);
+}
+
+
+sub getSeqLenSql {
+    my $self = shift;
+    my $domReg = shift;
+    my $annoTable = shift;
+    my $seqLenColRef = shift;
+
+    my $seqLenFiltWhere = "";
+
+    if ($self->{config}->{min_seq_len} or $self->{config}->{max_seq_len}) {
+        $$seqLenColRef = $domReg ne "cterminal" ? ", $annoTable.seq_len AS full_len" : "";
+        if ($self->{config}->{min_seq_len}) {
+            $seqLenFiltWhere .= " AND $annoTable.seq_len >= " . $self->{config}->{min_seq_len};
+        }
+        if ($self->{config}->{max_seq_len}) {
+            $seqLenFiltWhere .= " AND $annoTable.seq_len <= " . $self->{config}->{max_seq_len};
+        }
+    }
+
+    return $seqLenFiltWhere;
+}
+
+
+sub addSunburstIds {
+    my $self = shift;
+    my $uniprotId = shift;
+    my $row = shift;
+    my $uniref50IdMap = shift;
+    my $uniref90IdMap = shift;
+    my $uniprotIdMap = shift;
+
+    if ($uniprotId ne $row->{uniref50_seed}) {
+        $uniref50IdMap->{is_parent}->{$row->{uniref50_seed}} = 1;
+    }
+    $uniref50IdMap->{rev}->{$uniprotId} = $row->{uniref50_seed};
+    if ($uniprotId ne $row->{uniref90_seed}) {
+        $uniref90IdMap->{is_parent}->{$row->{uniref90_seed}} = 1;
+    }
+    $uniref90IdMap->{rev}->{$uniprotId} = $row->{uniref90_seed};
+    $uniprotIdMap->{$uniprotId} = 1;
+}
+
+
+sub finalizeSunburstIds {
+    my $self = shift;
+    my $uniref50IdMap = shift;
+    my $uniref90IdMap = shift;
+    my $uniprotIdMap = shift;
+    my $unirefMapping = shift;
+
+    my $sunburstIds = $self->{sunburst_ids}->{family};
+
+    my $addSunburstIdsFn = sub {
+        my $unirefMap = shift;
+        my $unirefKey = shift;
+        foreach my $uniprotId (keys %{ $unirefMap->{rev} }) {
+            my $unirefId = $unirefMap->{rev}->{$uniprotId};
+            next if not $uniprotIdMap->{$unirefId};
+            $sunburstIds->{$uniprotId}->{$unirefKey} = $unirefId;
+        }
+    };
+    &$addSunburstIdsFn($uniref50IdMap, "uniref50");
+    &$addSunburstIdsFn($uniref90IdMap, "uniref90");
+    
+    foreach my $id (keys %$uniprotIdMap) {
+        $sunburstIds->{$id} = {uniref50 => "", uniref90 => ""} if not $sunburstIds->{$id};
+        $sunburstIds->{$id}->{uniref50} = "" if not exists $sunburstIds->{$id}->{uniref50};
+        $sunburstIds->{$id}->{uniref90} = "" if not exists $sunburstIds->{$id}->{uniref90};
+    }
+}
+
+
+sub runUniRefTaxFilter {
+    my $self = shift;
+    my $taxSearch = shift;
+    my $taxValues = shift;
+    my $unirefData = shift;;
+    my $ids = shift;
+    my $unirefMapping = shift;
+    my $fullFamIds = shift;
+    my $unirefFamSizeHelper = shift;
+
+    my $matchChildUniProtIdsFromUniRefId = sub {
+        my $theIds = shift;
+        my $notMatched = shift;
+        my $fail = 0;
+        foreach my $id (@$theIds) {
+            if (not run_tax_search($taxSearch, $taxValues->{$id})) {
+                $fail = 1;
+                push @$notMatched, $id;
+            }
+        }
+        return $fail ? 0 : 1;
+    };
+
+    foreach my $uniprotId (keys %$taxValues) {
+        next if not $unirefData->{$uniprotId};
+        # This is a uniref ID
+        my @ids = keys %{ $unirefData->{$uniprotId} };
+
+        my @notMatched;
+        my $excludeBasedOnKids = 0;
+        my $taxMatched = 0;
+        if ($excludeBasedOnKids) {
+            # @ids contains the UniRef ID as well
+            $taxMatched = &$matchChildUniProtIdsFromUniRefId(\@ids, \@notMatched);
+        } else {
+            $taxMatched = &$matchChildUniProtIdsFromUniRefId([$uniprotId], \@notMatched);
+        }
+
+        # Exclude this UniRef SSN node if ANY of the child UniProt IDs don't match the filter
+        if (not $taxMatched) {
+            my $nm = join(",", @notMatched);
+            my $mt = scalar(@notMatched) > 1 ? "it and/or one or more of its kids do not match the filter" : "it doesn't match the filter";
+            print "Excluding $uniprotId because $mt ($nm).\n";
+            delete $unirefData->{$uniprotId};
+            delete $ids->{$uniprotId};
+            delete $unirefMapping->{$uniprotId};
+            delete $fullFamIds->{$uniprotId};
+            delete $unirefFamSizeHelper->{$uniprotId};
+        }
+    }
 }
 
 
@@ -275,7 +444,7 @@ sub getDomainRegion {
     my $self = shift;
     my $domReg = shift;
 
-    my $ids = $self->{data}->{uniprot_ids};
+    my $uniprotIds = $self->{data}->{uniprot_ids};
     my $fullFamIds = $self->{data}->{full_dom_uniprot_ids};
 
     my $computeFn = sub {
@@ -315,7 +484,7 @@ sub getDomainRegion {
         return $outputIds;
     };
 
-    &$computeFn($ids);
+    &$computeFn($uniprotIds);
     &$computeFn($fullFamIds);
 
 #    # If we are using UniRef and domain, then we need to look up the domain region for the family
@@ -332,20 +501,23 @@ sub getDomainRegion {
 }
 
 
+# Returns UniRef IDs for UniRef jobs, UniProt IDs for UniProt jobs
 sub getSequenceIds {
     my $self = shift;
     return $self->{data}->{uniprot_ids};
 }
 
 
+# Returns the mapping of UniRef ID to UniProt ID list
 sub getMetadata {
     my $self = shift;
     
     my $md = {};
     if ($self->{config}->{uniref_version}) {
         my $ver = $self->{config}->{uniref_version};
+        # This code excludes UniRef IDs that are not part of the family, because {uniprot_ids} only contains UniRef IDs that are part of the family.
         foreach my $id (keys %{$self->{data}->{uniprot_ids}}) {
-            $md->{$id}->{"UniRef${ver}_IDs"} = $self->{data}->{uniref_data}->{$id};
+            $md->{$id}->{"UniRef${ver}_IDs"} = [keys %{ $self->{data}->{uniref_data}->{$id} }];
         }
     } else {
         map { $md->{$_} = {}; } keys %{$self->{data}->{uniprot_ids}};

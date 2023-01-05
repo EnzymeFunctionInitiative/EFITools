@@ -72,6 +72,7 @@ sub new {
     $self->{conf} = {};
     $self->{startup_errors} = [];
     $self->{completed_name} = "0.COMPLETED"; # completed flag file name
+    $self->{efi_home} = abs_path(dirname(abs_path(__FILE__)) . "/../../");
 
     $self->{cluster}->{dry_run} = $parms->{"dry-run"} ? 1 : 0;
 
@@ -167,6 +168,7 @@ sub addModuleConfig {
     my $config = shift;
     my $conf = shift;
 
+    # _raw is an array
     foreach my $key (keys %{$config}) {
         if ($key =~ m/^environment\.(.+)$/) {
             $conf->{group}->{$1} = $config->{$key}->{_raw};
@@ -317,21 +319,6 @@ sub createJobs {
     push @jobs, {job => $job, deps => [map { $_->{job} } @jobs], name => "fix_perms"};
 
     return @jobs;
-}
-
-
-sub getJobEnvAction {
-    my $self = shift;
-    #TODO: support loading from env file
-    return "module load";
-}
-
-
-sub getModuleLoad {
-    my $self = shift;
-    my $module = shift;
-    #TODO: implement this properly and look the module up
-    return $self->getJobEnvAction() . " " . $module;
 }
 
 
@@ -575,7 +562,13 @@ sub createScheduler {
         dry_run => $self->{cluster}->{dry_run},
         output_base_dirpath => $logDir,
     );
-    $schedArgs{extra_headers} = $self->{modules}->{group}->{headers} if $self->{modules}->{group}->{headers};
+
+    my @extra;
+    if ($self->{modules}->{group}->{headers}) {
+        push @extra, @{ $self->{modules}->{group}->{headers} };
+    }
+    $schedArgs{extra_headers} = \@extra;
+    
     my $S = new EFI::SchedulerApi(%schedArgs);
 
     $self->{scheduler} = $S;
@@ -594,7 +587,11 @@ sub getScheduler {
 sub getBuilder {
     my $self = shift;
     my $S = $self->getScheduler();
-    return $S->getBuilder();
+    my $B = $S->getBuilder();
+    $B->addAction("EFI_HOME=$self->{efi_home}");
+    my @global = $self->getEnvironment("global");
+    map { $B->addAction($_); } @global;
+    return $B;
 }
 
 
@@ -722,6 +719,8 @@ sub GetEfiOptions {
                 push @args, $opt;
             }
             close $fh;
+        } elsif ($setupFile) {
+            die "Invalid setup file $setupFile provided\n";
         }
 
         $self->{job_setup_args} = \@args;

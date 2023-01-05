@@ -130,7 +130,7 @@ sub validateOptions {
     } elsif ($mode eq "FASTA" and (not $conf->{fasta_file} or not -f $conf->{fasta_file})) {
         return "--job-type FASTA requires --fasta-file";
     } elsif ($mode eq "TAXONOMY" and (not $conf->{tax_file} or not -f $conf->{tax_file} or not $conf->{tax_tree_id} or not $conf->{tax_id_type})) {
-        return "--job-type TAXONOMY requires --tax-file --tax-tree-id and -tax-id-type";
+        return "--job-type TAXONOMY requires --tax-file --tax-tree-id and --tax-id-type";
     } else {
         #return "Requires one of --blast-seq, --id-file, --fasta-file, --upload-file, or --tax-file";
         return "";
