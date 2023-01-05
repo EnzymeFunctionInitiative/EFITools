@@ -430,8 +430,7 @@ sub makeArgs {
         push @args, "--use-anno_spec" if $parms->{use_min_node_attr};
         push @args, "--use-min-edge-attr" if $parms->{use_min_edge_attr};
         push @args, "--compute-nc" if $parms->{compute_nc};
-        #push @args, "--no-repnode" if (exists $parms->{build_repnode} and not $parms->{build_repnode});
-        push @args, "--no-repnode" if not $parms->{build_repnode};
+        push @args, "--no-repnode" if (exists $parms->{build_repnode} and (not $parms->{build_repnode} or $parms->{build_repnode} eq "false"));
         push @args, "--remove-fragments" if $parms->{remove_fragments};
 
         if ($parms->{tax_search}) {
