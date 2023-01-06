@@ -73,30 +73,57 @@ sub getResultsDirName {
 
     my $dirName = $self->{info}->{results_dir_name};
     if ($self->{info}->{type} eq TYPE_ANALYSIS and $expandIfAnalysis) {
-        my $sql = "SELECT * FROM analysis WHERE analysis_id = ?";
-        my $sth = $self->{dbh}->prepare($sql);
-        $sth->execute($jobId);
-        my $dbRow = $sth->fetchrow_hashref;
-        warn "Unable to find $jobId in analysis table" and next if not $dbRow;
-
-        # Unfortunately this is a bit hacky.  We need to come up with a better way to share info
-        # between the web app and this app.
-        my $json = $dbRow->{analysis_params};
-        my $params = decode_json($json);
-        $params = {} if (not $params or ref $params ne "HASH"); # this can happen if there are no values
-        my $taxSearch = $params->{"tax_search_hash"} ? "-" . $params->{"tax_search_hash"} : "";
-        my $ncSuffix = $params->{"compute_nc"} ? "-nc" : "";
-        my $nfSuffix = $params->{"remove_fragments"} ? "-nf" : "";
-        my $aDir = $dbRow->{"analysis_filter"} . "-" .
-            $dbRow->{"analysis_evalue"} . "-" .
-            $dbRow->{"analysis_min_length"} . "-" .
-            $dbRow->{"analysis_max_length"} . $taxSearch . $ncSuffix . $nfSuffix;
+        my $aDir = getAnalysisDirName($self->{dbh}, $jobId);
         $dirName .= "/$aDir";
     }
 
     return $dirName;
 }
 
+
+sub getAnalysisDirName {
+    my $dbh = shift;
+    my $aid = shift;
+    my ($dbRow, $params) = getAnalysisParams($dbh, $aid); 
+    my $aDir = makeAnalysisDirName($dbRow, $params);
+    return $aDir;
+}
+
+
+sub getAnalysisParams {
+    my $dbh = shift;
+    my $aid = shift;
+
+    my $sql = "SELECT * FROM analysis WHERE analysis_id = ?";
+    my $sth = $dbh->prepare($sql);
+    $sth->execute($aid);
+    my $dbRow = $sth->fetchrow_hashref;
+    warn "Unable to find $aid in analysis table" and return undef if not $dbRow;
+
+    # Unfortunately this is a bit hacky.  We need to come up with a better way to share info
+    # between the web app and this app.
+    my $json = $dbRow->{analysis_params};
+    my $params = decode_json($json);
+    $params = {} if (not $params or ref $params ne "HASH"); # this can happen if there are no values
+
+    return ($dbRow, $params);
+}
+
+
+sub makeAnalysisDirName {
+    my $dbRow = shift;
+    my $params = shift;
+
+    my $taxSearch = $params->{tax_search_hash} ? "-" . $params->{tax_search_hash} : "";
+    my $ncSuffix = $params->{compute_nc} ? "-nc" : "";
+    my $nfSuffix = $params->{remove_fragments} ? "-nf" : "";
+    my $aDir = $dbRow->{analysis_filter} . "-" .
+        $dbRow->{analysis_evalue} . "-" .
+        $dbRow->{analysis_min_length} . "-" .
+        $dbRow->{analysis_max_length} . $taxSearch . $ncSuffix . $nfSuffix;
+
+    return $aDir;
+}
 
 
 sub createInfo {
@@ -156,6 +183,7 @@ sub getUploadedFilename {
     my $self = shift;
     my $jobId = shift;
     my $parms = shift;
+    my $subType = shift || "";
 
     if ($self->{info}->{type} eq TYPE_GND) {
         return {file => "$jobId.sqlite", ext => "sqlite"};
@@ -163,12 +191,24 @@ sub getUploadedFilename {
 
     my $type = $self->{info}->{type};
     my $info;
-    if ($type eq TYPE_COLORSSN or $type eq TYPE_CLUSTER or $type eq TYPE_NBCONN or $type eq TYPE_CONVRATIO) {
-        #TODO:
+    if ($type eq TYPE_GENERATE and ($subType eq TYPE_COLORSSN or $subType eq TYPE_CLUSTER or $subType eq TYPE_NBCONN or $subType eq TYPE_CONVRATIO)) {
         # Create a color SSN job from an EST job
         if ($parms->{generate_color_ssn_source_id} and exists $parms->{generate_color_ssn_source_idx}) {
+            my ($dbRow, $aparms) = getAnalysisParams($self->{dbh}, $parms->{generate_color_ssn_source_id}); 
+            my $gid = $dbRow->{analysis_generate_id};
+            return undef if not $gid;
+
+            my $estDir = $self->getJobDir($gid) . "/" . $self->getResultsDirName();
+            my $aDir = getAnalysisDirName($self->{dbh}, $parms->{generate_color_ssn_source_id});
+
+            my $ssnFile = $self->getSsnFileName($estDir, $aDir, $parms);
+            return $ssnFile ? {file_path => "$estDir/$aDir/$ssnFile", file => $ssnFile, ext => ""} : undef;
         # Create color SSN job from another color SSN job
         } elsif ($parms->{color_ssn_source_color_id}) {
+            my $estDir = $self->getJobDir($parms->{color_ssn_source_color_id}) . "/" . $self->getResultsDirName();
+            my $ssnFile = "ssn";
+            my $ssnPath = "$estDir/$ssnFile";
+            return -f "$ssnPath.xgmml" ? {file_path => "$ssnPath.xgmml", file => "$ssnFile.xgmml", ext => ""} : {file_path => "$ssnPath.zip", file => "$ssnFile.zip", ext => ""};
         }
     }
 
@@ -178,6 +218,35 @@ sub getUploadedFilename {
         $file =~ s/^.*\.([^\.]+)$/$1/; # extension
         return {file => "$jobId.$file", ext => $file};
     }
+}
+
+
+sub getSsnFileName {
+    my $self = shift;
+    my $estDir = shift;
+    my $aDir = shift;
+    my $parms = shift;
+
+    my $statsFile = "$estDir/$aDir/stats.tab";
+    return "" if not -f $statsFile;
+
+    my $ssnFile = "";
+
+    open my $fh, "<", $statsFile or return 0;
+    my $line = <$fh>;
+    my $lc = 0;
+    while ($line = <$fh>) {
+        chomp $line;
+        if ($lc++ == $parms->{generate_color_ssn_source_idx}) {
+            my @p = split(m/\t/, $line);
+            $ssnFile = $p[0];
+            last;
+        }
+    }
+    close $fh;
+
+    my $filePath = "$estDir/$aDir/$ssnFile";
+    return -f $filePath ? $ssnFile : "$ssnFile.zip";
 }
 
 

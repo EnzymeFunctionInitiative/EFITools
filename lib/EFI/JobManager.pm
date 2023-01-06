@@ -294,7 +294,7 @@ sub makeArgs {
         push @args, "--memqueue", $self->{config}->{mem_queue};
 
         if ($subType eq TYPE_COLORSSN or $subType eq TYPE_CLUSTER or $subType eq TYPE_CONVRATIO or $subType eq TYPE_NBCONN) {
-            my $sourceFile = $self->getUploadFile($type, $jobId, $parms);
+            my $sourceFile = $self->getUploadFile($type, $jobId, $parms, $subType);
             $info->{source_file} = $sourceFile->{file_path};
             #my $targetName = "$jobId.$sourceFile->{ext}";
             #$info->{target_file} = "$jobDir/$targetName";
@@ -302,8 +302,7 @@ sub makeArgs {
 
             warn "Unable to generate $subType job because upload file doesn't exist" and next if not $sourceFile;
             push @args, "--ssn-in", $info->{source_file};
-            #push @args, "--ssn-in", $info->{target_file};
-            push @args, "--ssn-out", "ssn.zip";
+            push @args, "--ssn-out", "ssn.xgmml";
             push @args, "--ssn-file-name", "${jobId}_$targetName";
             push @args, "--large-mem", "--extra-ram", $parms->{extra_ram} if $parms->{extra_ram};
 
@@ -586,6 +585,7 @@ sub getUploadFile {
     my $type = shift;
     my $jobId = shift;
     my $parms = shift;
+    my $subType = shift || "";
 
     if (not $parms) {
         my $tableName = $self->{info}->{$type}->getTableName();
@@ -598,12 +598,15 @@ sub getUploadFile {
         $parms = $row->{parms};
     }
 
-    my $fileInfo = $self->{info}->{$type}->getUploadedFilename($jobId, $parms);
+    my $fileInfo = $self->{info}->{$type}->getUploadedFilename($jobId, $parms, $subType);
     return undef if not $fileInfo;
 
-    my $uploadsDir = $self->{info}->{$type}->getUploadsDir();
-
-    return {file_path => "$uploadsDir/$fileInfo->{file}", ext => $fileInfo->{ext}};
+    if ($fileInfo->{file_path}) {
+        return {file_path => $fileInfo->{file_path}, ext => $fileInfo->{ext}};
+    } else {
+        my $uploadsDir = $self->{info}->{$type}->getUploadsDir();
+        return {file_path => "$uploadsDir/$fileInfo->{file}", ext => $fileInfo->{ext}};
+    }
 }
 
 
