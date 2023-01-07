@@ -302,8 +302,12 @@ sub makeArgs {
 
             warn "Unable to generate $subType job because upload file doesn't exist" and next if not $sourceFile;
             push @args, "--ssn-in", $info->{source_file};
-            push @args, "--ssn-out", "ssn.xgmml";
-            push @args, "--ssn-file-name", "${jobId}_$targetName";
+            if ($subType eq TYPE_CONVRATIO) {
+                push @args, "--file-name", "conv_ratio.txt";
+            } else {
+                push @args, "--ssn-out", "ssn.xgmml";
+                push @args, "--ssn-file-name", "${jobId}_$targetName";
+            }
             push @args, "--large-mem", "--extra-ram", $parms->{extra_ram} if $parms->{extra_ram};
 
             if ($subType eq TYPE_COLORSSN) {
