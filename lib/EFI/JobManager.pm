@@ -450,6 +450,9 @@ sub makeArgs {
         my $title = $row->{diagram_title} // "";
 
         if ($subType eq "DIRECT" or $subType eq "DIRECT_ZIP") {
+            my $sourceFile = $self->getUploadFile($type, $jobId, $parms, $subType, $row);
+            $info->{source_file} = $sourceFile->{file_path};
+            push @args, "--zip-file", $info->{source_file};
         } elsif ($subType eq "BLAST") {
             my $seq = $parms->{blast_seq} // "";
             $seq =~ s/[\n\r]//gs;
@@ -458,7 +461,7 @@ sub makeArgs {
             push @args, "--seq-db-type", $parms->{seq_db_type} if $parms->{seq_db_type};
         } elsif ($subType eq "ID_LOOKUP") {
             if ($parms->{tax_job_id} and $parms->{tax_id_type} and exists $parms->{tax_tree_id}) {
-                my $sourceFile = $self->resultsFileExists($type, TYPE_TAXONOMY, $parms->{tax_job_id});
+                my $sourceFile = $self->resultsFileExists(TYPE_GENERATE, TYPE_TAXONOMY, $parms->{tax_job_id});
                 if ($sourceFile) {
                     push @args, "--tax-file", $sourceFile, "--tax-id-type", $parms->{tax_id_type}, "--tax-tree-id", $parms->{tax_tree_id};
                 }
@@ -477,11 +480,11 @@ sub makeArgs {
         push @args, "--output", "$jobId.sqlite";
         push @args, "--title", "\"" . $title . "\"" if $title;
         push @args, "--job-type", $subType;
-        push @args, "--nb-size", $parms->{neighborhood_size} if $parms->{neighborhood_size};
+        push @args, "--nb-size", $parms->{neighborhood_size} if ($parms and ref $parms eq "HASH" and $parms->{neighborhood_size});
     } elsif ($type eq TYPE_GNN) {
         my $parms = decode_json($row->{gnn_params});
         push @args, "--queue", $self->{config}->{mem_queue};
-        my $sourceFile = $self->getUploadFile($type, $jobId, $parms);
+        my $sourceFile = $self->getUploadFile($type, $jobId, $parms, "", $row);
         warn "Unable to process $type job because upload file doesn't exist" and next if not $sourceFile;
         $info->{source_file} = $sourceFile->{file_path};
         push @args, "--ssn-in", $info->{source_file};
@@ -590,6 +593,7 @@ sub getUploadFile {
     my $jobId = shift;
     my $parms = shift;
     my $subType = shift || "";
+    my $dbRow = shift || undef;
 
     if (not $parms) {
         my $tableName = $self->{info}->{$type}->getTableName();
@@ -602,9 +606,24 @@ sub getUploadFile {
         $parms = $row->{parms};
     }
 
-    my $fileInfo = $self->{info}->{$type}->getUploadedFilename($jobId, $parms, $subType);
+    # Handle the case where transferring from EST -> GNT
+    if ($type eq TYPE_GNN and $dbRow and $dbRow->{gnn_est_source_id}) {
+        my $ssnIdx = $parms->{ssn_idx};
+        my $aid = $dbRow->{gnn_est_source_id};
+
+        my ($adbRow, $aparms) = EFI::JobManager::Info::getAnalysisParams($self->{dbh}, $aid);
+        my $gid = $adbRow->{analysis_generate_id};
+        my $gDir = $self->{info}->{&TYPE_GENERATE}->getJobDir($gid) . "/" . $self->{info}->{&TYPE_GENERATE}->getResultsDirName();;
+
+        my $aDir = EFI::JobManager::Info::getAnalysisDirName($self->{dbh}, $aid);
+        my $ssnFile = $self->{info}->{&TYPE_ANALYSIS}->getSsnFileName($gDir, $aDir, $ssnIdx);
+        return {file_path => "$gDir/$aDir/$ssnFile", file => $ssnFile, ext => ""};
+    }
+
+    my $fileInfo = $self->{info}->{$type}->getUploadedFilename($jobId, $parms, $subType, $dbRow);
     return undef if not $fileInfo;
 
+    # If file_path is present then this is a transfer.
     if ($fileInfo->{file_path}) {
         return {file_path => $fileInfo->{file_path}, ext => $fileInfo->{ext}};
     } else {

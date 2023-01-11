@@ -184,9 +184,11 @@ sub getUploadedFilename {
     my $jobId = shift;
     my $parms = shift;
     my $subType = shift || "";
+    my $dbRow = shift || undef;
 
     if ($self->{info}->{type} eq TYPE_GND) {
-        return {file => "$jobId.sqlite", ext => "sqlite"};
+        my $ext = $subType eq "DIRECT" ? "sqlite" : "zip";
+        return {file => "$jobId.$ext", ext => $ext};
     }
 
     my $type = $self->{info}->{type};
@@ -201,7 +203,7 @@ sub getUploadedFilename {
             my $estDir = $self->getJobDir($gid) . "/" . $self->getResultsDirName();
             my $aDir = getAnalysisDirName($self->{dbh}, $parms->{generate_color_ssn_source_id});
 
-            my $ssnFile = $self->getSsnFileName($estDir, $aDir, $parms);
+            my $ssnFile = $self->getSsnFileName($estDir, $aDir, $parms->{generate_color_ssn_source_idx});
             return $ssnFile ? {file_path => "$estDir/$aDir/$ssnFile", file => $ssnFile, ext => ""} : undef;
         # Create color SSN job from another color SSN job
         } elsif ($parms->{color_ssn_source_color_id}) {
@@ -225,7 +227,7 @@ sub getSsnFileName {
     my $self = shift;
     my $estDir = shift;
     my $aDir = shift;
-    my $parms = shift;
+    my $ssnIdx = shift;
 
     my $statsFile = "$estDir/$aDir/stats.tab";
     return "" if not -f $statsFile;
@@ -237,7 +239,7 @@ sub getSsnFileName {
     my $lc = 0;
     while ($line = <$fh>) {
         chomp $line;
-        if ($lc++ == $parms->{generate_color_ssn_source_idx}) {
+        if ($lc++ == $ssnIdx) {
             my @p = split(m/\t/, $line);
             $ssnFile = $p[0];
             last;
