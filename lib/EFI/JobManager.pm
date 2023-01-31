@@ -566,9 +566,10 @@ sub makeArgs {
         my $searchType = $params->{quantify_search_type};
 
         my $idPath = "$jobDir/$resDir";
-        my $baseSsnName = "${idId}_$iparams->{identify_filename}";
-        my $outputSsnName = "${baseSsnName}_quantify.xgmml";
-        my $inputSsn = "$idPath/$baseSsnName.xgmml";
+        my ($fn, $fp, $fx) = fileparse($iparams->{identify_filename}, ".xgmml", ".xgmml.zip", ".zip");
+        my $baseSsnName = "${idId}_$fn";
+        my $outputSsnName = "${baseSsnName}_quantify";
+        my $inputSsn = -f "$idPath/${baseSsnName}_identify_ssn.xgmml" ? "$idPath/${baseSsnName}_identify_ssn.xgmml" : "$idPath/${baseSsnName}_markers.xgmml";
 
         push @args, "--metagenome-db", $metaDb; 
         push @args, "--quantify-dir", $qDir; # dir name, relative to the --id-dir
