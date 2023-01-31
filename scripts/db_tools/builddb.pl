@@ -168,7 +168,7 @@ if ($buildSqlOnly) {
 
 
 # Various directories and files.
-my $DbSupport = "$config->{build}->{db_home}/support";
+my $DbSupport = $config->{build}->{support} || die "support value is not specified in build.conf!";
 $WorkingDir = abs_path($WorkingDir);
 my $ScriptDir = $FindBin::Bin;
 my $BuildDir = "$WorkingDir/build";
@@ -815,7 +815,7 @@ sub submitAnnotationsJob {
 
     my $file = "$BuildDir/$fileNum-annotations.sh";
 
-    $B->resource(1, 1, "10gb");
+    $B->resource(1, 1, "250gb"); # probably too much
     $B->dependency(0, $depId);
 
     addStandardEnv($B);

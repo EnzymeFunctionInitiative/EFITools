@@ -9,5 +9,11 @@ source /etc/profile
 module load Perl/5.28.1-IGB-gcc-8.2.0
 source /home/groups/efi/apps/perl_env.sh
 
-$DIR/job_manager.pl "$@"
+lock_file="/tmp/job_manager.lock"
+
+set +e
+
+$DIR/job_manager.pl "$@" --lock-file $lock_file
+
+rm -f $lock_file
 

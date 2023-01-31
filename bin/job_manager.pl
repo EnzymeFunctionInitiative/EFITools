@@ -20,9 +20,10 @@ use constant ERROR => 3;
 
 use lib "$FindBin::Bin/../lib";
 
+use EFI::Database;
 use EFI::JobManager;
 use EFI::JobManager::Info;
-use EFI::Database;
+use EFI::JobManager::Config;
 
 
 my ($dbConfigFile, $dbName, $configFile, $debug, $queue, $memQueue, $checkForFinishOnly, $lockFile);
@@ -45,7 +46,7 @@ die "Need --config argument" if not $configFile or not -f $configFile;
 
 my $toolDir = abs_path("$FindBin::Bin/../");
 
-my $config = parseConfigFile($configFile);
+my $config = new EFI::JobManager::Config(file => $configFile);
 
 if (not try_lock($configFile, \$lockFile)) {
     print "Script is already running, exiting...\n";
@@ -68,7 +69,7 @@ my $dbh = $db->getHandle();
 
 my $manager = new EFI::JobManager(dbh => $dbh, config => $config, debug => $debug);
 
-$manager->checkForJobFinish();
+$manager->checkForFinish();
 
 unlock($lockFile) and exit(0) if $checkForFinishOnly;
 
@@ -109,34 +110,8 @@ unlock($lockFile);
 
 sub configureQueue {
     my $config = shift;
-    die "Need queue value in config file" if not $config->{queue};
-    die "Need mem_queue value in config file" if not $config->{mem_queue};
-}
-
-
-sub parseConfigFile {
-    my $file = shift;
-
-    open my $fh, "<", $file or die "Unable to read config file $file: $!";
-
-    my $config = {};
-    while (my $line = <$fh>) {
-        chomp $line;
-        $line =~ s/^\s*(.*?)\s*$/$1/;
-        next if $line =~ m/^;/;
-        next if not $line;
-
-        my ($key, $val) = split(m/=/, $line, 2);
-        if ($key =~ m/^([^\.]+)\.env$/) {
-            push @{$config->{$key}}, $val;
-        } else {
-            $config->{$key} = $val;
-        }
-    }
-
-    close $fh;
-
-    return $config;
+    die "Need queue value in config file" if not $config->getQueue();
+    die "Need mem_queue value in config file" if not $config->getMemQueue();
 }
 
 
@@ -160,12 +135,16 @@ sub try_lock {
     return 1;
 
     my $configFile = shift;
-    my $lockFile = shift; # reference, so we can update it if necessary
+    my $lockFileRef = shift; # reference, so we can update it if necessary
+    my $lockFile = $$lockFileRef;
 
-    if (not $$lockFile) {
+    if (not $lockFile) {
         my ($configFileName, $configFilePath, $configFileExt) = fileparse($configFile);
-        $$lockFile = "$configFilePath/.$configFileName.lock";
+        $lockFile = "$configFilePath/.$configFileName.lock";
+        $$lockFileRef = $lockFile;
     }
+
+    return 0 if -f $lockFile;
 
     open my $fh, ">", $lockFile;
     close $fh;

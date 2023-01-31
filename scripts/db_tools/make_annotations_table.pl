@@ -108,7 +108,7 @@ while (my $line = <$datFh>) {
     $line =~ s/\&/and/g;
     $line =~ s/\\//g;
 
-    if (not ($lc % 1000000)) {
+    if (not ($lc++ % 1000000)) {
         print "$lc\n";
     }
 
