@@ -38,6 +38,7 @@ sub getJobDirInfo {
 
     my $generateId = $row->{analysis_generate_id};
     my $params = decode_json($row->{analysis_params});
+    $params = {} if ref $params ne "HASH"; # Necessary because if the field is empty JSON stores it as an arrayref not hashref
 
     return ($generateId, $params, $row);
 }
