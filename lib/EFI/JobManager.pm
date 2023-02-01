@@ -87,7 +87,7 @@ sub checkForJobFinish {
     while (my $row = $sth->fetchrow_hashref) {
         my $slurmId = $row->{$SLURM_ID_COL};
         my $jobId = $row->{$JOB_ID_COL};
-        my $finishFile = $jobTypeInfo->getFinishFile($jobId, $row);
+        my $finishFile = $jobTypeInfo->getFinishFile($jobId, 1);
 
         $self->log("\t$slurmId, $jobId, $finishFile");
         next if $self->isJobRunning($slurmId);
@@ -526,7 +526,7 @@ sub makeArgs {
 
         my $searchType = $params->{identify_search_type};
         my ($fn, $fp, $fx) = fileparse($params->{identify_filename}, ".xgmml", ".xgmml.zip", ".zip");
-        my $outputSsnName = "${jobId}_$fn";
+        my $outputSsnName = "${jobId}_${fn}_identify_ssn";
 
         my $sourceFile = $self->getUploadFile($type, $jobId, $params, "", $row);
         warn "Unable to process $type job because upload file doesn't exist" and next if not $sourceFile;
@@ -568,7 +568,7 @@ sub makeArgs {
         my $idPath = "$jobDir/$resDir";
         my ($fn, $fp, $fx) = fileparse($iparams->{identify_filename}, ".xgmml", ".xgmml.zip", ".zip");
         my $baseSsnName = "${idId}_$fn";
-        my $outputSsnName = "${baseSsnName}_quantify";
+        my $outputSsnName = "${baseSsnName}_quantify_ssn";
         my $inputSsn = -f "$idPath/${baseSsnName}_identify_ssn.xgmml" ? "$idPath/${baseSsnName}_identify_ssn.xgmml" : "$idPath/${baseSsnName}_markers.xgmml";
 
         push @args, "--metagenome-db", $metaDb; 
