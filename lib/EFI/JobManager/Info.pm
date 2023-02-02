@@ -150,11 +150,13 @@ sub getUploadedFilename {
         # Create a color SSN job from an EST job
         my $aid = $params->{generate_color_ssn_source_id} // $params->{color_ssn_source_color_id};
         my $ssnIdx = $params->{generate_color_ssn_source_idx};
-        # This may not be a sub-job
-        my $subJobInfo = $self->getSsnInfoFromSsnJob($aid, $ssnIdx, $dbRow); 
-        # It was a sub-job, but the parameters were invalid.
-        return undef if not defined $subJobInfo;
-        return $subJobInfo if ref $subJobInfo eq "HASH";
+        if ($aid) {
+            # This may not be a sub-job
+            my $subJobInfo = $self->getSsnInfoFromSsnJob($aid, $ssnIdx, $dbRow); 
+            # It was a sub-job, but the parameters were invalid.
+            return undef if not defined $subJobInfo;
+            return $subJobInfo if ref $subJobInfo eq "HASH";
+        }
         # Else we continue on with the search.
     } elsif ($type eq TYPE_CGFP_IDENTIFY and $params->{est_id}) {
         my $estId = $params->{est_id};

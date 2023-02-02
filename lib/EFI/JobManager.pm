@@ -331,6 +331,7 @@ sub makeArgs {
 
         } else {
             push @args, ("--old-graphs", "--max-full-family", 1000000);
+            push @args, "--extra-ram", $params->{extra_ram} if $params->{extra_ram};
 
             print "$subType $jobId\n";
             push @args, "--np", $numProcessors;
