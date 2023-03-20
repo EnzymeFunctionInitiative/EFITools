@@ -68,8 +68,9 @@ sub getValue {
     my $self = shift;
     my $type = shift;
     my $key = shift;
+    my $default = shift || "";
     $key = "$type.$key";
-    return $self->{$key} // "";
+    return $self->{$key} // $default;
 }
 
 

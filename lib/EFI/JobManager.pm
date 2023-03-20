@@ -24,6 +24,7 @@ my $S_RUNNING = "RUNNING";
 my $S_NEW = "NEW";
 my $S_FINISH = "FINISH";
 my $S_ERROR = "FAILED";
+my $S_CANCEL = "CANCELLED";
 
 
 use EFI::JobManager::Types;
@@ -90,7 +91,9 @@ sub checkForJobFinish {
         my $finishFile = $jobTypeInfo->getFinishFile($jobId, 1);
 
         $self->log("\t$slurmId, $jobId, $finishFile");
-        next if $self->isJobRunning($slurmId);
+        my @slurmIds = split(m/,/, $slurmId);
+        my $mainId = $slurmIds[$#slurmIds];
+        next if $self->isJobRunning($mainId);
 
         $self->log("\tJob has stopped running $finishFile");
 
@@ -99,6 +102,77 @@ sub checkForJobFinish {
         $self->log("\tJob state: $jobStatus");
 
         $self->setDbStatusVal($jobId, $tableName, undef, $jobStatus, undef);
+    }
+}
+
+
+sub checkForCancels {
+    my $self = shift;
+    foreach my $type (@{ $self->{types} }) {
+        $self->checkForJobCancel($self->{info}->getTypeData($type));
+    }
+}
+
+
+sub checkForJobCancel {
+    my $self = shift;
+    my $jobTypeInfo = shift;
+    my $dbh = $self->{dbh};
+
+    my $tableName = $jobTypeInfo->getTableName();
+    my $jobType = $jobTypeInfo->getType();
+
+    $self->log("Checking for job cancel for $jobType");
+
+    my $sql = "SELECT * FROM $STATUS_TABLE WHERE $STATUS_COL = '$S_CANCEL' AND $TYPE_COL = ? AND $SLURM_ID_COL IS NOT NULL";
+    print "SQL $sql\n";
+
+    my $sth = $dbh->prepare($sql);
+    $sth->execute($jobType);
+
+    while (my $row = $sth->fetchrow_hashref) {
+        my $slurmId = $row->{$SLURM_ID_COL} // 0;
+        my $jobId = $row->{$JOB_ID_COL};
+        next if not $slurmId;
+        $self->log("\tcancelling $slurmId, $jobId");
+        my $ok = $self->cancelJob($jobId, $slurmId);
+        #$self->setDbStatusVal($jobId, $tableName, undef, $S_CANCEL, undef) if $ok;
+        $self->setDbStatusVal($jobId, $tableName, "NULL", $S_CANCEL, "");
+    }
+}
+
+
+sub cancelJob {
+    my $self = shift;
+    my $jobId = shift; # EFI job number
+    my $slurmId = shift; # ending slurm ID
+
+    my @args = ("/usr/bin/squeue", "--format", '%j %i %E');
+    my ($output, $error) = capture {
+        system(@args);
+    };
+
+
+    my @res = split(m/\n/s, $output);
+    my @slurmJobLines = grep { m/^${jobId}_/ } @res;
+
+    my @jobs;
+    foreach my $slurmJobLine (@slurmJobLines) {
+        my ($j1, $slurmId, $depId) = split(m/ /, $slurmJobLine);
+        $depId =~ s/[^0-9,]*//g;
+        my @sd = split(m/,/, $depId);
+        push @jobs, $slurmId;
+        push @jobs, @sd;
+    }
+
+    if (scalar @jobs > 0) {
+        $self->log("scancel " . join(" ", @jobs));
+        ($output, $error) = capture {
+            system("/usr/bin/scancel", @jobs);
+        };
+        return 1;
+    } else {
+        return 0;
     }
 }
 
@@ -198,7 +272,6 @@ sub processNewJobs {
                 system("/bin/bash", $startScript);
             };
 
-            print("|$error|\n");
             $self->updateDatabases($jobId, $jobTable, $output, $error);
         }
     }
@@ -240,13 +313,14 @@ sub setDbStatusVal {
     my $updateTime = sprintf("%04d-%02d-%02d %02d:%02d:%02d", $year, $mon, $mday, $hour, $min, $sec);
 
     my %updates;
-    $updates{$SLURM_ID_COL} = $slurmId if defined $slurmId;
+    $updates{$SLURM_ID_COL} = $slurmId if (defined $slurmId and $slurmId ne "NULL");
     $updates{$STATUS_COL} = $status if $status;
     $updates{$MSG_COL} = $msg // "";
 
     my @updateKeys = keys %updates;
     my $sets = join(", ", map { "$_ = ?" } @updateKeys);
     $sets .= ($sets ? ", " : "") . "$UPDATE_TIME_COL = ?";
+    $sets .= ", $SLURM_ID_COL = NULL" if (defined $slurmId and $slurmId eq "NULL");
 
     my @vals = map { $updates{$_} } @updateKeys;
     push @vals, $updateTime;
@@ -276,8 +350,8 @@ sub makeArgs {
 
     my $numProcessors = 64;
     my $evalue = 5; # TODO
-    my $maxSeq = 100000000;
     my $defaultMaxBlastSeq = 1000; # TODO
+    my $defaultMaxSeq = 1000000000;
 
     my @args;
 
@@ -330,6 +404,8 @@ sub makeArgs {
             push @args, "--sp-singletons-desc", "swissprot_singletons_desc.txt";
 
         } else {
+            my $maxSeq = $self->{config}->getValue("generate", "max_num_seq", $defaultMaxSeq);
+
             push @args, ("--old-graphs", "--max-full-family", 1000000);
             push @args, "--extra-ram", $params->{extra_ram} if $params->{extra_ram};
 
@@ -359,7 +435,11 @@ sub makeArgs {
             if ($subType eq TYPE_ACCESSION) {
                 push @args, "--no-match-file", "no_accession_matches.txt";
                 my $targetName = "";
-                #TODO add domain
+                if ($params->{generate_domain} and $params->{generate_domain_family}) {
+                    push @args, "--domain";
+                    push @args, "--domain-family", $params->{generate_domain_family};
+                    push @args, "--domain-region", $params->{generate_domain_region} if $params->{generate_domain_region};
+                }
                 if ($params->{tax_job_id}) {
                     my $taxJobId = $params->{tax_job_id};
                     my $taxTreeId = $params->{tax_tree_id};
@@ -398,7 +478,6 @@ sub makeArgs {
         push @args, "--minval", $row->{analysis_evalue};
         push @args, "--filter", $row->{analysis_filter};
         push @args, "--title", "'" . $row->{analysis_name} . "'";
-        push @args, "--maxfull", $maxSeq;
         push @args, "--generate-job-id", $info->{generate_job_id};
         push @args, "--output-path", $aDirPath; # full path
 
@@ -418,6 +497,9 @@ sub makeArgs {
 
         my $params = decode_json($row->{analysis_params});
         $params = {} if (not $params or ref $params ne "HASH"); # this can happen if there are no values
+
+        my $maxSeq = $self->{config}->getValue("generate", "max_num_seq", $defaultMaxSeq);
+        push @args, "--maxfull", $maxSeq;
 
         push @args, "--use-anno_spec" if $params->{use_min_node_attr};
         push @args, "--use-min-edge-attr" if $params->{use_min_edge_attr};
@@ -581,6 +663,7 @@ sub makeArgs {
         push @args, "--protein-file", "protein_abundance";
         push @args, "--cluster-file", "cluster_abundance";
         push @args, "--search-type", $searchType if $searchType;
+        push @args, "--np", ($params->{num_processors} ? $params->{num_processors} : $numProcessors);
 
         if ($searchType eq "diamond" or $searchType eq "v2-blast") {
             $info->{env} .= "\n" . $self->{config}->{"quantify.diamond_module"} . "\n";
@@ -695,6 +778,7 @@ sub taxFileExists {
     my $row = shift;
 
     my $outputPath = $self->{info}->getJobDir($type, $jobId, $row);
+    $outputPath .= "/" . $self->{info}->getResultsDirName($type, $jobId);
     $outputPath .= "/tax.json";
     return -f $outputPath ? $outputPath : "";
 }
@@ -718,6 +802,12 @@ sub getJobParameters {
     $info->{job_dir_path} = $outputPath;
     $info->{script} = $self->getScript($type, $row);
     $info->{results_dir} = $self->{info}->getResultsDirName($type, $jobId); # usually 'output', a sub-dir of --job-dir; in the future will be a abs path
+
+    if ($row->{generate_db_mod}) {
+        $info->{env} .= "module load efidb/" . lc($row->{generate_db_mod}) . "\n";
+    } else {
+        $info->{env} .= $self->{config}->getValue("generate", "default_db") . "\n";
+    }
 
     my @globalArgs = ("--job-id", $jobId, "--remove-temp", "--job-dir", $outputPath, "--results-dir-name", $info->{results_dir});
 

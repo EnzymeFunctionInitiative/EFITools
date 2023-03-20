@@ -69,7 +69,10 @@ my $dbh = $db->getHandle();
 
 my $manager = new EFI::JobManager(dbh => $dbh, config => $config, debug => $debug);
 
+$manager->checkForCancels();
+
 $manager->checkForFinish();
+
 
 unlock($lockFile) and exit(0) if $checkForFinishOnly;
 

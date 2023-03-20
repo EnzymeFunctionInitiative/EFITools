@@ -124,7 +124,8 @@ sub parseForSlurmId {
     my $self = shift;
     my $output = shift;
 
-    my @lines = split(m/\n/, $output);
+    $output =~ s%\n+$%%s;
+    my @lines = split(m/\n/s, $output);
     my $lastLine = pop @lines // 0;
     $lastLine =~ s/^\s*(.*?)\s*$/$1/s;
 
