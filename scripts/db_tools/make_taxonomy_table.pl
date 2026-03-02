@@ -1,13 +1,12 @@
 #!/usr/bin/env perl
 
 use strict;
+use warnings;
+
+use Getopt::Long;
 use XML::LibXML;
 use XML::Parser;
-use Data::Dumper;
-use IO::Handle;
-use Getopt::Long;
 
-my $version = 1;
 
 my $inputXmlFile;
 my $outputTabFile;
@@ -25,31 +24,6 @@ USAGE
 die "No valid input file provided.\n$usage" if not $inputXmlFile or not -f $inputXmlFile;
 die "No output file provided.\n$usage" if not $outputTabFile;
 
-
-#my %databases = (
-#    GENE3D      => 1,
-#    PFAM        => 1,
-#    SSF         => 1,
-#    INTERPRO    => 1);
-#my %fileHandles = ();
-#
-#foreach my $database (keys %databases) {
-#    local *FILE;
-#    open(FILE, ">$outputTabFile/$database.tab") or die "could not write to $outputTabFile/$database.tab\n";
-#    $fileHandles{$database} = *FILE;
-#}
-
-
-my %fieldMap = (
-    species => "SPECIES",
-    genus => "GENUS",
-    family => "FAMILY",
-    order => "ORDER",
-    class => "CLASS",
-    phylum => "PHYLUM",
-    kingdom => "KINGDOM",
-    superkingdom => "DOMAIN",
-);
 
 
 
@@ -129,58 +103,26 @@ close OUT;
 
 
 sub getTabHeader {
-    if ($version == 2) {
-        return ("NCBI TAXON ID", "DOMAIN", "DOMAIN_ID", "KINGDOM", "KINGDOM_ID", "PHYLUM", "PHYLUM_ID", "CLASS", "CLASS_ID", "ORDER", "ORDER_ID", "FAMILY", "FAMILY_ID", "GENUS", "GENUS_ID", "SPECIES");
-    } else {
-        return ("NCBI TAXON ID", "DOMAIN", "KINGDOM", "PHYLUM", "CLASS", "ORDER", "FAMILY", "GENUS", "SPECIES");
-    }
+    return ("NCBI TAXON ID", "DOMAIN", "KINGDOM", "PHYLUM", "CLASS", "ORDER", "FAMILY", "GENUS", "SPECIES");
 }
 
 
 sub getTabLine {
     my $node = shift;
 
-    if ($version == 2) {
-        return (
-                exists $node->{lineage}->{superkingdom} ? $node->{lineage}->{superkingdom} : "NA",
-                exists $node->{lineage_id}->{superkingdom} ? $node->{lineage_id}->{superkingdom} : "0",
-                exists $node->{lineage}->{kingdom} ? $node->{lineage}->{kingdom} : "NA",
-                exists $node->{lineage_id}->{kingdom} ? $node->{lineage_id}->{kingdom} : "0",
-                exists $node->{lineage}->{phylum} ? $node->{lineage}->{phylum} : "NA",
-                exists $node->{lineage_id}->{phylum} ? $node->{lineage_id}->{phylum} : "0",
-                exists $node->{lineage}->{class} ? $node->{lineage}->{class} : "NA",
-                exists $node->{lineage_id}->{class} ? $node->{lineage_id}->{class} : "0",
-                exists $node->{lineage}->{order} ? $node->{lineage}->{order} : "NA",
-                exists $node->{lineage_id}->{order} ? $node->{lineage_id}->{order} : "0",
-                exists $node->{lineage}->{family} ? $node->{lineage}->{family} : "NA",
-                exists $node->{lineage_id}->{family} ? $node->{lineage_id}->{family} : "0",
-                exists $node->{lineage}->{genus} ? $node->{lineage}->{genus} : "NA",
-                exists $node->{lineage_id}->{genus} ? $node->{lineage_id}->{genus} : "0",
-                exists $node->{name} ? $node->{name} : "NA",
-            );
-    } else {
-        my $superKingdom = $node->{lineage}->{superkingdom} // "NA";
-        my $kingdom = $node->{lineage}->{kingdom} // "NA";
-        $kingdom = "NA-$superKingdom" if ($kingdom eq "NA" and $superKingdom ne "NA");
-        return (
-                $superKingdom,
-                $kingdom,
-                $node->{lineage}->{phylum} // "NA",
-                $node->{lineage}->{class} // "NA",
-                $node->{lineage}->{order} // "NA",
-                $node->{lineage}->{family} // "NA",
-                $node->{lineage}->{genus} // "NA",
-                $node->{name} // "NA",
-                #exists $node->{lineage}->{superkingdom} ? $node->{lineage}->{superkingdom} : "NA",
-                #exists $node->{lineage}->{kingdom} ? $node->{lineage}->{kingdom} : "NA",
-                #exists $node->{lineage}->{phylum} ? $node->{lineage}->{phylum} : "NA",
-                #exists $node->{lineage}->{class} ? $node->{lineage}->{class} : "NA",
-                #exists $node->{lineage}->{order} ? $node->{lineage}->{order} : "NA",
-                #exists $node->{lineage}->{family} ? $node->{lineage}->{family} : "NA",
-                #exists $node->{lineage}->{genus} ? $node->{lineage}->{genus} : "NA",
-                #exists $node->{name} ? $node->{name} : "NA",
-            );
-    }
+    my $superKingdom = $node->{lineage}->{domain} // ($node->{lineage}->{superkingdom} // ($node->{lineage}->{"acellular root"} // "NA"));
+    my $kingdom = $node->{lineage}->{kingdom} // "NA";
+    $kingdom = "NA-$superKingdom" if ($kingdom eq "NA" and $superKingdom ne "NA");
+    return (
+            $superKingdom,
+            $kingdom,
+            $node->{lineage}->{phylum} // "NA",
+            $node->{lineage}->{class} // "NA",
+            $node->{lineage}->{order} // "NA",
+            $node->{lineage}->{family} // "NA",
+            $node->{lineage}->{genus} // "NA",
+            $node->{name} // "NA",
+        );
 }
 
 
@@ -200,7 +142,7 @@ sub getDescendentRank {
         return "class";
     } elsif ($rank eq "kingdom") {
         return "phylum";
-    } elsif ($rank eq "superkingdom") {
+    } elsif ($rank eq "domain" or $rank eq "superkingdom") {
         return "kingdom";
     } else {
         return $rank;

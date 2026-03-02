@@ -15,7 +15,7 @@ use EFI::Annotations;
 
 
 my ($inputFile, $outputFile, $fragmentIdFile, $giFile, $efiTidFile, $gdnaFile, $hmpFile);
-my ($debug, $idMappingFile, $familyTable, $metadataFormat, $packJson, $alphafoldFile);
+my ($debug, $familyTable, $proteomeFile, $metadataFormat, $packJson, $alphafoldFile);
 my $result = GetOptions(
     "dat=s"             => \$inputFile,
     "annotations=s"     => \$outputFile,
@@ -24,18 +24,18 @@ my $result = GetOptions(
     "efitid=s"          => \$efiTidFile,
     "gdna=s"            => \$gdnaFile,
     "hmp=s"             => \$hmpFile,
-    "idmapping=s"       => \$idMappingFile,
     "debug=i"           => \$debug,
     "family-table=s"    => \$familyTable, # Optional
     "metadata-format=s" => \$metadataFormat,
     "pack-json"         => \$packJson,
-    "alphafold=s"       => \$alphafoldFile
+    "alphafold=s"       => \$alphafoldFile,
+    "proteome=s"        => \$proteomeFile,
 );
 
 my $usage = <<USAGE;
 Usage: $0 --dat combined_dat_input_file --annotations output_annotations_tab_file
             [-uniprotgi gi_file_path --efitid efi_tid_file_path --gdna gdna_file_path --hmp hmp_file_path
-             --debug num_iterations_to_run --idmapping idmapping_tab_file_path
+             --debug num_iterations_to_run --proteome proteome_file_output_path
              --uniref50 uniref50_tab_file --uniref90 uniref90_tab_file --pfam pfam_tab_file
              --interpro interpro_tab_file --family-table tab_file --metadata-format json|tab
              --alphafold alphafold_csv_file]
@@ -71,9 +71,7 @@ if ($efiTidFile) {
     getEfiTids();
 }
 if ($alphafoldFile) {
-print "Loading AF\n";
     %alphafoldData = getAlphafoldData($alphafoldFile);
-print "AF Loaded\n";
 }
 
 
@@ -94,6 +92,7 @@ open my $datFh, "<", $inputFile or die "could not open dat file $inputFile\n";
 open my $structFh, ">", $outputFile or die "could not write struct data to $outputFile\n";
 open my $fragIdsFh, ">", $fragmentIdFile or die "could not write struct data to $fragmentIdFile\n" if $fragmentIdFile;
 open my $familyTableFh, ">", $familyTable if $familyTable;
+open my $proteomeFh, ">", $proteomeFile if $proteomeFile;
 
 my $currentId = ""; # Not the UniProt accession ID
 my $lastLine;
@@ -342,6 +341,7 @@ sub getHandlers {
     $handlers{dr_string} = sub { push @{ $_[0]->{string} }, $_[1]; };
     $handlers{dr_brenda} = sub { push @{ $_[0]->{brenda} }, ($_[2] ? "$_[1] $_[2]" : $_[1]); };
     $handlers{dr_patric} = sub { push @{ $_[0]->{patric} }, $_[1]; };
+    $handlers{dr_proteomes} = sub { push @{ $_[0]->{proteomes} }, $_[1]; };
     $handlers{dr_go} = sub {
         my $data = shift;
         my $val = shift;

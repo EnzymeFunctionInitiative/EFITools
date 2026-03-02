@@ -10,7 +10,7 @@ use Data::Dumper;
 
 
 my ($outputDir, $inputDir, $inputFile, $uniref50File, $uniref90File, $gene3dFile, $pfamFile, $ssfFile, $interproFile, $debugCount);
-my ($familyTypesFile, $treeFile, $interproInfoFile, $tigrFamFile);
+my ($familyTypesFile, $treeFile, $interproInfoFile, $ncbifamFile);
 
 my $result = GetOptions(
     "output-dir=s"      => \$outputDir,
@@ -22,7 +22,7 @@ my $result = GetOptions(
     "pfam=s"            => \$pfamFile,          # PFAM output file
     "ssf=s"             => \$ssfFile,           # SSF output file
     "interpro=s"        => \$interproFile,      # INTERPRO output file
-    "tigrfam=s"         => \$tigrFamFile,       # TIGRFAMs output file
+    "ncbifam=s"         => \$ncbifamFile,       # NCBIFAM output file
     "debug=i"           => \$debugCount,        # number of iterations to perform for debugging purposes
     "interpro-info=s"   => \$interproInfoFile,  # INTERPRO info output file
     "types=s"           => \$familyTypesFile,
@@ -38,28 +38,28 @@ $files{CATHGENE3D} = $gene3dFile if $gene3dFile;
 $files{PFAM} = $pfamFile if $pfamFile;
 $files{SSF} = $ssfFile if $ssfFile;
 $files{INTERPRO} = $interproFile if $interproFile;
-$files{TIGRFAMs} = $tigrFamFile if $tigrFamFile;
+$files{NCBIFAM} = $ncbifamFile if $ncbifamFile;
 
 
 my $verbose = 0;
 
 # Key to this hash must match the dbname attribute in the match tag.
 my %databases = ();
-if (not $gene3dFile and not $pfamFile and not $ssfFile and not $interproFile and not $interproInfoFile and not $tigrFamFile) {
+if (not $gene3dFile and not $pfamFile and not $ssfFile and not $interproFile and not $interproInfoFile and not $ncbifamFile) {
     # Default to all
     %databases = (
-        CATHGENE3D      => 1,
+        CATHGENE3D  => 1,
         PFAM        => 1,
         SSF         => 1,
         INTERPRO    => 1,
-        TIGRFAMs     => 1,
+        NCBIFAM     => 1,
     );
 } else {
     $databases{CATHGENE3D} = 1 if $gene3dFile;
     $databases{PFAM} = 1 if $pfamFile;
     $databases{SSF} = 1 if $ssfFile;
     $databases{INTERPRO} = 1 if $interproFile;
-    $databases{TIGRFAMs} = 1 if $tigrFamFile;
+    $databases{NCBIFAM} = 1 if $ncbifamFile;
 }
 
 
