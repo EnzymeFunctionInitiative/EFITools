@@ -228,10 +228,12 @@ sub processNewJobs {
             #next if $c_row;
 
             my $tSql = $self->getJobTableQuerySql($jobType, $jobTable, $idCol);
+            print "$tSql\n";
             my $sth = $self->{dbh}->prepare($tSql);
             $sth->execute($jobId);
             my $row = $sth->fetchrow_hashref;
-            die "Invalid ID for $jobTable / $jobId" if not $row;
+            print Dumper($row);
+            die "Invalid ID for $jobTable / $jobId $tSql" if not $row;
 
             my $info = $self->getJobParameters($jobId, $jobTable, $row);
             warn "Unable to process job $jobId in $jobTable" and next if not $info;
@@ -427,6 +429,9 @@ sub makeArgs {
             push @args, getFamilyArgs($params);
             push @args, "--maxsequence", $maxSeq;
             push @args, "--seq-count-file", "acc_counts.txt";
+            push @args, "--search-program", $row->{generate_program} if $row->{generate_program};
+            push @args, "--search-sens", $params->{program_sens} if $row->{generate_program} and $params->{program_sens};
+            push @args, "--search-hits", $params->{program_hits} if $row->{generate_program} and $params->{program_hits};
 
             #if ($subType eq TYPE_TAXONOMY) {
             if ($row->{generate_is_tax_job}) {
@@ -682,6 +687,7 @@ sub makeArgs {
 
 sub getBaseSsnName {
     my $file = shift;
+    print("$file\n");
     my ($fn, $fp, $fx) = fileparse($file, ".xgmml", ".xgmml.zip", ".zip");
     return $fn;
 }
@@ -793,6 +799,15 @@ sub getJobParameters {
     my $info = {type => $type};
     $info->{env} = $self->{config}->getEnv($type);
 
+    my $params = {};
+    if ($row->{generate_params}) {
+        $params = decode_json($row->{generate_params});
+    } elsif ($row->{gnn_params}) {
+        $params = decode_json($row->{gnn_params});
+    } elsif ($row->{diagram_params}) {
+        $params = decode_json($row->{diagram_params});
+    }
+
     # Generate/top-level job dir
     my $outputPath = "";
     $outputPath = $self->{info}->getJobDir($type, $jobId, $row);
@@ -803,8 +818,8 @@ sub getJobParameters {
     $info->{script} = $self->getScript($type, $row);
     $info->{results_dir} = $self->{info}->getResultsDirName($type, $jobId); # usually 'output', a sub-dir of --job-dir; in the future will be a abs path
 
-    if ($row->{generate_db_mod}) {
-        $info->{env} .= "module load efidb/" . lc($row->{generate_db_mod}) . "\n";
+    if ($params->{generate_db_mod}) {
+        $info->{env} .= "module load efidb/" . lc($params->{generate_db_mod}) . "\n";
     } else {
         $info->{env} .= $self->{config}->getValue("generate", "default_db") . "\n";
     }
